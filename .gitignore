@@ -1,0 +1,18 @@
+# real spec sheets carry real SO/MO order numbers - never commit them
+samples/
+
+# OCR bake-off: generated inputs, results and local toolchains
+research/ocr-bakeoff/scan/
+research/ocr-bakeoff/click/
+research/ocr-bakeoff/clean/
+research/ocr-bakeoff/truth.json
+research/ocr-bakeoff/results_*.json
+research/ocr-bakeoff/.venv/
+research/ocr-bakeoff/node_modules/
+research/ocr-bakeoff/package*.json
+*.traineddata
+
+node_modules/
+.next/
+.env*.local
+.vercel
