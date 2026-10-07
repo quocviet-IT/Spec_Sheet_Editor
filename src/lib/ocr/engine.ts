@@ -1,15 +1,7 @@
 import * as ort from "onnxruntime-web/wasm";
 import { buildAlphabet } from "./alphabet";
+import type { OcrModels, Tensor } from "./pipeline";
 import type { InitOptions, InitResult, ModelInput } from "./protocol";
-
-export type Tensor = { data: Float32Array; dims: readonly number[] };
-
-/** The two models behind the OCR pipeline; the Worker backs this with onnxruntime-web, tests with fakes. */
-export type OcrModels = {
-  detect(input: Tensor): Promise<Tensor>;
-  recognize(input: Tensor): Promise<Tensor>;
-  chars: readonly string[];
-};
 
 export type LoadedModels = OcrModels & { release(): Promise<void> };
 

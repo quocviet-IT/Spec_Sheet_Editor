@@ -1,4 +1,6 @@
-import type { InitOptions, InitResult, OcrRequest, OcrResponse } from "./protocol";
+import type { Point, Rect } from "./geometry";
+import type { InitOptions, InitResult, OcrRequest, OcrResponse, ReadResult, ScanResult } from "./protocol";
+import type { Raster } from "./raster";
 
 export const OCR_WORKER_URL = "/ocr/ocr-worker.js";
 export const ORT_WASM_PATH = "/ocr/ort/";
@@ -47,6 +49,20 @@ export class OcrClient {
     const full: InitOptions = { wasmPaths: ORT_WASM_PATH, ...options };
     const transfer = [full.det, full.rec, full.keys].filter((m): m is ArrayBuffer => typeof m !== "string");
     return this.call<InitResult>({ type: "init", options: full }, transfer);
+  }
+
+  /** The Worker gets its own copy, so the caller's pixels stay usable. */
+  setPage(page: Raster): Promise<void> {
+    const data = new Uint8ClampedArray(page.data);
+    return this.call<void>({ type: "setPage", page: { width: page.width, height: page.height, data } }, [data.buffer]);
+  }
+
+  scan(area: Rect, targetWidth?: number): Promise<ScanResult> {
+    return this.call<ScanResult>({ type: "scan", area, targetWidth });
+  }
+
+  read(point: Point): Promise<ReadResult> {
+    return this.call<ReadResult>({ type: "read", point });
   }
 
   async dispose(): Promise<void> {

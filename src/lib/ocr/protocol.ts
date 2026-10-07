@@ -1,3 +1,10 @@
+import type { ReadResult } from "./click";
+import type { Point, Rect } from "./geometry";
+import type { Raster } from "./raster";
+import type { ScanResult } from "./scan";
+
+export type { ReadResult, ScanResult };
+
 /** A model file: a URL to fetch, or bytes the page already holds (a model picked from disk on the bench). */
 export type ModelInput = string | ArrayBuffer;
 
@@ -21,6 +28,9 @@ export type InitResult = {
 
 export type OcrRequest =
   | { id: number; type: "init"; options: InitOptions }
+  | { id: number; type: "setPage"; page: Raster }
+  | { id: number; type: "scan"; area: Rect; targetWidth?: number }
+  | { id: number; type: "read"; point: Point }
   | { id: number; type: "release" };
 
 export type OcrResponse = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
