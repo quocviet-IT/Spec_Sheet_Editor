@@ -12,7 +12,7 @@ describe("readAtPoint (UC-06)", () => {
     const read: RegionReader = async (_m, image, opts) => {
       expect(opts?.bothDirections).toBe(true);
       seen.push(image.width);
-      return [{ text: "1630", score: 0.95, quad: [{ x: 96, y: 112 }, { x: 160, y: 112 }, { x: 160, y: 144 }, { x: 96, y: 144 }] }];
+      return [{ text: "1630", score: 0.95, turn: 0, quad: [{ x: 96, y: 112 }, { x: 160, y: 112 }, { x: 160, y: 144 }, { x: 96, y: 144 }] }];
     };
     const result = await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
     expect(result.anglesTried).toBe(1);
@@ -27,7 +27,7 @@ describe("readAtPoint (UC-06)", () => {
     let calls = 0;
     const read: RegionReader = async () => {
       calls++;
-      return calls < 3 ? [] : [{ text: "2.50", score: 0.8, quad: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }, { x: 0, y: 5 }] }];
+      return calls < 3 ? [] : [{ text: "2.50", score: 0.8, turn: 0, quad: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }, { x: 0, y: 5 }] }];
     };
     const result = await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
     expect(result.anglesTried).toBe(3);
@@ -46,8 +46,8 @@ describe("readAtPoint (UC-06)", () => {
 
   it("prefers the value nearest the click over a more confident neighbour", async () => {
     const read: RegionReader = async () => [
-      { text: "9.99", score: 0.99, quad: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 16 }, { x: 0, y: 16 }] },
-      { text: "1630", score: 0.8, quad: [{ x: 112, y: 120 }, { x: 144, y: 120 }, { x: 144, y: 136 }, { x: 112, y: 136 }] },
+      { text: "9.99", score: 0.99, turn: 0, quad: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 16 }, { x: 0, y: 16 }] },
+      { text: "1630", score: 0.8, turn: 0, quad: [{ x: 112, y: 120 }, { x: 144, y: 120 }, { x: 144, y: 136 }, { x: 112, y: 136 }] },
     ];
     const result = await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
     expect(result.reading?.value).toBe("16.30");
@@ -59,7 +59,7 @@ describe("readAtPoint (UC-06)", () => {
       calls++;
       if (calls < 3) return []; // 0° and -90° read nothing; 90° is the third angle
       expect([image.width, image.height]).toEqual([256, 256]);
-      return [{ text: "2.50", score: 0.9, quad: [{ x: 96, y: 112 }, { x: 160, y: 112 }, { x: 160, y: 144 }, { x: 96, y: 144 }] }];
+      return [{ text: "2.50", score: 0.9, turn: 0, quad: [{ x: 96, y: 112 }, { x: 160, y: 112 }, { x: 160, y: 144 }, { x: 96, y: 144 }] }];
     };
     const result = await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
     expect(result.reading?.angle).toBe(90);
@@ -70,6 +70,24 @@ describe("readAtPoint (UC-06)", () => {
     expect(box.y).toBeCloseTo(592, 6);
     expect(box.w).toBeCloseTo(8, 6);
     expect(box.h).toBeCloseTo(16, 6);
+  });
+
+  it("reports the text's own angle: the image turn plus the turns made while reading", async () => {
+    const cases: [number, 0 | 90 | 180 | 270, number][] = [
+      [0, 90, 90], // tall crop, read as RapidOCR turns it: top-down text
+      [0, 270, -90], // tall crop read upside down: bottom-up text
+      [-90, 180, 90], // turned clockwise, then read upside down
+    ];
+    for (const [imageTurn, turn, expected] of cases) {
+      let calls = 0;
+      const read: RegionReader = async () => {
+        calls++;
+        if (CLICK_ANGLES[calls - 1] !== imageTurn) return [];
+        return [{ text: "2.50", score: 0.9, turn, quad: [{ x: 120, y: 120 }, { x: 136, y: 120 }, { x: 136, y: 136 }, { x: 120, y: 136 }] }];
+      };
+      const result = await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
+      expect(result.reading?.angle).toBe(expected);
+    }
   });
 
   it("tries upright, then vertical, then diagonal", () => {

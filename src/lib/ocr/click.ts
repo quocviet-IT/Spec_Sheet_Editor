@@ -1,5 +1,5 @@
 import { toDimension } from "./dimension-text";
-import { bounds, rectCentre, type Point, type Rect } from "./geometry";
+import { bounds, normalizeAngle, rectCentre, type Point, type Quad, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type RegionReader } from "./pipeline";
 import { crop, resizeBicubic, rotateExpand, unrotatePoint, type Raster } from "./raster";
 
@@ -11,8 +11,11 @@ export const CLICK_ANGLES = [0, -90, 90, 60, -60] as const;
 /** NFR-01 / TC-24. */
 export const CLICK_DEADLINE_MS = 5000;
 
-/** `angle` is the turn that made the text horizontal, which is the text's angle in the design's convention. */
-export type ClickReading = { value: string; text: string; score: number; angle: number; box: Rect };
+/**
+ * `box` (page pixels, axis-aligned) is for hit-testing; `quad` is the text's own box in page pixels;
+ * `angle` is the text's angle in the design's convention (§6.3).
+ */
+export type ClickReading = { value: string; text: string; score: number; angle: number; box: Rect; quad: Quad };
 export type ReadResult = { reading: ClickReading | null; ms: number; anglesTried: number };
 
 /**
@@ -55,13 +58,14 @@ export async function readAtPoint(
         const q = angle === 0 ? c : { x: c.x - 0.5, y: c.y - 0.5 };
         return { x: origin.x + q.x * scale, y: origin.y + q.y * scale };
       });
-      const box = bounds(corners);
+      const quad = corners as Quad;
+      const box = bounds(quad);
       const centre = rectCentre(box);
       const d = Math.hypot(centre.x - point.x, centre.y - point.y);
       const nearer = d < bestDistance - 0.5;
       const asNear = Math.abs(d - bestDistance) <= 0.5;
       if (best === null || nearer || (asNear && reading.score > best.score)) {
-        best = { value, text: reading.text, score: reading.score, angle, box };
+        best = { value, text: reading.text, score: reading.score, angle: normalizeAngle(angle + reading.turn), box, quad };
         bestDistance = d;
       }
     }

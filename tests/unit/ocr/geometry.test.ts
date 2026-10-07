@@ -5,6 +5,7 @@ import {
   expandRect,
   minAreaRect,
   miniBox,
+  normalizeAngle,
   orderClockwise,
   polygonArea,
   polygonPerimeter,
@@ -87,5 +88,15 @@ describe("orderClockwise and bounds", () => {
 
   it("bounds a set of points", () => {
     expect(bounds([pt(3, 7), pt(1, 2), pt(5, 4)])).toEqual({ x: 1, y: 2, w: 4, h: 5 });
+  });
+});
+
+describe("normalizeAngle", () => {
+  it("maps any angle into (-180, 180]", () => {
+    expect(normalizeAngle(270)).toBe(-90);
+    expect(normalizeAngle(-270)).toBe(90);
+    expect(normalizeAngle(180)).toBe(180);
+    expect(normalizeAngle(-180)).toBe(180);
+    expect(normalizeAngle(0)).toBe(0);
   });
 });

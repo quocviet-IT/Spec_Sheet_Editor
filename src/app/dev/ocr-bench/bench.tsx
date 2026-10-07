@@ -40,7 +40,7 @@ export function Bench() {
     client.current = ocr;
     return () => {
       client.current = null;
-      void ocr.dispose();
+      ocr.dispose();
     };
   }, []);
 

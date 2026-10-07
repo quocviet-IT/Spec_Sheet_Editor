@@ -76,11 +76,19 @@ Measured in Chromium on the office PC with the bench page: scan located 9/11 (re
 slowest click 4.2 s, clicks read 8/11 — TC-20 and TC-24 pass, matching the Python benchmark. Decision:
 keep PP-OCRv4 small. Details: `research/ocr-bakeoff/README.md`, round 3.
 
+### Carried into M3 and later from the M2 review
+
+- M3 (sheet decode): composite transparency onto white before OCR; the Raster sent to the Worker is always opaque.
+- M3: merge scan readings by box overlap instead of centre distance; clamp boxes to the page before converting them to the design's fractional boxes.
+- M3/M4: Worker errors carry a typed code (model download, runtime download, init failed) mapped to dictionary strings (TC-25); time clicks on the main thread for TC-24; do not send clicks while a scan runs (or stop the scan by disposing the client).
+- M4: tighten boxes to the digits before masking (UC-04 step 5); draw at the reading's `angle` along its `quad`.
+- M7: the nonce-based CSP must allow the Blob-URL runtime (`worker-src 'self' blob:`, `script-src blob:`, `'wasm-unsafe-eval'`); serve the runtime from a versioned folder with an immutable cache; ship the Apache-2.0 licence text with the models; gate `/dev/*` with `requireAdmin()` if ENABLE_DEV_PAGES is ever set in production; note that Safari (no COEP credentialless) runs OCR on one thread.
+
 ### Prerequisites carried into M2
 
 - Before M2 relies on the database: the development Supabase project exists, migration 0001 is applied, the full SQL suite passes against it, and the repository secret DATABASE_URL is set; then make CI fail (not warn) when the SQL tests are skipped on push to main.
 
-### Rough effort (one developer with an AI pair, focused days)
+### Rough effort (one developer, focused days)
 
 M1 3–4 · M2 3–5 · M3 3–4 · M4 5–7 · M5 2 · M6 4–5 · M7 2–3 → about 22–30 days. M2 and M4
 carry the most uncertainty; the estimate is a planning aid, not a commitment.

@@ -229,6 +229,14 @@ export function rotateExpand(src: Raster, degrees: number): Raster {
   return out;
 }
 
+/** Whether cropQuad turns this quadrilateral's crop a quarter counter-clockwise (it is at least 1.5× taller than wide). */
+export function cropTurnsQuarter(quad: Quad): boolean {
+  const [tl, tr, br, bl] = quad;
+  const width = Math.max(1, Math.trunc(Math.max(distance(tl, tr), distance(br, bl))));
+  const height = Math.max(1, Math.trunc(Math.max(distance(tl, bl), distance(tr, br))));
+  return height / width >= 1.5;
+}
+
 /**
  * Straightens the quadrilateral tl, tr, br, bl into an upright image (RapidOCR get_rotate_crop_image).
  * A crop at least 1.5 times taller than wide is turned a quarter counter-clockwise so the text runs left
@@ -248,7 +256,7 @@ export function cropQuad(src: Raster, quad: Quad): Raster {
       sampleInto(src, fx, fy, out.data, (v * width + u) * 4);
     }
   }
-  return height / width >= 1.5 ? rotate90ccw(out) : out;
+  return cropTurnsQuarter(quad) ? rotate90ccw(out) : out;
 }
 
 /** CHW float tensor in B, G, R order (the models were trained on OpenCV's BGR images): (v / 255 − mean) / std. */

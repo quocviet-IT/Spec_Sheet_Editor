@@ -30,12 +30,19 @@ async function runtimePaths(prefix: string): Promise<{ mjs: string; wasm: string
   return { mjs, wasm: `${prefix}ort-wasm-simd-threaded.wasm` };
 }
 
+/** onnxruntime initialises its runtime once per Worker, so the Blob URL is made once too. */
+let runtime: Promise<{ mjs: string; wasm: string }> | null = null;
+
 /** Runs inside the Worker only (uses self.crossOriginIsolated and navigator). */
 export async function loadModels(options: InitOptions): Promise<{ models: LoadedModels; info: InitResult }> {
   const isolated = self.crossOriginIsolated === true;
   const numThreads =
     options.numThreads ?? (isolated ? Math.max(1, Math.min(4, Math.floor(navigator.hardwareConcurrency / 2))) : 1);
-  ort.env.wasm.wasmPaths = await runtimePaths(options.wasmPaths);
+  runtime ??= runtimePaths(options.wasmPaths).catch((error: unknown) => {
+    runtime = null; // a failed download may be retried
+    throw error;
+  });
+  ort.env.wasm.wasmPaths = await runtime;
   ort.env.wasm.numThreads = numThreads;
 
   const started = performance.now();
@@ -45,7 +52,13 @@ export async function loadModels(options: InitOptions): Promise<{ models: Loaded
     graphOptimizationLevel: "all",
   };
   const detSession = await ort.InferenceSession.create(new Uint8Array(det), sessionOptions);
-  const recSession = await ort.InferenceSession.create(new Uint8Array(rec), sessionOptions);
+  let recSession: ort.InferenceSession;
+  try {
+    recSession = await ort.InferenceSession.create(new Uint8Array(rec), sessionOptions);
+  } catch (error) {
+    await detSession.release();
+    throw error;
+  }
   const chars = buildAlphabet(new TextDecoder().decode(keys));
   const loaded = performance.now();
 
@@ -60,11 +73,15 @@ export async function loadModels(options: InitOptions): Promise<{ models: Loaded
   };
 
   // The first run compiles kernels; the probe also proves the alphabet belongs to this model.
-  await models.detect({ data: new Float32Array(3 * 32 * 32), dims: [1, 3, 32, 32] });
-  const probe = await models.recognize({ data: new Float32Array(3 * 48 * 320), dims: [1, 3, 48, 320] });
-  if (probe.dims[2] !== chars.length) {
+  try {
+    await models.detect({ data: new Float32Array(3 * 32 * 32), dims: [1, 3, 32, 32] });
+    const probe = await models.recognize({ data: new Float32Array(3 * 48 * 320), dims: [1, 3, 48, 320] });
+    if (probe.dims[2] !== chars.length) {
+      throw new Error(`The recognition model has ${probe.dims[2]} classes but the keys file gives ${chars.length}.`);
+    }
+  } catch (error) {
     await models.release();
-    throw new Error(`The recognition model has ${probe.dims[2]} classes but the keys file gives ${chars.length}.`);
+    throw error;
   }
 
   return {

@@ -18,6 +18,14 @@ export class OcrClient {
   private readonly worker: Worker;
   private readonly pending = new Map<number, Pending>();
   private nextId = 1;
+  /** Set once the Worker failed or was stopped; every later request rejects with it. */
+  private failure: Error | null = null;
+
+  private fail(error: Error): void {
+    this.failure ??= error;
+    for (const waiting of this.pending.values()) waiting.reject(error);
+    this.pending.clear();
+  }
 
   constructor(url: string = OCR_WORKER_URL) {
     this.worker = new Worker(url, { type: "module" });
@@ -29,18 +37,21 @@ export class OcrClient {
       if (response.ok) waiting.resolve(response.result);
       else waiting.reject(new Error(response.error));
     };
-    this.worker.onerror = (event) => {
-      const error = new Error(event.message || "The OCR worker could not start.");
-      for (const waiting of this.pending.values()) waiting.reject(error);
-      this.pending.clear();
-    };
+    this.worker.onerror = (event) => this.fail(new Error(event.message || "The OCR worker stopped."));
+    this.worker.onmessageerror = () => this.fail(new Error("The OCR worker sent a message that could not be read."));
   }
 
   protected call<T>(request: DistributiveOmit<OcrRequest, "id">, transfer: Transferable[] = []): Promise<T> {
+    if (this.failure) return Promise.reject(this.failure);
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
-      this.worker.postMessage({ ...request, id }, transfer);
+      try {
+        this.worker.postMessage({ ...request, id }, transfer);
+      } catch (error) {
+        this.pending.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }
 
@@ -65,11 +76,12 @@ export class OcrClient {
     return this.call<ReadResult>({ type: "read", point });
   }
 
-  async dispose(): Promise<void> {
-    try {
-      await this.call({ type: "release" });
-    } finally {
-      this.worker.terminate();
-    }
+  /**
+   * Stops the Worker at once, even in the middle of a scan; pending requests reject. After a failed init,
+   * start a new OcrClient: onnxruntime cannot initialise its runtime twice in one Worker.
+   */
+  dispose(): void {
+    this.worker.terminate();
+    this.fail(new Error("The OCR worker was stopped."));
   }
 }

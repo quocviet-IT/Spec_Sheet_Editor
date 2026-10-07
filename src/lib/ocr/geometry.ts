@@ -139,3 +139,9 @@ export function bounds(points: readonly Point[]): Rect {
 export function rectCentre(r: Rect): Point {
   return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
 }
+
+/** An angle in degrees, normalised to (-180, 180]. */
+export function normalizeAngle(degrees: number): number {
+  const a = ((degrees % 360) + 360) % 360;
+  return a > 180 ? a - 360 : a;
+}

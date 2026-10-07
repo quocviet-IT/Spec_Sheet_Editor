@@ -25,10 +25,22 @@ async function handle(request: OcrRequest): Promise<unknown> {
     case "setPage":
       page = request.page;
       return null;
-    case "scan":
-      return scanArea(need(models, "models"), need(page, "page"), request.area, request.targetWidth);
-    case "read":
-      return readAtPoint(need(models, "models"), need(page, "page"), request.point);
+    case "scan": {
+      const loaded = need(models, "models");
+      const sheet = need(page, "page");
+      const { x, y, w, h } = request.area;
+      const inside = [x, y, w, h].every(Number.isFinite) && w >= 1 && h >= 1 && x < sheet.width && y < sheet.height && x + w > 0 && y + h > 0;
+      if (!inside) throw new Error("The scan area is empty or outside the page.");
+      return scanArea(loaded, sheet, request.area, request.targetWidth);
+    }
+    case "read": {
+      const loaded = need(models, "models");
+      const sheet = need(page, "page");
+      const { x, y } = request.point;
+      const inside = Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x < sheet.width && y < sheet.height;
+      if (!inside) throw new Error("The point is outside the page.");
+      return readAtPoint(loaded, sheet, request.point);
+    }
     case "release":
       await models?.release();
       models = null;

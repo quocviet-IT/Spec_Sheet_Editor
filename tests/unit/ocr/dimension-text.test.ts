@@ -37,5 +37,7 @@ describe("toDimension (TC-22)", () => {
     expect(toDimension("01.70")).toBeNull();
     expect(toDimension("0.50")).toBe("0.50");
     expect(toDimension("050")).toBe("0.50");
+    expect(toDimension("000")).toBeNull();
+    expect(toDimension("0.00")).toBeNull();
   });
 });

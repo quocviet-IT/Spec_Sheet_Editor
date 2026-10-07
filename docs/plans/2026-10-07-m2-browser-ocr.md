@@ -3403,6 +3403,17 @@ Add inside `describe("scanArea", …)`:
   });
 ```
 
+### Task 8: Final-review fixes
+
+The whole-branch review returned "ready to merge with fixes"; this task applies them in one commit.
+
+- **A. Text angle.** A reading now records `turn`, the extra counter-clockwise turn `readRegion` applied (a quarter for a tall crop, plus a half when the upside-down reading won). Scan and click report `normalizeAngle(imageTurn + turn)` and also return the text's own quad in page pixels next to the axis-aligned box, so M4 can draw at the real angle.
+- **B. Client.** After a Worker error every pending and later request rejects at once, `postMessage` failures never leave a request pending, and `dispose` terminates the Worker synchronously, even in the middle of a scan.
+- **C. Engine.** A failed init releases the sessions it created, and the runtime Blob URL is made once per Worker.
+- **D. Worker.** Empty, non-finite or off-page scan areas and click points are refused with an error.
+- **E. Dimensions.** A value of zero ("0.00") is not a dimension.
+- **F. Roadmap.** The effort heading no longer names a pairing, and the items M3 and later inherit from the review are listed.
+
 ---
 
 ## M2 exit checklist

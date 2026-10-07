@@ -6,7 +6,10 @@ import { createRaster } from "@/lib/ocr/raster";
 const chars = buildAlphabet("1\n6\n.\n3\n0\n");
 
 /** A detector that sees one block in the middle of whatever it is given, and a recogniser that reads "16.30". */
-function fakeModels(reads: { text: string; score: number }[] = []): OcrModels & { recCalls: number } {
+function fakeModels(
+  reads: { text: string; score: number }[] = [],
+  block = { x0: 0.3, x1: 0.7, y0: 0.4, y1: 0.6 },
+): OcrModels & { recCalls: number } {
   const spell = (text: string) => [...text].flatMap((ch) => [chars.indexOf(ch), 0]);
   const fake = {
     chars,
@@ -14,8 +17,8 @@ function fakeModels(reads: { text: string; score: number }[] = []): OcrModels & 
     async detect(input: Tensor): Promise<Tensor> {
       const [, , h, w] = input.dims;
       const data = new Float32Array(w * h);
-      for (let y = Math.floor(h * 0.4); y < Math.floor(h * 0.6); y++) {
-        for (let x = Math.floor(w * 0.3); x < Math.floor(w * 0.7); x++) data[y * w + x] = 0.9;
+      for (let y = Math.floor(h * block.y0); y < Math.floor(h * block.y1); y++) {
+        for (let x = Math.floor(w * block.x0); x < Math.floor(w * block.x1); x++) data[y * w + x] = 0.9;
       }
       return { data, dims: [1, 1, h, w] };
     },
@@ -95,6 +98,15 @@ describe("readRegion", () => {
     });
     expect(readings[0].text).toBe("3.00");
     expect(readings[0].score).toBeCloseTo(0.95, 2);
+  });
+
+  it("reports a quarter turn for a tall crop and a half turn for an upside-down win", async () => {
+    const tall = await readRegion(fakeModels([], { x0: 0.45, x1: 0.55, y0: 0.1, y1: 0.9 }), createRaster(64, 32));
+    expect(tall[0].turn).toBe(90);
+    const flat = await readRegion(fakeModels([{ text: "16.30", score: 0.6 }, { text: "3.00", score: 0.95 }]), createRaster(64, 32), {
+      bothDirections: true,
+    });
+    expect(flat[0].turn).toBe(180);
   });
 
   it("with accept, re-reads upside down only what was not accepted", async () => {

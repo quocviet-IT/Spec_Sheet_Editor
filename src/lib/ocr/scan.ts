@@ -1,10 +1,13 @@
 import { toDimension } from "./dimension-text";
-import { bounds, rectCentre, type Point, type Rect } from "./geometry";
+import { bounds, normalizeAngle, rectCentre, type Point, type Quad, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type Reading, type RegionReader } from "./pipeline";
 import { crop, resizeBicubic, rotate90cw, type Raster } from "./raster";
 
-/** A value found on the sheet. `box` is in page pixels; `angle` follows the design (-90 = vertical, read bottom-up). */
-export type Detection = { value: string; text: string; score: number; box: Rect; angle: 0 | -90 };
+/**
+ * A value found on the sheet. `box` (page pixels, axis-aligned) is for hit-testing; `quad` is the text's own
+ * box in page pixels; `angle` is the text's angle (design §6.3: -90 = vertical, read bottom-up).
+ */
+export type Detection = { value: string; text: string; score: number; box: Rect; quad: Quad; angle: number };
 export type ScanResult = { detections: Detection[]; timing: { horizontalMs: number; verticalMs: number } };
 
 /**
@@ -52,10 +55,18 @@ export async function scanArea(
   const t2 = performance.now();
 
   const candidates: Detection[] = [];
-  const keep = (reading: Reading, angle: 0 | -90, toBig: (p: Point) => Point) => {
+  const keep = (reading: Reading, imageTurn: number, toBig: (p: Point) => Point) => {
     const value = toDimension(reading.text);
     if (value === null) return;
-    candidates.push({ value, text: reading.text, score: reading.score, angle, box: bounds(reading.quad.map((p) => toPage(toBig(p)))) });
+    const quad = reading.quad.map((p) => toPage(toBig(p))) as Quad;
+    candidates.push({
+      value,
+      text: reading.text,
+      score: reading.score,
+      angle: normalizeAngle(imageTurn + reading.turn),
+      box: bounds(quad),
+      quad,
+    });
   };
   flat.forEach((r) => keep(r, 0, (p) => p));
   // A point (x, y) of the clockwise-turned image came from (y, height - 1 - x) of the upright one.

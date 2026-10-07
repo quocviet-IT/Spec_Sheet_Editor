@@ -10,5 +10,5 @@ const DIMENSION = /^(0|[1-9]\d?)\.\d{2}$/;
 export function toDimension(text: string): string | null {
   const t = text.replace(/^[^0-9]+/, "").replace(/[^0-9]+$/, "").replace(/,/g, ".");
   const value = /^\d{3,4}$/.test(t) ? `${t.slice(0, -2)}.${t.slice(-2)}` : t;
-  return DIMENSION.test(value) ? value : null;
+  return DIMENSION.test(value) && Number(value) > 0 ? value : null;
 }

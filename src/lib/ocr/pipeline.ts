@@ -1,6 +1,6 @@
 import { dbPostprocess, detInputSize } from "./det";
 import { pyRound, type Quad } from "./geometry";
-import { createRaster, cropQuad, resizeBilinear, rotate180, toBgrCHW, type Raster } from "./raster";
+import { createRaster, cropQuad, cropTurnsQuarter, resizeBilinear, rotate180, toBgrCHW, type Raster } from "./raster";
 import { ctcDecode, recBatch, REC_BATCH, type RecResult } from "./rec";
 
 export type Tensor = { data: Float32Array; dims: readonly number[] };
@@ -12,7 +12,11 @@ export type OcrModels = {
   chars: readonly string[];
 };
 
-export type Reading = { text: string; score: number; quad: Quad };
+/**
+ * One text line. `quad` is in input pixels. `turn` is the extra counter-clockwise turn readRegion applied
+ * to the crop before reading it: 90 for a tall crop, plus 180 when the upside-down reading won.
+ */
+export type Reading = { text: string; score: number; quad: Quad; turn: 0 | 90 | 180 | 270 };
 /**
  * bothDirections: also read each crop upside down. With accept, only crops whose upright reading is not
  * accepted are re-read, and the upside-down reading wins when it is accepted or more confident.
@@ -84,13 +88,17 @@ export const readRegion: RegionReader = async (models, image, opts = {}) => {
 
   const crops = boxes.map((box) => cropQuad(padded.raster, box.quad));
   const texts = await recognizeCrops(models, crops);
+  const upsideDown = texts.map(() => false);
   if (opts.bothDirections) {
     const accept = opts.accept ?? (() => false);
     const retry = texts.flatMap((t, i) => (accept(t.text) ? [] : [i]));
     if (retry.length > 0) {
       const flipped = await recognizeCrops(models, retry.map((i) => rotate180(crops[i])));
       retry.forEach((i, k) => {
-        if (accept(flipped[k].text) || flipped[k].score > texts[i].score) texts[i] = flipped[k];
+        if (accept(flipped[k].text) || flipped[k].score > texts[i].score) {
+          texts[i] = flipped[k];
+          upsideDown[i] = true;
+        }
       });
     }
   }
@@ -98,6 +106,7 @@ export const readRegion: RegionReader = async (models, image, opts = {}) => {
   return boxes
     .map((box, i) => ({
       ...texts[i],
+      turn: ((cropTurnsQuarter(box.quad) ? 90 : 0) + (upsideDown[i] ? 180 : 0)) as Reading["turn"],
       quad: box.quad.map((p) => ({ x: p.x * fitted.scaleX, y: (p.y - padded.top) * fitted.scaleY })) as Quad,
     }))
     .filter((reading) => reading.score >= MIN_TEXT_SCORE);
