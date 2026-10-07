@@ -1,5 +1,5 @@
 import { toDimension } from "./dimension-text";
-import { bounds, type Point, type Rect } from "./geometry";
+import { bounds, rectCentre, type Point, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type RegionReader } from "./pipeline";
 import { crop, resizeBilinear, rotateExpand, unrotatePoint, type Raster } from "./raster";
 
@@ -15,7 +15,10 @@ export const CLICK_DEADLINE_MS = 5000;
 export type ClickReading = { value: string; text: string; score: number; angle: number; box: Rect };
 export type ReadResult = { reading: ClickReading | null; ms: number; anglesTried: number };
 
-/** UC-06: read the value around a click; stop at the first angle that yields a dimension, or at the deadline. */
+/**
+ * UC-06: read the value around a click; stop at the first angle that yields a dimension, or at the
+ * deadline. When several values are read, the one nearest the click wins; confidence breaks ties.
+ */
 export async function readAtPoint(
   models: OcrModels,
   page: Raster,
@@ -37,9 +40,10 @@ export async function readAtPoint(
     const readings = await read(models, image, { bothDirections: true });
 
     let best: ClickReading | null = null;
+    let bestDistance = Infinity;
     for (const reading of readings) {
       const value = toDimension(reading.text);
-      if (value === null || (best !== null && best.score >= reading.score)) continue;
+      if (value === null) continue;
       // Back from the turned image to the 256-px square (pixel centres sit at +0.5 in unrotatePoint's
       // coordinates), then to the page.
       const corners = reading.quad.map((p) => {
@@ -47,7 +51,15 @@ export async function readAtPoint(
         const q = angle === 0 ? c : { x: c.x - 0.5, y: c.y - 0.5 };
         return { x: origin.x + q.x * scale, y: origin.y + q.y * scale };
       });
-      best = { value, text: reading.text, score: reading.score, angle, box: bounds(corners) };
+      const box = bounds(corners);
+      const centre = rectCentre(box);
+      const d = Math.hypot(centre.x - point.x, centre.y - point.y);
+      const nearer = d < bestDistance - 0.5;
+      const asNear = Math.abs(d - bestDistance) <= 0.5;
+      if (best === null || nearer || (asNear && reading.score > best.score)) {
+        best = { value, text: reading.text, score: reading.score, angle, box };
+        bestDistance = d;
+      }
     }
     if (best !== null) return { reading: best, ms: performance.now() - started, anglesTried };
     if (performance.now() - started > deadlineMs) break;

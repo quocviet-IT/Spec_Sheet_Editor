@@ -6,7 +6,8 @@ import { createRaster } from "@/lib/ocr/raster";
 const chars = buildAlphabet("1\n6\n.\n3\n0\n");
 
 /** A detector that sees one block in the middle of whatever it is given, and a recogniser that reads "16.30". */
-function fakeModels(): OcrModels & { recCalls: number } {
+function fakeModels(reads: { text: string; score: number }[] = []): OcrModels & { recCalls: number } {
+  const spell = (text: string) => [...text].flatMap((ch) => [chars.indexOf(ch), 0]);
   const fake = {
     chars,
     recCalls: 0,
@@ -19,11 +20,12 @@ function fakeModels(): OcrModels & { recCalls: number } {
       return { data, dims: [1, 1, h, w] };
     },
     async recognize(input: Tensor): Promise<Tensor> {
+      const { text, score } = reads[fake.recCalls] ?? { text: "16.30", score: 0.9 };
       fake.recCalls++;
       const n = input.dims[0];
-      const steps = [1, 0, 2, 0, 3, 0, 4, 0, 5, 0];
+      const steps = spell(text);
       const data = new Float32Array(n * steps.length * chars.length);
-      for (let b = 0; b < n; b++) steps.forEach((c, t) => (data[(b * steps.length + t) * chars.length + c] = 0.9));
+      for (let b = 0; b < n; b++) steps.forEach((c, t) => (data[(b * steps.length + t) * chars.length + c] = c === 0 ? 0.9 : score));
       return { data, dims: [n, steps.length, chars.length] };
     },
   };
@@ -73,5 +75,25 @@ describe("readRegion", () => {
     const models = fakeModels();
     await readRegion(models, createRaster(64, 32), { bothDirections: true });
     expect(models.recCalls).toBe(2);
+  });
+
+  it("maps boxes back through the resize and the black bands", async () => {
+    // 400 × 20 → resized to 608 × 32 (shorter side ≥ 30) → 60-px bands above and below (608 / 32 > 8).
+    const readings = await readRegion(fakeModels(), createRaster(400, 20));
+    expect(readings).toHaveLength(1);
+    const xs = readings[0].quad.map((p) => p.x);
+    const ys = readings[0].quad.map((p) => p.y);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    expect(Math.abs(cx - 200)).toBeLessThanOrEqual(3);
+    expect(Math.abs(cy - 10)).toBeLessThanOrEqual(3);
+  });
+
+  it("keeps the upside-down reading when it is more confident", async () => {
+    const readings = await readRegion(fakeModels([{ text: "16.30", score: 0.6 }, { text: "3.00", score: 0.95 }]), createRaster(64, 32), {
+      bothDirections: true,
+    });
+    expect(readings[0].text).toBe("3.00");
+    expect(readings[0].score).toBeCloseTo(0.95, 2);
   });
 });

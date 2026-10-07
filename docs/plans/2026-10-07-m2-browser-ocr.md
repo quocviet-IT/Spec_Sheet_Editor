@@ -1984,7 +1984,8 @@ import { createRaster } from "@/lib/ocr/raster";
 const chars = buildAlphabet("1\n6\n.\n3\n0\n");
 
 /** A detector that sees one block in the middle of whatever it is given, and a recogniser that reads "16.30". */
-function fakeModels(): OcrModels & { recCalls: number } {
+function fakeModels(reads: { text: string; score: number }[] = []): OcrModels & { recCalls: number } {
+  const spell = (text: string) => [...text].flatMap((ch) => [chars.indexOf(ch), 0]);
   const fake = {
     chars,
     recCalls: 0,
@@ -1997,11 +1998,12 @@ function fakeModels(): OcrModels & { recCalls: number } {
       return { data, dims: [1, 1, h, w] };
     },
     async recognize(input: Tensor): Promise<Tensor> {
+      const { text, score } = reads[fake.recCalls] ?? { text: "16.30", score: 0.9 };
       fake.recCalls++;
       const n = input.dims[0];
-      const steps = [1, 0, 2, 0, 3, 0, 4, 0, 5, 0];
+      const steps = spell(text);
       const data = new Float32Array(n * steps.length * chars.length);
-      for (let b = 0; b < n; b++) steps.forEach((c, t) => (data[(b * steps.length + t) * chars.length + c] = 0.9));
+      for (let b = 0; b < n; b++) steps.forEach((c, t) => (data[(b * steps.length + t) * chars.length + c] = c === 0 ? 0.9 : score));
       return { data, dims: [n, steps.length, chars.length] };
     },
   };
@@ -2051,6 +2053,26 @@ describe("readRegion", () => {
     const models = fakeModels();
     await readRegion(models, createRaster(64, 32), { bothDirections: true });
     expect(models.recCalls).toBe(2);
+  });
+
+  it("maps boxes back through the resize and the black bands", async () => {
+    // 400 × 20 → resized to 608 × 32 (shorter side ≥ 30) → 60-px bands above and below (608 / 32 > 8).
+    const readings = await readRegion(fakeModels(), createRaster(400, 20));
+    expect(readings).toHaveLength(1);
+    const xs = readings[0].quad.map((p) => p.x);
+    const ys = readings[0].quad.map((p) => p.y);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    expect(Math.abs(cx - 200)).toBeLessThanOrEqual(3);
+    expect(Math.abs(cy - 10)).toBeLessThanOrEqual(3);
+  });
+
+  it("keeps the upside-down reading when it is more confident", async () => {
+    const readings = await readRegion(fakeModels([{ text: "16.30", score: 0.6 }, { text: "3.00", score: 0.95 }]), createRaster(64, 32), {
+      bothDirections: true,
+    });
+    expect(readings[0].text).toBe("3.00");
+    expect(readings[0].score).toBeCloseTo(0.95, 2);
   });
 });
 ```
@@ -2152,6 +2174,34 @@ describe("readAtPoint (UC-06)", () => {
     const result = await readAtPoint(models, page, { x: 300, y: 600 }, 20, read);
     expect(result.reading).toBeNull();
     expect(result.anglesTried).toBe(1);
+  });
+
+  it("prefers the value nearest the click over a more confident neighbour", async () => {
+    const read: RegionReader = async () => [
+      { text: "9.99", score: 0.99, quad: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 16 }, { x: 0, y: 16 }] },
+      { text: "1630", score: 0.8, quad: [{ x: 112, y: 120 }, { x: 144, y: 120 }, { x: 144, y: 136 }, { x: 112, y: 136 }] },
+    ];
+    const result = await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
+    expect(result.reading?.value).toBe("16.30");
+  });
+
+  it("maps a box read in a turned image back to the page", async () => {
+    let calls = 0;
+    const read: RegionReader = async (_m, image) => {
+      calls++;
+      if (calls < 4) return []; // 0°, 60°, -60° read nothing; 90° is the fourth angle
+      expect([image.width, image.height]).toEqual([256, 256]);
+      return [{ text: "2.50", score: 0.9, quad: [{ x: 96, y: 112 }, { x: 160, y: 112 }, { x: 160, y: 144 }, { x: 96, y: 144 }] }];
+    };
+    const result = await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
+    expect(result.reading?.angle).toBe(90);
+    // A quarter turn counter-clockwise: turned pixel (x, y) came from square pixel (255 - y, x), so the box
+    // covers square x 111..143, y 96..160 → page (268 + x / 4, 568 + y / 4).
+    const box = result.reading!.box;
+    expect(box.x).toBeCloseTo(295.75, 6);
+    expect(box.y).toBeCloseTo(592, 6);
+    expect(box.w).toBeCloseTo(8, 6);
+    expect(box.h).toBeCloseTo(16, 6);
   });
 });
 ```
@@ -2338,7 +2388,7 @@ export async function scanArea(
 
 ```ts
 import { toDimension } from "./dimension-text";
-import { bounds, type Point, type Rect } from "./geometry";
+import { bounds, rectCentre, type Point, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type RegionReader } from "./pipeline";
 import { crop, resizeBilinear, rotateExpand, unrotatePoint, type Raster } from "./raster";
 
@@ -2354,7 +2404,10 @@ export const CLICK_DEADLINE_MS = 5000;
 export type ClickReading = { value: string; text: string; score: number; angle: number; box: Rect };
 export type ReadResult = { reading: ClickReading | null; ms: number; anglesTried: number };
 
-/** UC-06: read the value around a click; stop at the first angle that yields a dimension, or at the deadline. */
+/**
+ * UC-06: read the value around a click; stop at the first angle that yields a dimension, or at the
+ * deadline. When several values are read, the one nearest the click wins; confidence breaks ties.
+ */
 export async function readAtPoint(
   models: OcrModels,
   page: Raster,
@@ -2376,9 +2429,10 @@ export async function readAtPoint(
     const readings = await read(models, image, { bothDirections: true });
 
     let best: ClickReading | null = null;
+    let bestDistance = Infinity;
     for (const reading of readings) {
       const value = toDimension(reading.text);
-      if (value === null || (best !== null && best.score >= reading.score)) continue;
+      if (value === null) continue;
       // Back from the turned image to the 256-px square (pixel centres sit at +0.5 in unrotatePoint's
       // coordinates), then to the page.
       const corners = reading.quad.map((p) => {
@@ -2386,7 +2440,15 @@ export async function readAtPoint(
         const q = angle === 0 ? c : { x: c.x - 0.5, y: c.y - 0.5 };
         return { x: origin.x + q.x * scale, y: origin.y + q.y * scale };
       });
-      best = { value, text: reading.text, score: reading.score, angle, box: bounds(corners) };
+      const box = bounds(corners);
+      const centre = rectCentre(box);
+      const d = Math.hypot(centre.x - point.x, centre.y - point.y);
+      const nearer = d < bestDistance - 0.5;
+      const asNear = Math.abs(d - bestDistance) <= 0.5;
+      if (best === null || nearer || (asNear && reading.score > best.score)) {
+        best = { value, text: reading.text, score: reading.score, angle, box };
+        bestDistance = d;
+      }
     }
     if (best !== null) return { reading: best, ms: performance.now() - started, anglesTried };
     if (performance.now() - started > deadlineMs) break;
@@ -2398,7 +2460,7 @@ export async function readAtPoint(
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `npx vitest run tests/unit/ocr/pipeline.test.ts tests/unit/ocr/scan.test.ts tests/unit/ocr/click.test.ts`
-Expected: PASS (10 tests).
+Expected: PASS (14 tests).
 
 - [ ] **Step 6: Worker messages for pages, scans and clicks**
 
