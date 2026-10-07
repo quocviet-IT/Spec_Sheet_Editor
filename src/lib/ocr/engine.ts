@@ -27,12 +27,23 @@ async function run(session: ort.InferenceSession, input: Tensor): Promise<Tensor
   return { data: output.data as Float32Array, dims: output.dims };
 }
 
+/**
+ * The runtime's JavaScript is loaded from a Blob URL: its thread workers start from that same URL, and
+ * a Worker could not start a nested Worker from a network URL in the browser this was tested in.
+ */
+async function runtimePaths(prefix: string): Promise<{ mjs: string; wasm: string }> {
+  const glue = await fetch(`${prefix}ort-wasm-simd-threaded.mjs`);
+  if (!glue.ok) throw new Error(`OCR runtime download failed: ${prefix}ort-wasm-simd-threaded.mjs (HTTP ${glue.status})`);
+  const mjs = URL.createObjectURL(new Blob([await glue.text()], { type: "text/javascript" }));
+  return { mjs, wasm: `${prefix}ort-wasm-simd-threaded.wasm` };
+}
+
 /** Runs inside the Worker only (uses self.crossOriginIsolated and navigator). */
 export async function loadModels(options: InitOptions): Promise<{ models: LoadedModels; info: InitResult }> {
   const isolated = self.crossOriginIsolated === true;
   const numThreads =
     options.numThreads ?? (isolated ? Math.max(1, Math.min(4, Math.floor(navigator.hardwareConcurrency / 2))) : 1);
-  ort.env.wasm.wasmPaths = options.wasmPaths;
+  ort.env.wasm.wasmPaths = await runtimePaths(options.wasmPaths);
   ort.env.wasm.numThreads = numThreads;
 
   const started = performance.now();

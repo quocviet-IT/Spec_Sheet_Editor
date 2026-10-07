@@ -17,6 +17,8 @@ const isolationHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // `next dev` would otherwise write instruction files (AGENTS.md and a companion) into the repository.
+  agentRules: false,
   async headers() {
     return [
       { source: "/:path*", headers: [...securityHeaders, ...isolationHeaders] },
