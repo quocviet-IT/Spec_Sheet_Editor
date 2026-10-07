@@ -44,8 +44,7 @@ describe.skipIf(!hasDb)("access rules (BR-08)", () => {
     await rollback(async (tx) => {
       const staff = await makeUser(tx, staffEmail());
       await actAs(tx, staff);
-      const updated = await tx`update public.profiles set role = 'admin' where id = ${staff.id} returning id`;
-      expect(updated.length).toBe(0);
+      await expectError(tx, (sp) => sp`update public.profiles set role = 'admin' where id = ${staff.id}`, "permission denied");
       await actAsOwner(tx);
       const [p] = await tx<{ role: string }[]>`select role from public.profiles where id = ${staff.id}`;
       expect(p.role).toBe("user");
@@ -73,6 +72,35 @@ describe.skipIf(!hasDb)("access rules (BR-08)", () => {
            and coalesce(qual, '') || coalesce(with_check, '') like '%spec-sheets%'`;
       expect(policies.map((p) => p.cmd).sort()).toEqual(["INSERT", "SELECT"]);
       for (const p of policies) expect(`${p.qual ?? ""}${p.with_check ?? ""}`).toContain("is_allowed_user");
+    });
+  });
+
+  it("an email-and-password session on a permitted domain is refused: Google sign-in only", async () => {
+    await rollback(async (tx) => {
+      const staff = await makeUser(tx, staffEmail());
+      const claims = { sub: staff.id, email: staff.email, role: "authenticated", app_metadata: { provider: "email" } };
+      await tx`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`;
+      await tx`set local role authenticated`;
+      const [row] = await tx<{ ok: boolean; s: string }[]>`select public.is_allowed_user() as ok, public.my_access_status() as s`;
+      expect(row).toEqual({ ok: false, s: "not_permitted" });
+    });
+  });
+
+  it("clients hold only the privileges the app needs", async () => {
+    await rollback(async (tx) => {
+      const [p] = await tx<Record<string, boolean>[]>`
+        select has_table_privilege('authenticated', 'public.audit_log', 'truncate')   as audit_truncate,
+               has_table_privilege('authenticated', 'public.audit_log', 'insert')     as audit_insert,
+               has_table_privilege('authenticated', 'public.profiles', 'update')      as profiles_update,
+               has_table_privilege('authenticated', 'public.spec_sheets', 'delete')   as sheets_delete,
+               has_table_privilege('anon', 'public.spec_sheets', 'select')            as anon_sheets_select,
+               has_function_privilege('anon', 'public.save_sheet(uuid, int, text, jsonb, jsonb)', 'execute') as anon_save,
+               has_function_privilege('authenticated', 'public._audit(text, text, text, jsonb)', 'execute') as client_audit`;
+      expect(Object.values(p).every((v) => v === false)).toBe(true);
+      const [q] = await tx<{ sheets_insert: boolean; save: boolean }[]>`
+        select has_table_privilege('authenticated', 'public.spec_sheets', 'insert') as sheets_insert,
+               has_function_privilege('authenticated', 'public.save_sheet(uuid, int, text, jsonb, jsonb)', 'execute') as save`;
+      expect(q).toEqual({ sheets_insert: true, save: true });
     });
   });
 });

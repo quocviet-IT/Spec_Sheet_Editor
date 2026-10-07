@@ -65,4 +65,15 @@ describe.skipIf(!hasDb)("admin functions", () => {
       await expectError(tx, (sp) => sp`select public.purge_sheet(${id})`, "not_in_trash");
     });
   });
+
+  it("admin functions refuse an unknown account or list kind instead of doing nothing", async () => {
+    await rollback(async (tx) => {
+      const admin = await makeUser(tx, staffEmail(), "admin");
+      await actAs(tx, admin);
+      await expectError(tx, (sp) => sp`select public.set_user_role(gen_random_uuid(), 'admin')`, "user_not_found");
+      await expectError(tx, (sp) => sp`select public.set_user_status(gen_random_uuid(), 'suspended')`, "user_not_found");
+      await expectError(tx, (sp) => sp`select public.add_allowed('bogus', 'x@ctyhp.vn', null)`, "invalid_kind");
+      await expectError(tx, (sp) => sp`select public.remove_allowed('bogus', 'ctyhp.vn')`, "invalid_kind");
+    });
+  });
 });

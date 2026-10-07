@@ -70,6 +70,10 @@ These touch accounts and billing, so the project owner does them; the agent does
 | M6 | Admin area | `/admin` layout guard; S7 users (role, suspend), S8 access + settings, S9 audit log with filters + CSV (UTF-8 BOM), S10 Trash + permanent delete (typed confirm, service-role file delete) + orphan clean-up | TC-54 – TC-77 (TC-60 concurrency via two connections) | M1, M3 |
 | M7 | Hardening and release | Full E2E run, visual regression on Windows + macOS (TC-47), WCAG AA pass, dark mode check, Vercel production deploy, user guide (VI/EN), first Admin assigned | All 77 test cases green or explicitly waived by the owner; production sign-in works | M1–M6, Prerequisite 4 |
 
+### Prerequisites carried into M2
+
+- Before M2 relies on the database: the development Supabase project exists, migration 0001 is applied, the full SQL suite passes against it, and the repository secret DATABASE_URL is set; then make CI fail (not warn) when the SQL tests are skipped on push to main.
+
 ### Rough effort (one developer with an AI pair, focused days)
 
 M1 3–4 · M2 3–5 · M3 3–4 · M4 5–7 · M5 2 · M6 4–5 · M7 2–3 → about 22–30 days. M2 and M4

@@ -98,4 +98,32 @@ describe.skipIf(!hasDb)("sheets", () => {
       for (const r of rows) expect(r.actor_id).toBe(a.id);
     });
   });
+
+  it("a sheet can only point at its own files (BR-03)", async () => {
+    await rollback(async (tx) => {
+      const a = await makeUser(tx, staffEmail());
+      await actAs(tx, a);
+      const other = await insertSheet(tx, a);
+      await expectError(
+        tx,
+        (sp) => sp`insert into public.spec_sheets (id, name, source_type, source_path, thumb_path, page_px_w, page_px_h, created_by, updated_by)
+                   values (gen_random_uuid(), 'Decoy', 'png', ${`${other}/source.png`}, ${`${other}/thumb.jpg`}, 10, 10, ${a.id}, ${a.id})`,
+        "spec_sheets_own_files",
+      );
+    });
+  });
+
+  it("a new sheet starts at version 1 and outside the Trash", async () => {
+    await rollback(async (tx) => {
+      const a = await makeUser(tx, staffEmail());
+      await actAs(tx, a);
+      await expectError(
+        tx,
+        (sp) => sp`insert into public.spec_sheets (id, name, source_type, source_path, thumb_path, page_px_w, page_px_h, created_by, updated_by, version)
+                   select i, 'Planted', 'png', i::text || '/source.png', i::text || '/thumb.jpg', 10, 10, ${a.id}, ${a.id}, 7
+                     from gen_random_uuid() as i`,
+        "row-level security",
+      );
+    });
+  });
 });

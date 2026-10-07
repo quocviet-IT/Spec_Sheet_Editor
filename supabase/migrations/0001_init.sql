@@ -53,7 +53,10 @@ create table public.spec_sheets (
   updated_by  uuid not null references public.profiles (id),
   updated_at  timestamptz not null default now(),
   deleted_at  timestamptz,
-  deleted_by  uuid references public.profiles (id)
+  deleted_by  uuid references public.profiles (id),
+  -- BR-03: a row can only point at its own files, so purging one sheet can never delete another's
+  constraint spec_sheets_own_files check (
+    source_path = id::text || '/source.' || source_type and thumb_path = id::text || '/thumb.jpg')
 );
 create index spec_sheets_live  on public.spec_sheets (updated_at desc) where deleted_at is null;
 create index spec_sheets_trash on public.spec_sheets (deleted_at desc) where deleted_at is not null;
@@ -73,10 +76,16 @@ create index audit_log_actor  on public.audit_log (actor_id, occurred_at desc);
 create index audit_log_target on public.audit_log (target_type, target_id);
 
 -- ===== Access checks (BR-08) =====
+-- Google sign-in only: an email/password or anonymous session on a permitted domain is refused even
+-- if those providers are switched on by mistake (the email claim alone is not proof of the address).
 create function public.is_allowed_user() returns boolean
 language sql stable security definer set search_path = public as $$
-  with me as (select lower(coalesce(auth.jwt() ->> 'email', '')) as email)
-  select me.email ~ '^[^@\s]+@[^@\s]+$'
+  with me as (
+    select lower(coalesce(auth.jwt() ->> 'email', '')) as email,
+           coalesce(auth.jwt() -> 'app_metadata' ->> 'provider', '') as provider
+  )
+  select me.provider = 'google'
+     and me.email ~ '^[^@\s]+@[^@\s]+$'
      and (exists (select 1 from allowed_domains d where d.domain = split_part(me.email, '@', 2))
           or exists (select 1 from allowed_emails e where e.email = me.email))
      and not exists (select 1 from profiles p where p.id = auth.uid() and p.status = 'suspended')
@@ -120,6 +129,9 @@ returns void language plpgsql security definer set search_path = public as $$
 begin
   if not is_allowed_user() then raise exception 'forbidden'; end if;
   if p_action not in ('sheet.export_png', 'sheet.export_pdf') then raise exception 'action_not_allowed'; end if;
+  -- the audit log can never be pruned, so a client may not grow it with large or dangling rows
+  if pg_column_size(coalesce(p_detail, '{}'::jsonb)) > 2048 then raise exception 'detail_too_large'; end if;
+  if not exists (select 1 from spec_sheets where id = p_target_id) then raise exception 'sheet_not_found'; end if;
   perform _audit(p_action, 'sheet', p_target_id::text, p_detail);
 end $$;
 
@@ -141,7 +153,10 @@ end $$;
 create function public.trg_profile_guard() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  perform pg_advisory_xact_lock(hashtext('admin_guard'));     -- two Admins cannot demote each other at once
+  -- two Admins cannot demote each other at once; ordinary sign-ins (touch_profile) do not queue here
+  if new.role is distinct from old.role or new.status is distinct from old.status then
+    perform pg_advisory_xact_lock(hashtext('admin_guard'));
+  end if;
   if old.role = 'admin' and old.status = 'active'
      and (new.role <> 'admin' or new.status <> 'active')
      and not exists (select 1 from profiles p
@@ -166,6 +181,7 @@ language plpgsql security definer set search_path = public as $$
 begin
   if not is_admin() then raise exception 'forbidden'; end if;
   update profiles set role = p_role, updated_at = now() where id = p_user;
+  if not found then raise exception 'user_not_found'; end if;
 end $$;
 
 create function public.set_user_status(p_user uuid, p_status text) returns void
@@ -179,6 +195,7 @@ begin
          suspended_by = case when p_status = 'suspended' then auth.uid() end,
          updated_at   = now()
    where id = p_user;
+  if not found then raise exception 'user_not_found'; end if;
 end $$;
 
 -- ===== Access (BR-17) and settings =====
@@ -187,6 +204,7 @@ language plpgsql security definer set search_path = public as $$
 declare v text := lower(btrim(p_value));
 begin
   if not is_admin() then raise exception 'forbidden'; end if;
+  if p_kind not in ('domain', 'email') then raise exception 'invalid_kind'; end if;
   if p_kind = 'domain' then insert into allowed_domains (domain, note) values (v, p_note);
   else insert into allowed_emails (email, note, created_by) values (v, p_note, auth.uid()); end if;
   perform _audit('access.add', p_kind, v, jsonb_build_object('note', p_note));
@@ -197,6 +215,7 @@ language plpgsql security definer set search_path = public as $$
 declare v text := lower(btrim(p_value));
 begin
   if not is_admin() then raise exception 'forbidden'; end if;
+  if p_kind not in ('domain', 'email') then raise exception 'invalid_kind'; end if;
   if p_kind = 'domain' then delete from allowed_domains where domain = v;
   else delete from allowed_emails where email = v; end if;
   if not is_allowed_user() then raise exception 'self_lockout'; end if;   -- rolls back the whole call
@@ -331,19 +350,44 @@ alter table public.app_settings    enable row level security;
 alter table public.spec_sheets     enable row level security;
 alter table public.audit_log       enable row level security;
 
-create policy profiles_read on public.profiles        for select to authenticated using (public.is_allowed_user());
-create policy domains_read  on public.allowed_domains for select to authenticated using (public.is_admin());
-create policy emails_read   on public.allowed_emails  for select to authenticated using (public.is_admin());
-create policy settings_read on public.app_settings    for select to authenticated using (public.is_allowed_user());
-create policy audit_read    on public.audit_log       for select to authenticated using (public.is_admin());
+create policy profiles_read on public.profiles        for select to authenticated using ((select public.is_allowed_user()));
+create policy domains_read  on public.allowed_domains for select to authenticated using ((select public.is_admin()));
+create policy emails_read   on public.allowed_emails  for select to authenticated using ((select public.is_admin()));
+create policy settings_read on public.app_settings    for select to authenticated using ((select public.is_allowed_user()));
+create policy audit_read    on public.audit_log       for select to authenticated using ((select public.is_admin()));
 -- profiles, allowed_*, app_settings, audit_log: no write policies; changed only through the functions above
 
-create policy sheets_read   on public.spec_sheets for select to authenticated using (public.is_allowed_user());
+create policy sheets_read   on public.spec_sheets for select to authenticated using ((select public.is_allowed_user()));
 create policy sheets_insert on public.spec_sheets for insert to authenticated
-  with check (public.is_allowed_user() and created_by = auth.uid() and updated_by = auth.uid());
+  with check ((select public.is_allowed_user()) and created_by = auth.uid() and updated_by = auth.uid()
+              and version = 1 and deleted_at is null and deleted_by is null);
 create policy sheets_update on public.spec_sheets for update to authenticated
-  using (public.is_allowed_user()) with check (public.is_allowed_user() and updated_by = auth.uid());
+  using ((select public.is_allowed_user()))
+  with check ((select public.is_allowed_user()) and updated_by = auth.uid());
 -- no delete policy: permanent deletion only through purge_sheet()
+
+-- ===== Privileges =====
+-- RLS limits which rows; grants limit what a role may attempt at all. Stated here instead of relying
+-- on Supabase's default privileges, which give anon and authenticated everything (TRUNCATE included,
+-- which RLS does not cover) and EXECUTE on every function. service_role keeps its defaults.
+revoke all on all tables    in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+revoke execute on all functions in schema public from public, anon, authenticated;
+alter default privileges in schema public revoke all on tables    from anon, authenticated;
+alter default privileges in schema public revoke all on sequences from anon, authenticated;
+alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
+
+grant select on public.profiles, public.allowed_domains, public.allowed_emails,
+                public.app_settings, public.audit_log, public.spec_sheets to authenticated;
+grant insert, update on public.spec_sheets to authenticated;
+
+grant execute on function
+  public.is_allowed_user(), public.is_admin(), public.my_access_status(), public.touch_profile(),
+  public.log_client_event(text, uuid, jsonb),
+  public.set_user_role(uuid, text), public.set_user_status(uuid, text),
+  public.add_allowed(text, text, text), public.remove_allowed(text, text), public.set_setting(text, numeric),
+  public.save_sheet(uuid, int, text, jsonb, jsonb), public.purge_sheet(uuid), public.log_maintenance(int, bigint)
+  to authenticated;
 
 -- ===== Storage =====
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -351,9 +395,9 @@ values ('spec-sheets', 'spec-sheets', false, 52428800, array['application/pdf', 
 
 -- bucket spec-sheets only; read and add, never update or delete (BR-03)
 create policy spec_files_read on storage.objects for select to authenticated
-  using (bucket_id = 'spec-sheets' and public.is_allowed_user());
+  using (bucket_id = 'spec-sheets' and (select public.is_allowed_user()));
 create policy spec_files_add  on storage.objects for insert to authenticated
-  with check (bucket_id = 'spec-sheets' and public.is_allowed_user()
+  with check (bucket_id = 'spec-sheets' and (select public.is_allowed_user())
               and (storage.foldername(name))[1] ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
 
 -- First Admin: run once, after that person's first sign-in

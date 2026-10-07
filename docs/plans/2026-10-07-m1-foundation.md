@@ -19,8 +19,10 @@
 - Code, identifiers and comments in English.
 - Default permitted domain `ctyhp.vn`. Supabase region Singapore, Vercel `sin1`.
 - postgres.js connections: `max: 1`, `prepare: false` (Supabase pooler has 15 session slots).
+- Every page, server action and route handler that reads or writes data calls `requireUser()` / `requireAdmin()` itself. Layouts only render chrome: they do not re-run on client-side navigation, and actions and route handlers can be called without them. RLS stays the real gate.
+- Privileges are explicit: migration 0001 revokes Supabase's default grants from `anon`/`authenticated` and grants only what the app uses; a new table or function in a later migration must state its own grants.
 - SQL tests touch the configured database only inside transactions that end in `ROLLBACK`.
-- Deviation from design Appendix A, deliberate: adds `my_access_status()` (the app needs to tell "suspended" from "not permitted"), the `spec-sheets` bucket insert, and the login error for a non-permitted account does not echo the email (no personal data in URLs). Also deliberate: `trg_sheet_guard` replaces the immutable-column trigger (a direct UPDATE can only trash or restore; content changes only through `save_sheet`; the database stamps who trashed a sheet), and `audit_log.actor_id` has no `on delete set null` (accounts are suspended, never deleted).
+- Deviation from design Appendix A, deliberate: adds `my_access_status()` (the app needs to tell "suspended" from "not permitted"), the `spec-sheets` bucket insert, and the login error for a non-permitted account does not echo the email (no personal data in URLs). Also deliberate: `trg_sheet_guard` replaces the immutable-column trigger (a direct UPDATE can only trash or restore; content changes only through `save_sheet`; the database stamps who trashed a sheet), and `audit_log.actor_id` has no `on delete set null` (accounts are suspended, never deleted). Also deliberate: `is_allowed_user()` accepts only Google sessions (`app_metadata.provider = 'google'`); sheet rows must point at their own files (`spec_sheets_own_files`); `log_client_event` caps its detail at 2 KB and requires an existing sheet; admin functions raise `user_not_found` / `invalid_kind` instead of doing nothing.
 
 ## File structure
 
@@ -130,7 +132,21 @@
 ```ts
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {};
+/** Sent on every response. A CSP for scripts follows in M2, when the canvas and OCR worker arrive. */
+const securityHeaders = [
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+];
+
+const nextConfig: NextConfig = {
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
+};
 
 export default nextConfig;
 ```
@@ -762,7 +778,10 @@ create table public.spec_sheets (
   updated_by  uuid not null references public.profiles (id),
   updated_at  timestamptz not null default now(),
   deleted_at  timestamptz,
-  deleted_by  uuid references public.profiles (id)
+  deleted_by  uuid references public.profiles (id),
+  -- BR-03: a row can only point at its own files, so purging one sheet can never delete another's
+  constraint spec_sheets_own_files check (
+    source_path = id::text || '/source.' || source_type and thumb_path = id::text || '/thumb.jpg')
 );
 create index spec_sheets_live  on public.spec_sheets (updated_at desc) where deleted_at is null;
 create index spec_sheets_trash on public.spec_sheets (deleted_at desc) where deleted_at is not null;
@@ -782,10 +801,16 @@ create index audit_log_actor  on public.audit_log (actor_id, occurred_at desc);
 create index audit_log_target on public.audit_log (target_type, target_id);
 
 -- ===== Access checks (BR-08) =====
+-- Google sign-in only: an email/password or anonymous session on a permitted domain is refused even
+-- if those providers are switched on by mistake (the email claim alone is not proof of the address).
 create function public.is_allowed_user() returns boolean
 language sql stable security definer set search_path = public as $$
-  with me as (select lower(coalesce(auth.jwt() ->> 'email', '')) as email)
-  select me.email ~ '^[^@\s]+@[^@\s]+$'
+  with me as (
+    select lower(coalesce(auth.jwt() ->> 'email', '')) as email,
+           coalesce(auth.jwt() -> 'app_metadata' ->> 'provider', '') as provider
+  )
+  select me.provider = 'google'
+     and me.email ~ '^[^@\s]+@[^@\s]+$'
      and (exists (select 1 from allowed_domains d where d.domain = split_part(me.email, '@', 2))
           or exists (select 1 from allowed_emails e where e.email = me.email))
      and not exists (select 1 from profiles p where p.id = auth.uid() and p.status = 'suspended')
@@ -829,6 +854,9 @@ returns void language plpgsql security definer set search_path = public as $$
 begin
   if not is_allowed_user() then raise exception 'forbidden'; end if;
   if p_action not in ('sheet.export_png', 'sheet.export_pdf') then raise exception 'action_not_allowed'; end if;
+  -- the audit log can never be pruned, so a client may not grow it with large or dangling rows
+  if pg_column_size(coalesce(p_detail, '{}'::jsonb)) > 2048 then raise exception 'detail_too_large'; end if;
+  if not exists (select 1 from spec_sheets where id = p_target_id) then raise exception 'sheet_not_found'; end if;
   perform _audit(p_action, 'sheet', p_target_id::text, p_detail);
 end $$;
 
@@ -850,7 +878,10 @@ end $$;
 create function public.trg_profile_guard() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  perform pg_advisory_xact_lock(hashtext('admin_guard'));     -- two Admins cannot demote each other at once
+  -- two Admins cannot demote each other at once; ordinary sign-ins (touch_profile) do not queue here
+  if new.role is distinct from old.role or new.status is distinct from old.status then
+    perform pg_advisory_xact_lock(hashtext('admin_guard'));
+  end if;
   if old.role = 'admin' and old.status = 'active'
      and (new.role <> 'admin' or new.status <> 'active')
      and not exists (select 1 from profiles p
@@ -875,6 +906,7 @@ language plpgsql security definer set search_path = public as $$
 begin
   if not is_admin() then raise exception 'forbidden'; end if;
   update profiles set role = p_role, updated_at = now() where id = p_user;
+  if not found then raise exception 'user_not_found'; end if;
 end $$;
 
 create function public.set_user_status(p_user uuid, p_status text) returns void
@@ -888,6 +920,7 @@ begin
          suspended_by = case when p_status = 'suspended' then auth.uid() end,
          updated_at   = now()
    where id = p_user;
+  if not found then raise exception 'user_not_found'; end if;
 end $$;
 
 -- ===== Access (BR-17) and settings =====
@@ -896,6 +929,7 @@ language plpgsql security definer set search_path = public as $$
 declare v text := lower(btrim(p_value));
 begin
   if not is_admin() then raise exception 'forbidden'; end if;
+  if p_kind not in ('domain', 'email') then raise exception 'invalid_kind'; end if;
   if p_kind = 'domain' then insert into allowed_domains (domain, note) values (v, p_note);
   else insert into allowed_emails (email, note, created_by) values (v, p_note, auth.uid()); end if;
   perform _audit('access.add', p_kind, v, jsonb_build_object('note', p_note));
@@ -906,6 +940,7 @@ language plpgsql security definer set search_path = public as $$
 declare v text := lower(btrim(p_value));
 begin
   if not is_admin() then raise exception 'forbidden'; end if;
+  if p_kind not in ('domain', 'email') then raise exception 'invalid_kind'; end if;
   if p_kind = 'domain' then delete from allowed_domains where domain = v;
   else delete from allowed_emails where email = v; end if;
   if not is_allowed_user() then raise exception 'self_lockout'; end if;   -- rolls back the whole call
@@ -1040,19 +1075,44 @@ alter table public.app_settings    enable row level security;
 alter table public.spec_sheets     enable row level security;
 alter table public.audit_log       enable row level security;
 
-create policy profiles_read on public.profiles        for select to authenticated using (public.is_allowed_user());
-create policy domains_read  on public.allowed_domains for select to authenticated using (public.is_admin());
-create policy emails_read   on public.allowed_emails  for select to authenticated using (public.is_admin());
-create policy settings_read on public.app_settings    for select to authenticated using (public.is_allowed_user());
-create policy audit_read    on public.audit_log       for select to authenticated using (public.is_admin());
+create policy profiles_read on public.profiles        for select to authenticated using ((select public.is_allowed_user()));
+create policy domains_read  on public.allowed_domains for select to authenticated using ((select public.is_admin()));
+create policy emails_read   on public.allowed_emails  for select to authenticated using ((select public.is_admin()));
+create policy settings_read on public.app_settings    for select to authenticated using ((select public.is_allowed_user()));
+create policy audit_read    on public.audit_log       for select to authenticated using ((select public.is_admin()));
 -- profiles, allowed_*, app_settings, audit_log: no write policies; changed only through the functions above
 
-create policy sheets_read   on public.spec_sheets for select to authenticated using (public.is_allowed_user());
+create policy sheets_read   on public.spec_sheets for select to authenticated using ((select public.is_allowed_user()));
 create policy sheets_insert on public.spec_sheets for insert to authenticated
-  with check (public.is_allowed_user() and created_by = auth.uid() and updated_by = auth.uid());
+  with check ((select public.is_allowed_user()) and created_by = auth.uid() and updated_by = auth.uid()
+              and version = 1 and deleted_at is null and deleted_by is null);
 create policy sheets_update on public.spec_sheets for update to authenticated
-  using (public.is_allowed_user()) with check (public.is_allowed_user() and updated_by = auth.uid());
+  using ((select public.is_allowed_user()))
+  with check ((select public.is_allowed_user()) and updated_by = auth.uid());
 -- no delete policy: permanent deletion only through purge_sheet()
+
+-- ===== Privileges =====
+-- RLS limits which rows; grants limit what a role may attempt at all. Stated here instead of relying
+-- on Supabase's default privileges, which give anon and authenticated everything (TRUNCATE included,
+-- which RLS does not cover) and EXECUTE on every function. service_role keeps its defaults.
+revoke all on all tables    in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+revoke execute on all functions in schema public from public, anon, authenticated;
+alter default privileges in schema public revoke all on tables    from anon, authenticated;
+alter default privileges in schema public revoke all on sequences from anon, authenticated;
+alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
+
+grant select on public.profiles, public.allowed_domains, public.allowed_emails,
+                public.app_settings, public.audit_log, public.spec_sheets to authenticated;
+grant insert, update on public.spec_sheets to authenticated;
+
+grant execute on function
+  public.is_allowed_user(), public.is_admin(), public.my_access_status(), public.touch_profile(),
+  public.log_client_event(text, uuid, jsonb),
+  public.set_user_role(uuid, text), public.set_user_status(uuid, text),
+  public.add_allowed(text, text, text), public.remove_allowed(text, text), public.set_setting(text, numeric),
+  public.save_sheet(uuid, int, text, jsonb, jsonb), public.purge_sheet(uuid), public.log_maintenance(int, bigint)
+  to authenticated;
 
 -- ===== Storage =====
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -1060,9 +1120,9 @@ values ('spec-sheets', 'spec-sheets', false, 52428800, array['application/pdf', 
 
 -- bucket spec-sheets only; read and add, never update or delete (BR-03)
 create policy spec_files_read on storage.objects for select to authenticated
-  using (bucket_id = 'spec-sheets' and public.is_allowed_user());
+  using (bucket_id = 'spec-sheets' and (select public.is_allowed_user()));
 create policy spec_files_add  on storage.objects for insert to authenticated
-  with check (bucket_id = 'spec-sheets' and public.is_allowed_user()
+  with check (bucket_id = 'spec-sheets' and (select public.is_allowed_user())
               and (storage.foldername(name))[1] ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
 
 -- First Admin: run once, after that person's first sign-in
@@ -1189,9 +1249,10 @@ export async function makeUser(tx: Tx, email: string, role: "user" | "admin" = "
   return { id, email };
 }
 
-/** Switches the transaction to the `authenticated` role with this user's JWT claims. */
+/** Switches the transaction to the `authenticated` role with this user's Google-session JWT claims. */
 export async function actAs(tx: Tx, user: { id: string; email: string }): Promise<void> {
-  await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: user.id, email: user.email, role: "authenticated" })}, true)`;
+  const claims = { sub: user.id, email: user.email, role: "authenticated", app_metadata: { provider: "google", providers: ["google"] } };
+  await tx`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`;
   await tx`set local role authenticated`;
 }
 
@@ -1282,8 +1343,7 @@ describe.skipIf(!hasDb)("access rules (BR-08)", () => {
     await rollback(async (tx) => {
       const staff = await makeUser(tx, staffEmail());
       await actAs(tx, staff);
-      const updated = await tx`update public.profiles set role = 'admin' where id = ${staff.id} returning id`;
-      expect(updated.length).toBe(0);
+      await expectError(tx, (sp) => sp`update public.profiles set role = 'admin' where id = ${staff.id}`, "permission denied");
       await actAsOwner(tx);
       const [p] = await tx<{ role: string }[]>`select role from public.profiles where id = ${staff.id}`;
       expect(p.role).toBe("user");
@@ -1311,6 +1371,35 @@ describe.skipIf(!hasDb)("access rules (BR-08)", () => {
            and coalesce(qual, '') || coalesce(with_check, '') like '%spec-sheets%'`;
       expect(policies.map((p) => p.cmd).sort()).toEqual(["INSERT", "SELECT"]);
       for (const p of policies) expect(`${p.qual ?? ""}${p.with_check ?? ""}`).toContain("is_allowed_user");
+    });
+  });
+
+  it("an email-and-password session on a permitted domain is refused: Google sign-in only", async () => {
+    await rollback(async (tx) => {
+      const staff = await makeUser(tx, staffEmail());
+      const claims = { sub: staff.id, email: staff.email, role: "authenticated", app_metadata: { provider: "email" } };
+      await tx`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`;
+      await tx`set local role authenticated`;
+      const [row] = await tx<{ ok: boolean; s: string }[]>`select public.is_allowed_user() as ok, public.my_access_status() as s`;
+      expect(row).toEqual({ ok: false, s: "not_permitted" });
+    });
+  });
+
+  it("clients hold only the privileges the app needs", async () => {
+    await rollback(async (tx) => {
+      const [p] = await tx<Record<string, boolean>[]>`
+        select has_table_privilege('authenticated', 'public.audit_log', 'truncate')   as audit_truncate,
+               has_table_privilege('authenticated', 'public.audit_log', 'insert')     as audit_insert,
+               has_table_privilege('authenticated', 'public.profiles', 'update')      as profiles_update,
+               has_table_privilege('authenticated', 'public.spec_sheets', 'delete')   as sheets_delete,
+               has_table_privilege('anon', 'public.spec_sheets', 'select')            as anon_sheets_select,
+               has_function_privilege('anon', 'public.save_sheet(uuid, int, text, jsonb, jsonb)', 'execute') as anon_save,
+               has_function_privilege('authenticated', 'public._audit(text, text, text, jsonb)', 'execute') as client_audit`;
+      expect(Object.values(p).every((v) => v === false)).toBe(true);
+      const [q] = await tx<{ sheets_insert: boolean; save: boolean }[]>`
+        select has_table_privilege('authenticated', 'public.spec_sheets', 'insert') as sheets_insert,
+               has_function_privilege('authenticated', 'public.save_sheet(uuid, int, text, jsonb, jsonb)', 'execute') as save`;
+      expect(q).toEqual({ sheets_insert: true, save: true });
     });
   });
 });
@@ -1385,13 +1474,24 @@ describe.skipIf(!hasDb)("admin functions", () => {
       await expectError(tx, (sp) => sp`select public.purge_sheet(${id})`, "not_in_trash");
     });
   });
+
+  it("admin functions refuse an unknown account or list kind instead of doing nothing", async () => {
+    await rollback(async (tx) => {
+      const admin = await makeUser(tx, staffEmail(), "admin");
+      await actAs(tx, admin);
+      await expectError(tx, (sp) => sp`select public.set_user_role(gen_random_uuid(), 'admin')`, "user_not_found");
+      await expectError(tx, (sp) => sp`select public.set_user_status(gen_random_uuid(), 'suspended')`, "user_not_found");
+      await expectError(tx, (sp) => sp`select public.add_allowed('bogus', 'x@ctyhp.vn', null)`, "invalid_kind");
+      await expectError(tx, (sp) => sp`select public.remove_allowed('bogus', 'ctyhp.vn')`, "invalid_kind");
+    });
+  });
 });
 ```
 
 `tests/sql/audit.test.ts` (TC-69, TC-70, TC-71):
 ```ts
 import { afterAll, describe, expect, it } from "vitest";
-import { actAs, actAsOwner, closeDb, expectError, hasDb, makeUser, rollback, staffEmail } from "./harness";
+import { actAs, actAsOwner, closeDb, expectError, hasDb, insertSheet, makeUser, rollback, staffEmail } from "./harness";
 
 afterAll(closeDb);
 
@@ -1433,6 +1533,21 @@ describe.skipIf(!hasDb)("audit log (BR-15)", () => {
       await tx`select public.touch_profile()`; // writes an auth.login row for this user
       await actAsOwner(tx);
       await expectError(tx, (sp) => sp`delete from public.profiles where id = ${staff.id}`, "audit_log_actor_id_fkey");
+    });
+  });
+
+  it("export events need a real sheet and a small detail, and are recorded", async () => {
+    await rollback(async (tx) => {
+      const staff = await makeUser(tx, staffEmail());
+      await actAs(tx, staff);
+      const id = await insertSheet(tx, staff);
+      const big = JSON.stringify({ note: "x".repeat(3000) });
+      await expectError(tx, (sp) => sp`select public.log_client_event('sheet.export_pdf', ${id}, ${big}::jsonb)`, "detail_too_large");
+      await expectError(tx, (sp) => sp`select public.log_client_event('sheet.export_pdf', gen_random_uuid(), '{}')`, "sheet_not_found");
+      await tx`select public.log_client_event('sheet.export_pdf', ${id}, '{"pages":1}')`;
+      await actAsOwner(tx);
+      const rows = await tx`select 1 from public.audit_log where action = 'sheet.export_pdf' and target_id = ${id}`;
+      expect(rows.length).toBe(1);
     });
   });
 });
@@ -1540,6 +1655,34 @@ describe.skipIf(!hasDb)("sheets", () => {
       for (const r of rows) expect(r.actor_id).toBe(a.id);
     });
   });
+
+  it("a sheet can only point at its own files (BR-03)", async () => {
+    await rollback(async (tx) => {
+      const a = await makeUser(tx, staffEmail());
+      await actAs(tx, a);
+      const other = await insertSheet(tx, a);
+      await expectError(
+        tx,
+        (sp) => sp`insert into public.spec_sheets (id, name, source_type, source_path, thumb_path, page_px_w, page_px_h, created_by, updated_by)
+                   values (gen_random_uuid(), 'Decoy', 'png', ${`${other}/source.png`}, ${`${other}/thumb.jpg`}, 10, 10, ${a.id}, ${a.id})`,
+        "spec_sheets_own_files",
+      );
+    });
+  });
+
+  it("a new sheet starts at version 1 and outside the Trash", async () => {
+    await rollback(async (tx) => {
+      const a = await makeUser(tx, staffEmail());
+      await actAs(tx, a);
+      await expectError(
+        tx,
+        (sp) => sp`insert into public.spec_sheets (id, name, source_type, source_path, thumb_path, page_px_w, page_px_h, created_by, updated_by, version)
+                   select i, 'Planted', 'png', i::text || '/source.png', i::text || '/thumb.jpg', 10, 10, ${a.id}, ${a.id}, 7
+                     from gen_random_uuid() as i`,
+        "row-level security",
+      );
+    });
+  });
 });
 ```
 
@@ -1551,7 +1694,7 @@ Expected: all SQL suites reported as skipped, exit code 0. (If `.env.local` defi
 - [ ] **Step 4: Run against the dev database**
 
 Run: `npm run db:migrate && npx vitest run tests/sql`
-Expected: `database is up to date`, then PASS — 4 files, 23 tests. Paste the full Vitest summary into the task report; do not trim it.
+Expected: `database is up to date`, then PASS — 4 files, 29 tests. Paste the full Vitest summary into the task report; do not trim it.
 
 - [ ] **Step 5: Commit**
 
@@ -2260,10 +2403,19 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      HAS_DB: ${{ secrets.DATABASE_URL != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -2273,6 +2425,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - name: Warn when SQL tests will be skipped
+        if: ${{ env.HAS_DB != 'true' }}
+        run: echo "::warning::DATABASE_URL secret is not set (always the case for pull requests from forks) - the SQL tests are skipped in this run."
       - name: Tests (SQL suites run only when the DATABASE_URL secret is set)
         run: npm test
         env:
@@ -2299,12 +2454,19 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, G
 
 ## Setup
 
-1. Create a Supabase project in Singapore, enable the Google provider, and add
-   `http://localhost:3000/auth/callback` to the redirect URLs.
-2. `cp .env.example .env.local` and fill in the four values.
-3. `npm install`
-4. `npm run db:migrate` — applies `supabase/migrations/*.sql`.
-5. `npm run dev`, sign in with a company Google account, then make yourself the first Admin in the
+1. Create a Supabase project in Singapore and enable the Google provider. Under Authentication → URL
+   Configuration, list only exact callback URLs (no wildcards): `http://localhost:3000/auth/callback`
+   now, and the production `https://<your-domain>/auth/callback` once deployed. The app builds the
+   OAuth return address from the request, so this allow-list is what keeps sign-in on your own site.
+2. Under Authentication → Providers keep only **Google** enabled; turn off Email, Phone and Anonymous
+   sign-ins. The database refuses any session that did not come from Google, but switching the others
+   off keeps sign-up forms closed.
+3. `cp .env.example .env.local` and fill in the four values.
+4. `npm install`
+5. `npm run db:migrate` — applies `supabase/migrations/*.sql`.
+   `DATABASE_URL` must point at the development project, never production: the SQL tests change data
+   inside transactions that are always rolled back, but they are written for a disposable database.
+6. `npm run dev`, sign in with a company Google account, then make yourself the first Admin in the
    Supabase SQL editor:
    ```sql
    update public.profiles set role = 'admin' where email = '<your-email>';
@@ -2319,6 +2481,19 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, G
 | `npm test` | Unit tests; SQL tests too when `DATABASE_URL` is set (always rolled back) |
 | `npm run build` | Production build |
 | `npm run db:migrate` | Apply pending migrations |
+
+## Database migrations
+
+Migrations in `supabase/migrations/` are applied once, in order, and recorded in
+`public.schema_migrations`. A file that has been applied to any project is never edited again; fix
+forward with the next number (`0002_…`).
+
+## Continuous integration
+
+GitHub Actions runs lint, typecheck, tests and build on every push to `main` and on pull requests.
+To include the SQL tests, add the development project's session-pooler URL as the repository secret
+`DATABASE_URL` (Settings → Secrets and variables → Actions). Without it the run shows a warning and
+the SQL tests are skipped.
 
 ## Data rules
 
@@ -2343,7 +2518,7 @@ git commit -m "ci: lint, typecheck, tests and build on every push; README setup 
 ## M1 exit checklist
 
 - [ ] `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` all green locally and in CI.
-- [ ] SQL tests (23) green against the dev project — full Vitest summary pasted in the report.
+- [ ] SQL tests (29) green against the dev project — full Vitest summary pasted in the report.
 - [ ] Manual check (Task 7 Step 6) done in VI and EN with screenshots.
 - [ ] Diff scanned for `SO2`, `MO2`, `sb_secret_`, `service_role`, `.env.local` before push.
 - [ ] Next: write `2026-10-xx-m2-browser-ocr.md`.

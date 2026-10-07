@@ -32,9 +32,10 @@ export async function makeUser(tx: Tx, email: string, role: "user" | "admin" = "
   return { id, email };
 }
 
-/** Switches the transaction to the `authenticated` role with this user's JWT claims. */
+/** Switches the transaction to the `authenticated` role with this user's Google-session JWT claims. */
 export async function actAs(tx: Tx, user: { id: string; email: string }): Promise<void> {
-  await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: user.id, email: user.email, role: "authenticated" })}, true)`;
+  const claims = { sub: user.id, email: user.email, role: "authenticated", app_metadata: { provider: "google", providers: ["google"] } };
+  await tx`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`;
   await tx`set local role authenticated`;
 }
 
