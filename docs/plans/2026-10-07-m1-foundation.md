@@ -1584,8 +1584,17 @@ describe("safeNext", () => {
     expect(safeNext("/admin")).toBe("/admin");
   });
 
+  it("keeps a same-site path whose query or hash mentions another site", () => {
+    expect(safeNext("/sheets?ref=https://evil.example")).toBe("/sheets?ref=https://evil.example");
+    expect(safeNext("/sheets#//evil.example")).toBe("/sheets#//evil.example");
+  });
+
   it("falls back for anything that could leave the site or loop", () => {
-    for (const raw of [null, undefined, "", "https://evil.example", "//evil.example", "/\\evil.example", "sheets", "/login", "/login?next=/x", "/auth/callback"]) {
+    for (const raw of [
+      null, undefined, "", "https://evil.example", "//evil.example", "/\\evil.example", "sheets",
+      "/\t/evil.example", "/\n/evil.example", "/\r/evil.example", "/%09/x\u0000",
+      "/login", "/login/", "/login#x", "/login?next=/x", "/auth", "/auth/callback",
+    ]) {
       expect(safeNext(raw)).toBe("/sheets");
     }
   });
@@ -1642,14 +1651,21 @@ Expected: FAIL — modules not found.
 
 `src/auth/redirect.ts`:
 ```ts
+/** Any origin works: it only lets the URL parser resolve a path exactly as the redirect will. */
+const PROBE = "http://same-origin.invalid";
+
 /**
  * The path to land on after sign-in. Only same-site absolute paths are accepted, so a crafted
- * ?next= cannot send people to another site or back into the sign-in loop.
+ * ?next= cannot send people to another site or back into the sign-in loop. Control characters and
+ * backslashes are refused outright: URL parsers drop or rewrite them, which can turn "/\t/x" into "//x".
  */
 export function safeNext(raw: string | null | undefined, fallback = "/sheets"): string {
-  if (!raw || !raw.startsWith("/")) return fallback;
-  if (raw.startsWith("//") || raw.startsWith("/\\")) return fallback;
-  if (raw === "/login" || raw.startsWith("/login?") || raw.startsWith("/auth/")) return fallback;
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return fallback;
+  if (/[\u0000-\u001f\u007f\\]/.test(raw)) return fallback;
+  const url = new URL(raw, PROBE);
+  if (url.origin !== PROBE) return fallback;
+  const path = url.pathname;
+  if (path === "/login" || path.startsWith("/login/") || path === "/auth" || path.startsWith("/auth/")) return fallback;
   return raw;
 }
 ```
@@ -1694,7 +1710,7 @@ export function decideAccess(profile: Profile | null, status: AccessStatus, need
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run tests/unit/redirect.test.ts tests/unit/access.test.ts`
-Expected: PASS (9 tests).
+Expected: PASS (10 tests).
 
 - [ ] **Step 5: Commit**
 
