@@ -3035,6 +3035,321 @@ git commit -m "docs(ocr): browser OCR results on the office PC and the model dec
 
 ---
 
+### Task 7a: Tuning after the first office-PC run
+
+First run in Chromium on the office PC (2026-10-07, 4 threads): scan located 8/11 in 13.5 s (TC-20
+needs 9/11), clicks read 7/11 and the slowest took 5.7 s (TC-24 needs ≤ 5 s). Findings:
+
+- Scan: the drawing area was enlarged with bilinear resampling. RapidOCR in Python finds the same 8/11
+  with bilinear and 9/11 with Pillow's bicubic or Lanczos (the bake-off used Lanczos): small digits stay
+  sharper. → Enlarge with bicubic (Pillow's filter) for the scan and the click square.
+- Click: 1.50 is read correctly at -90° ("_1.50"), but -90° was the fifth angle and the 5-s budget ran
+  out first; each angle takes about 1.1 s. → Try upright, then the two vertical turns, then the
+  diagonals: `[0, -90, 90, 60, -60]`; do not start an angle that cannot finish within the budget; read
+  a crop upside down only when its upright reading is not a dimension (saves time and stops a confident
+  but wrong upside-down reading from replacing a valid one).
+- Bench (Task 6 review): the file pickers stayed active while a run was busy, and the page was shown
+  before the Worker had it.
+
+This task supersedes the matching parts of Tasks 2, 5 and 6.
+
+**Files:**
+- Modify: `src/lib/ocr/raster.ts`, `src/lib/ocr/pipeline.ts`, `src/lib/ocr/scan.ts`, `src/lib/ocr/click.ts`, `src/app/dev/ocr-bench/bench.tsx`
+- Test: `tests/unit/ocr/raster.test.ts`, `tests/unit/ocr/pipeline.test.ts`, `tests/unit/ocr/click.test.ts`
+
+**Interfaces:**
+- Produces: `resizeBicubic(src, width, height): Raster`; `RegionReader` options gain `accept?: (text: string) => boolean`; `CLICK_ANGLES = [0, -90, 90, 60, -60]`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/unit/ocr/raster.test.ts` — add `resizeBicubic` to the import list and this block at the end of the file:
+
+```ts
+describe("resizeBicubic", () => {
+  const near = (actual: number[][], expected: number[][]) =>
+    actual.forEach((row, y) => row.forEach((v, x) => expect(Math.abs(v - expected[y][x])).toBeLessThanOrEqual(1)));
+
+  it("matches Pillow's BICUBIC when enlarging and shrinking", () => {
+    near(levels(resizeBicubic(grey([[0, 255, 0, 255]]), 8, 1)), [[0, 54, 216, 215, 40, 39, 201, 255]]);
+    near(levels(resizeBicubic(grey([[10, 20, 30, 40, 50, 60, 70, 80]]), 3, 1)), [[19, 45, 71]]);
+    near(levels(resizeBicubic(grey([[0, 0], [255, 255]]), 2, 5)), [[0, 0], [17, 17], [128, 128], [238, 238], [255, 255]]);
+  });
+
+  it("keeps a flat image flat", () => {
+    expect(levels(resizeBicubic(grey([[77, 77], [77, 77]]), 5, 3))).toEqual([
+      [77, 77, 77, 77, 77],
+      [77, 77, 77, 77, 77],
+      [77, 77, 77, 77, 77],
+    ]);
+  });
+});
+```
+
+(Expected values were produced with Pillow: `Image.resize(size, Image.BICUBIC)` on the same grey rows.)
+
+`tests/unit/ocr/pipeline.test.ts` — add inside `describe("readRegion", …)`:
+
+```ts
+  it("with accept, re-reads upside down only what was not accepted", async () => {
+    const accepted = fakeModels([{ text: "16.30", score: 0.6 }]);
+    await readRegion(accepted, createRaster(64, 32), { bothDirections: true, accept: (t) => t === "16.30" });
+    expect(accepted.recCalls).toBe(1);
+
+    const rejected = fakeModels([{ text: "3.0", score: 0.9 }, { text: "16.30", score: 0.7 }]);
+    const readings = await readRegion(rejected, createRaster(64, 32), { bothDirections: true, accept: (t) => t === "16.30" });
+    expect(rejected.recCalls).toBe(2);
+    expect(readings[0].text).toBe("16.30");
+  });
+```
+
+`tests/unit/ocr/click.test.ts` — in the existing test "maps a box read in a turned image back to the page",
+90° is now the third angle: change `if (calls < 4) return []; // 0°, 60°, -60° read nothing; 90° is the fourth angle`
+to `if (calls < 3) return []; // 0° and -90° read nothing; 90° is the third angle`. Then add at the end of the
+`describe` block:
+
+```ts
+  it("tries upright, then vertical, then diagonal", () => {
+    expect([...CLICK_ANGLES]).toEqual([0, -90, 90, 60, -60]);
+  });
+
+  it("does not start an angle that cannot finish before the deadline", async () => {
+    const read: RegionReader = async () => {
+      await new Promise((r) => setTimeout(r, 40));
+      return [];
+    };
+    const result = await readAtPoint(models, page, { x: 300, y: 600 }, 70, read);
+    expect(result.anglesTried).toBe(1);
+    expect(result.reading).toBeNull();
+    expect(result.ms).toBeLessThan(70);
+  });
+
+  it("asks the reader to re-read upside down only non-dimensions", async () => {
+    let accept: ((text: string) => boolean) | undefined;
+    const read: RegionReader = async (_m, _image, opts) => {
+      accept = opts?.accept;
+      return [];
+    };
+    await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
+    expect(accept?.("1630")).toBe(true);
+    expect(accept?.("1.5p")).toBe(false);
+  });
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `npx vitest run tests/unit/ocr/raster.test.ts tests/unit/ocr/pipeline.test.ts tests/unit/ocr/click.test.ts`
+Expected: FAIL — `resizeBicubic` is not exported; the new click and pipeline cases fail.
+
+- [ ] **Step 3: `src/lib/ocr/raster.ts` — add after `resizeBilinear`**
+
+```ts
+/** Keys' cubic kernel with a = -0.5, Pillow's BICUBIC filter. */
+function cubic(x: number): number {
+  const a = -0.5;
+  const t = Math.abs(x);
+  if (t < 1) return ((a + 2) * t - (a + 3)) * t * t + 1;
+  if (t < 2) return (((t - 5) * t + 8) * t - 4) * a;
+  return 0;
+}
+
+/** Pillow's per-axis resampling weights (precompute_coeffs): the filter widens when shrinking. */
+function cubicWeights(inSize: number, outSize: number): { start: Int32Array; count: Int32Array; weights: Float32Array; taps: number } {
+  const scale = inSize / outSize;
+  const filterScale = Math.max(scale, 1);
+  const support = 2 * filterScale;
+  const taps = Math.ceil(2 * support) + 2;
+  const start = new Int32Array(outSize);
+  const count = new Int32Array(outSize);
+  const weights = new Float32Array(outSize * taps);
+  for (let o = 0; o < outSize; o++) {
+    const centre = (o + 0.5) * scale;
+    const from = Math.max(Math.trunc(centre - support + 0.5), 0);
+    const n = Math.min(Math.trunc(centre + support + 0.5), inSize) - from;
+    let sum = 0;
+    for (let k = 0; k < n; k++) {
+      const w = cubic((k + from - centre + 0.5) / filterScale);
+      weights[o * taps + k] = w;
+      sum += w;
+    }
+    if (sum !== 0) for (let k = 0; k < n; k++) weights[o * taps + k] /= sum;
+    start[o] = from;
+    count[o] = n;
+  }
+  return { start, count, weights, taps };
+}
+
+/**
+ * Bicubic resize as Pillow's Image.resize(BICUBIC). Sharper than bilinear when enlarging small print: on
+ * the sample sheet RapidOCR finds 9 of 11 values after bicubic enlargement, 8 after bilinear.
+ */
+export function resizeBicubic(src: Raster, width: number, height: number): Raster {
+  const h = cubicWeights(src.width, width);
+  const v = cubicWeights(src.height, height);
+  const mid = new Float32Array(width * src.height * 3);
+  for (let y = 0; y < src.height; y++) {
+    const row = y * src.width;
+    for (let x = 0; x < width; x++) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let k = 0; k < h.count[x]; k++) {
+        const w = h.weights[x * h.taps + k];
+        const p = (row + h.start[x] + k) * 4;
+        r += src.data[p] * w;
+        g += src.data[p + 1] * w;
+        b += src.data[p + 2] * w;
+      }
+      const m = (y * width + x) * 3;
+      mid[m] = r;
+      mid[m + 1] = g;
+      mid[m + 2] = b;
+    }
+  }
+  const out = createRaster(width, height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let k = 0; k < v.count[y]; k++) {
+        const w = v.weights[y * v.taps + k];
+        const m = ((v.start[y] + k) * width + x) * 3;
+        r += mid[m] * w;
+        g += mid[m + 1] * w;
+        b += mid[m + 2] * w;
+      }
+      const o = (y * width + x) * 4;
+      out.data[o] = r;
+      out.data[o + 1] = g;
+      out.data[o + 2] = b;
+    }
+  }
+  return out;
+}
+```
+
+- [ ] **Step 4: `src/lib/ocr/pipeline.ts`**
+
+a) Replace the `RegionReader` type with:
+
+```ts
+/**
+ * bothDirections: also read each crop upside down. With accept, only crops whose upright reading is not
+ * accepted are re-read, and the upside-down reading wins when it is accepted or more confident.
+ */
+export type RegionReader = (
+  models: OcrModels,
+  image: Raster,
+  opts?: { bothDirections?: boolean; accept?: (text: string) => boolean },
+) => Promise<Reading[]>;
+```
+
+b) In `readRegion`, replace
+
+```ts
+  let texts = await recognizeCrops(models, crops);
+  if (opts.bothDirections) {
+    const flipped = await recognizeCrops(models, crops.map(rotate180));
+    texts = texts.map((t, i) => (flipped[i].score > t.score ? flipped[i] : t));
+  }
+```
+
+with
+
+```ts
+  const texts = await recognizeCrops(models, crops);
+  if (opts.bothDirections) {
+    const accept = opts.accept ?? (() => false);
+    const retry = texts.flatMap((t, i) => (accept(t.text) ? [] : [i]));
+    if (retry.length > 0) {
+      const flipped = await recognizeCrops(models, retry.map((i) => rotate180(crops[i])));
+      retry.forEach((i, k) => {
+        if (accept(flipped[k].text) || flipped[k].score > texts[i].score) texts[i] = flipped[k];
+      });
+    }
+  }
+```
+
+and update the doc comment's last sentence to: `With bothDirections each crop is also read upside down (only those not accepted, when accept is given) and the better reading kept.`
+
+- [ ] **Step 5: `src/lib/ocr/scan.ts` and `src/lib/ocr/click.ts`**
+
+`scan.ts`: import `resizeBicubic` instead of `resizeBilinear` from `./raster` and enlarge the frame with it:
+`const big = resizeBicubic(frame, width, height);`
+
+`click.ts`:
+
+1. Import `resizeBicubic` instead of `resizeBilinear`, and build the square with it:
+   `const square = resizeBicubic(crop(page, { ...origin, w: side, h: side }), CLICK_SIZE, CLICK_SIZE);`
+2. Replace the angle list and its comment with:
+
+```ts
+/** UC-06: upright first, then the two vertical turns, then the diagonals (degrees counter-clockwise). */
+export const CLICK_ANGLES = [0, -90, 90, 60, -60] as const;
+```
+
+3. Replace the loop header and its first check
+
+```ts
+  let anglesTried = 0;
+  for (const angle of CLICK_ANGLES) {
+    if (anglesTried > 0 && performance.now() - started > deadlineMs) break;
+    anglesTried++;
+```
+
+with
+
+```ts
+  let anglesTried = 0;
+  let longestAngleMs = 0;
+  for (const angle of CLICK_ANGLES) {
+    // Do not start an angle that cannot finish before the deadline (TC-24).
+    if (anglesTried > 0 && performance.now() - started + longestAngleMs > deadlineMs) break;
+    anglesTried++;
+    const angleStarted = performance.now();
+```
+
+4. Replace `const readings = await read(models, image, { bothDirections: true });` with
+
+```ts
+    const readings = await read(models, image, { bothDirections: true, accept: (text) => toDimension(text) !== null });
+    longestAngleMs = Math.max(longestAngleMs, performance.now() - angleStarted);
+```
+
+5. Delete the line `    if (performance.now() - started > deadlineMs) break;` that follows the `if (best !== null) return …` line (the check at the top of the loop now covers it).
+
+- [ ] **Step 6: `src/app/dev/ocr-bench/bench.tsx`**
+
+1. In `showSample`, hand the page to the Worker before showing it:
+
+```ts
+  async function showSample(blob: Blob) {
+    const raster = await blobToRaster(blob);
+    await client.current?.setPage(raster);
+    setPage(raster);
+    setScan(null);
+    setClicks(null);
+  }
+```
+
+2. Add `disabled={busy !== null}` to the three model `<input type="file">` elements and to the sample `<input type="file">`.
+
+- [ ] **Step 7: Verify**
+
+Run the three test files (GREEN), then `npm test`, `npm run typecheck`, `npm run lint`, `npm run ocr:build` — all exit 0, full output read.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/lib/ocr/raster.ts src/lib/ocr/pipeline.ts src/lib/ocr/scan.ts src/lib/ocr/click.ts src/app/dev/ocr-bench/bench.tsx
+git add tests/unit/ocr/raster.test.ts tests/unit/ocr/pipeline.test.ts tests/unit/ocr/click.test.ts docs/plans/2026-10-07-m2-browser-ocr.md
+git commit -m "perf(ocr): bicubic enlargement, vertical turns first and a click budget that holds 5 s"
+```
+
+The controller then re-runs the bench (Task 7 Steps 2–5).
+
+---
+
 ## M2 exit checklist
 
 - [ ] `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` all green locally.
