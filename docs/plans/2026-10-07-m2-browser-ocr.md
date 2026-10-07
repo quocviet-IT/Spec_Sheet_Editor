@@ -1354,7 +1354,7 @@ os.makedirs(OUT, exist_ok=True)
 det_case("mixed", 128, 64, 192, 96, [
     (30, 16, 40, 10, 0, 0.8),    # upright line
     (90, 40, 36, 10, 25, 0.7),   # turned 25 degrees
-    (20, 50, 2, 2, 0, 0.9),      # too small: dropped
+    (20, 50, 1, 1, 0, 0.9),      # a single pixel: dropped (shorter side under 3)
     (100, 12, 30, 8, 0, 0.4),    # above thresh, below box_thresh: dropped
 ])
 det_case("vertical", 64, 128, 64, 128, [
@@ -1586,7 +1586,34 @@ function rowSpan(pts: readonly Point[], y: number): [number, number] | null {
   return lo <= hi ? [lo, hi] : null;
 }
 
-/** box_score_fast: mean probability inside the box, corners truncated to whole pixels as cv2.fillPoly does. */
+/** OpenCV's 8-connected Bresenham line between whole-pixel points, both ends included. */
+function line(a: Point, b: Point, put: (x: number, y: number) => void): void {
+  let x = a.x;
+  let y = a.y;
+  const dx = Math.abs(b.x - x);
+  const dy = -Math.abs(b.y - y);
+  const sx = x < b.x ? 1 : -1;
+  const sy = y < b.y ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    put(x, y);
+    if (x === b.x && y === b.y) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y += sy;
+    }
+  }
+}
+
+/**
+ * box_score_fast: mean probability over the pixels cv2.fillPoly paints for the box with its corners
+ * truncated to whole pixels — the interior spans plus the outline drawn as 8-connected lines.
+ */
 function meanInside(prob: Float32Array, w: number, h: number, quad: Quad): number {
   const xs = quad.map((p) => p.x);
   const ys = quad.map((p) => p.y);
@@ -1595,17 +1622,25 @@ function meanInside(prob: Float32Array, w: number, h: number, quad: Quad): numbe
   const yMin = clamp(Math.floor(Math.min(...ys)), 0, h - 1);
   const yMax = clamp(Math.ceil(Math.max(...ys)), 0, h - 1);
   const pts = quad.map((p) => ({ x: Math.trunc(p.x), y: Math.trunc(p.y) }));
-  let sum = 0;
-  let count = 0;
+  const bw = xMax - xMin + 1;
+  const mask = new Uint8Array(bw * (yMax - yMin + 1));
+  const put = (x: number, y: number) => {
+    if (x >= xMin && x <= xMax && y >= yMin && y <= yMax) mask[(y - yMin) * bw + (x - xMin)] = 1;
+  };
   for (let y = yMin; y <= yMax; y++) {
     const span = rowSpan(pts, y);
     if (!span) continue;
-    const from = Math.max(xMin, Math.ceil(span[0] - 1e-9));
-    const to = Math.min(xMax, Math.floor(span[1] + 1e-9));
-    for (let x = from; x <= to; x++) {
-      sum += prob[y * w + x];
-      count++;
-    }
+    for (let x = Math.ceil(span[0] - 1e-9); x <= Math.floor(span[1] + 1e-9); x++) put(x, y);
+  }
+  for (let i = 0; i < pts.length; i++) line(pts[i], pts[(i + 1) % pts.length], put);
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i]) continue;
+    const x = xMin + (i % bw);
+    const y = yMin + Math.trunc(i / bw);
+    sum += prob[y * w + x];
+    count++;
   }
   return count > 0 ? sum / count : 0;
 }
