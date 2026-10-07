@@ -26,10 +26,12 @@ export async function proxy(request: NextRequest) {
     {
       cookies: {
         getAll: () => request.cookies.getAll(),
-        setAll: (list) => {
+        setAll: (list, cacheHeaders) => {
           list.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request: { headers: forwardHeaders(request) } });
           list.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+          // A response that sets auth cookies must never be cached by a CDN (@supabase/ssr contract).
+          Object.entries(cacheHeaders).forEach(([key, value]) => response.headers.set(key, value));
         },
       },
     },

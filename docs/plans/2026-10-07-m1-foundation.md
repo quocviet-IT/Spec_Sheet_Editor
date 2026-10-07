@@ -1807,10 +1807,12 @@ export async function proxy(request: NextRequest) {
     {
       cookies: {
         getAll: () => request.cookies.getAll(),
-        setAll: (list) => {
+        setAll: (list, cacheHeaders) => {
           list.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request: { headers: forwardHeaders(request) } });
           list.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+          // A response that sets auth cookies must never be cached by a CDN (@supabase/ssr contract).
+          Object.entries(cacheHeaders).forEach(([key, value]) => response.headers.set(key, value));
         },
       },
     },
@@ -1934,7 +1936,12 @@ import { createSupabaseServer } from "@/lib/supabase/server";
  */
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
-  const go = (path: string) => NextResponse.redirect(new URL(path, url.origin));
+  // Every response here may carry session cookies: never let a CDN cache it.
+  const go = (path: string) => {
+    const response = NextResponse.redirect(new URL(path, url.origin));
+    response.headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate, max-age=0");
+    return response;
+  };
   const code = url.searchParams.get("code");
   const next = safeNext(url.searchParams.get("next"));
   if (!code) return go("/login?error=google");
@@ -1944,13 +1951,13 @@ export async function GET(request: NextRequest) {
   if (error || !data.user) return go("/login?error=google");
 
   const { data: status, error: statusError } = await supabase.rpc("my_access_status");
-  if (statusError) {
+  if (statusError || status === "signed_out") {
     await supabase.auth.signOut();
     return go("/login?error=google");
   }
 
   if (status !== "ok") {
-    await createSupabaseAdmin()
+    const { error: logError } = await createSupabaseAdmin()
       .from("audit_log")
       .insert({
         actor_email: data.user.email ?? null,
@@ -1959,6 +1966,8 @@ export async function GET(request: NextRequest) {
         target_id: data.user.id,
         detail: { reason: status },
       });
+    // The person is still turned away; the missing audit row must not go unnoticed.
+    if (logError) console.error("auth.denied was not written to audit_log:", logError.message);
     await supabase.auth.signOut();
     return go(`/login?error=${status === "suspended" ? "suspended" : "not_permitted"}`);
   }
