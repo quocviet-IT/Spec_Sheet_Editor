@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -22,7 +29,7 @@ jobs:
       - run: npm run typecheck
       - name: Warn when SQL tests will be skipped
         if: ${{ env.HAS_DB != 'true' }}
-        run: echo "::warning::DATABASE_URL secret is not set - the 23 SQL tests are skipped in this run."
+        run: echo "::warning::DATABASE_URL secret is not set (always the case for pull requests from forks) - the SQL tests are skipped in this run."
       - name: Tests (SQL suites run only when the DATABASE_URL secret is set)
         run: npm test
         env:
