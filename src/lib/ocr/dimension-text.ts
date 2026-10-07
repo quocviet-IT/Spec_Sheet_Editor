@@ -1,11 +1,14 @@
-const DIMENSION = /^\d{1,2}\.\d{2}$/;
+/** One or two digits before the point (no leading zero except "0.xx"), exactly two after. */
+const DIMENSION = /^(0|[1-9]\d?)\.\d{2}$/;
 
 /**
- * A machine reading as a dimension value, or null (UC-04 step 4, TC-22). Readings of only 3–4 digits
- * lost their decimal point: "1630" becomes "16.30". The user still confirms every old value (BR-04).
+ * A machine reading as a dimension value, or null (UC-04 step 4, TC-22). Symbols are trimmed only at the
+ * ends ("R1.20", "Ø2.50", "16.30mm"); anything else inside means the reading is not number-shaped, so it
+ * is dropped rather than turned into a plausible wrong value. Readings of only 3–4 digits lost their
+ * decimal point: "1630" becomes "16.30". The user still confirms every old value (BR-04).
  */
 export function toDimension(text: string): string | null {
-  let t = text.replace(/,/g, ".").replace(/[^0-9.]/g, "");
-  if (/^\d{3,4}$/.test(t)) t = `${t.slice(0, -2)}.${t.slice(-2)}`;
-  return DIMENSION.test(t) ? t : null;
+  const t = text.replace(/^[^0-9]+/, "").replace(/[^0-9]+$/, "").replace(/,/g, ".");
+  const value = /^\d{3,4}$/.test(t) ? `${t.slice(0, -2)}.${t.slice(-2)}` : t;
+  return DIMENSION.test(value) ? value : null;
 }

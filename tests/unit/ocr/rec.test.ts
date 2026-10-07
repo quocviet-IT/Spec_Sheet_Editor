@@ -21,6 +21,23 @@ describe("recBatch", () => {
   it("never makes a batch narrower than 320 px", () => {
     expect(recBatch([createRaster(10, 10)]).dims).toEqual([1, 3, 48, 320]);
   });
+
+  it("writes B, G, R planes and keeps a fractional crop width", () => {
+    const crop = createRaster(25, 10); // ratio 2.5 → resized width ceil(48 × 2.5) = 120
+    for (let i = 0; i < crop.data.length; i += 4) {
+      crop.data[i] = 255; // R
+      crop.data[i + 1] = 0; // G
+      crop.data[i + 2] = 51; // B
+    }
+    const batch = recBatch([crop]);
+    const plane = 48 * 320;
+    expect(batch.dims).toEqual([1, 3, 48, 320]);
+    expect(batch.data[0]).toBeCloseTo(51 / 127.5 - 1, 6);
+    expect(batch.data[plane]).toBeCloseTo(-1, 6);
+    expect(batch.data[2 * plane]).toBeCloseTo(1, 6);
+    expect(batch.data[119]).toBeCloseTo(51 / 127.5 - 1, 6);
+    expect(batch.data[120]).toBe(0);
+  });
 });
 
 describe("ctcDecode", () => {
@@ -34,6 +51,15 @@ describe("ctcDecode", () => {
     expect(ctcDecode(probs, [1, steps.length, chars.length], chars)).toEqual([
       { text: "16.30", score: expect.closeTo(0.9, 6) },
     ]);
+  });
+
+  it("keeps a repeated character that a blank separates", () => {
+    const chars = buildAlphabet("1\n");
+    const probs = new Float32Array(3 * chars.length);
+    [1, 0, 1].forEach((c, t) => {
+      probs[t * chars.length + c] = 0.9;
+    });
+    expect(ctcDecode(probs, [1, 3, chars.length], chars)[0].text).toBe("11");
   });
 
   it("rejects a model whose class count does not match the alphabet", () => {

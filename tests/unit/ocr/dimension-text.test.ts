@@ -19,4 +19,23 @@ describe("toDimension (TC-22)", () => {
     expect(toDimension("SO")).toBeNull();
     expect(toDimension("")).toBeNull();
   });
+
+  it("trims symbols only at the ends", () => {
+    expect(toDimension("16.30mm")).toBe("16.30");
+    expect(toDimension("Ø2.50")).toBe("2.50");
+    expect(toDimension("16.30.")).toBe("16.30");
+  });
+
+  it("drops readings with letters inside instead of guessing", () => {
+    expect(toDimension("1l.30")).toBeNull();
+    expect(toDimension("1O30")).toBeNull();
+    expect(toDimension("16 30")).toBeNull();
+  });
+
+  it("rejects a leading zero except in 0.xx", () => {
+    expect(toDimension("0170")).toBeNull();
+    expect(toDimension("01.70")).toBeNull();
+    expect(toDimension("0.50")).toBe("0.50");
+    expect(toDimension("050")).toBe("0.50");
+  });
 });

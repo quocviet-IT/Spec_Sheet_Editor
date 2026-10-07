@@ -1738,6 +1738,23 @@ describe("recBatch", () => {
   it("never makes a batch narrower than 320 px", () => {
     expect(recBatch([createRaster(10, 10)]).dims).toEqual([1, 3, 48, 320]);
   });
+
+  it("writes B, G, R planes and keeps a fractional crop width", () => {
+    const crop = createRaster(25, 10); // ratio 2.5 → resized width ceil(48 × 2.5) = 120
+    for (let i = 0; i < crop.data.length; i += 4) {
+      crop.data[i] = 255; // R
+      crop.data[i + 1] = 0; // G
+      crop.data[i + 2] = 51; // B
+    }
+    const batch = recBatch([crop]);
+    const plane = 48 * 320;
+    expect(batch.dims).toEqual([1, 3, 48, 320]);
+    expect(batch.data[0]).toBeCloseTo(51 / 127.5 - 1, 6);
+    expect(batch.data[plane]).toBeCloseTo(-1, 6);
+    expect(batch.data[2 * plane]).toBeCloseTo(1, 6);
+    expect(batch.data[119]).toBeCloseTo(51 / 127.5 - 1, 6);
+    expect(batch.data[120]).toBe(0);
+  });
 });
 
 describe("ctcDecode", () => {
@@ -1751,6 +1768,15 @@ describe("ctcDecode", () => {
     expect(ctcDecode(probs, [1, steps.length, chars.length], chars)).toEqual([
       { text: "16.30", score: expect.closeTo(0.9, 6) },
     ]);
+  });
+
+  it("keeps a repeated character that a blank separates", () => {
+    const chars = buildAlphabet("1\n");
+    const probs = new Float32Array(3 * chars.length);
+    [1, 0, 1].forEach((c, t) => {
+      probs[t * chars.length + c] = 0.9;
+    });
+    expect(ctcDecode(probs, [1, 3, chars.length], chars)[0].text).toBe("11");
   });
 
   it("rejects a model whose class count does not match the alphabet", () => {
@@ -1794,6 +1820,25 @@ describe("toDimension (TC-22)", () => {
     expect(toDimension("1.2")).toBeNull();
     expect(toDimension("SO")).toBeNull();
     expect(toDimension("")).toBeNull();
+  });
+
+  it("trims symbols only at the ends", () => {
+    expect(toDimension("16.30mm")).toBe("16.30");
+    expect(toDimension("Ø2.50")).toBe("2.50");
+    expect(toDimension("16.30.")).toBe("16.30");
+  });
+
+  it("drops readings with letters inside instead of guessing", () => {
+    expect(toDimension("1l.30")).toBeNull();
+    expect(toDimension("1O30")).toBeNull();
+    expect(toDimension("16 30")).toBeNull();
+  });
+
+  it("rejects a leading zero except in 0.xx", () => {
+    expect(toDimension("0170")).toBeNull();
+    expect(toDimension("01.70")).toBeNull();
+    expect(toDimension("0.50")).toBe("0.50");
+    expect(toDimension("050")).toBe("0.50");
   });
 });
 ```
@@ -1882,23 +1927,26 @@ export function ctcDecode(probs: Float32Array, dims: readonly number[], chars: r
 `src/lib/ocr/dimension-text.ts`:
 
 ```ts
-const DIMENSION = /^\d{1,2}\.\d{2}$/;
+/** One or two digits before the point (no leading zero except "0.xx"), exactly two after. */
+const DIMENSION = /^(0|[1-9]\d?)\.\d{2}$/;
 
 /**
- * A machine reading as a dimension value, or null (UC-04 step 4, TC-22). Readings of only 3–4 digits
- * lost their decimal point: "1630" becomes "16.30". The user still confirms every old value (BR-04).
+ * A machine reading as a dimension value, or null (UC-04 step 4, TC-22). Symbols are trimmed only at the
+ * ends ("R1.20", "Ø2.50", "16.30mm"); anything else inside means the reading is not number-shaped, so it
+ * is dropped rather than turned into a plausible wrong value. Readings of only 3–4 digits lost their
+ * decimal point: "1630" becomes "16.30". The user still confirms every old value (BR-04).
  */
 export function toDimension(text: string): string | null {
-  let t = text.replace(/,/g, ".").replace(/[^0-9.]/g, "");
-  if (/^\d{3,4}$/.test(t)) t = `${t.slice(0, -2)}.${t.slice(-2)}`;
-  return DIMENSION.test(t) ? t : null;
+  const t = text.replace(/^[^0-9]+/, "").replace(/[^0-9]+$/, "").replace(/,/g, ".");
+  const value = /^\d{3,4}$/.test(t) ? `${t.slice(0, -2)}.${t.slice(-2)}` : t;
+  return DIMENSION.test(value) ? value : null;
 }
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run tests/unit/ocr/rec.test.ts tests/unit/ocr/dimension-text.test.ts`
-Expected: PASS (8 tests).
+Expected: PASS (13 tests).
 
 - [ ] **Step 5: Commit**
 
