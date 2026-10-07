@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+/* Light palette first; the dark block only redefines the same tokens. The spec sheet itself is paper
+   and stays white in both themes, so sheet colours are not tokens here. */
+:root {
+  --paper: #f5f7f5;
+  --surface: #ffffff;
+  --sunk: #edf1ee;
+  --ink: #16201b;
+  --ink-2: #47534d;
+  --ink-3: #66726c;
+  --line: #d5ddd8;
+  --accent: #1d6b4b;
+  --accent-ink: #ffffff;
+  --accent-soft: #e1efe7;
+  --mark: #1f55d6;
+  --edit: #a84e08;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --warn-soft: #fff4d6;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0f1412;
+    --surface: #161d1a;
+    --sunk: #1c2521;
+    --ink: #e3ebe6;
+    --ink-2: #a8b4ae;
+    --ink-3: #8b978f;
+    --line: #2a3530;
+    --accent: #62c194;
+    --accent-ink: #0a1510;
+    --accent-soft: #16291f;
+    --mark: #86a8ff;
+    --edit: #f4a35c;
+    --danger: #ff8d80;
+    --danger-soft: #3a1714;
+    --warn-soft: #2d240c;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-mark: var(--mark);
+  --color-edit: var(--edit);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn-soft: var(--warn-soft);
+  --font-sans: var(--font-be-vietnam), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
