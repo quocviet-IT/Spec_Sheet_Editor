@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HAS_DB: ${{ secrets.DATABASE_URL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Warn when SQL tests will be skipped
+        if: ${{ env.HAS_DB != 'true' }}
+        run: echo "::warning::DATABASE_URL secret is not set - the 23 SQL tests are skipped in this run."
+      - name: Tests (SQL suites run only when the DATABASE_URL secret is set)
+        run: npm test
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - run: npm run build
