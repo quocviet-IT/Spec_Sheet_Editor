@@ -101,6 +101,21 @@ describe.skipIf(!hasDb)("access rules (BR-08)", () => {
         select has_table_privilege('authenticated', 'public.spec_sheets', 'insert') as sheets_insert,
                has_function_privilege('authenticated', 'public.save_sheet(uuid, int, text, jsonb, jsonb)', 'execute') as save`;
       expect(q).toEqual({ sheets_insert: true, save: true });
+      const [s] = await tx<{ audit_insert: boolean; sheets_delete: boolean }[]>`
+        select has_table_privilege('service_role', 'public.audit_log', 'insert')    as audit_insert,
+               has_table_privilege('service_role', 'public.spec_sheets', 'delete')  as sheets_delete`;
+      expect(s).toEqual({ audit_insert: true, sheets_delete: true });
+    });
+  });
+
+  it("a function added by a later migration is not callable by clients until granted", async () => {
+    await rollback(async (tx) => {
+      await tx`create function public.zz_privilege_probe() returns int language sql as 'select 1'`;
+      const [p] = await tx<{ authed: boolean; anon: boolean; service: boolean }[]>`
+        select has_function_privilege('authenticated', 'public.zz_privilege_probe()', 'execute') as authed,
+               has_function_privilege('anon', 'public.zz_privilege_probe()', 'execute')          as anon,
+               has_function_privilege('service_role', 'public.zz_privilege_probe()', 'execute')  as service`;
+      expect(p).toEqual({ authed: false, anon: false, service: true });
     });
   });
 });

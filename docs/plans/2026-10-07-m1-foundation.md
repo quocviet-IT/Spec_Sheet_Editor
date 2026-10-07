@@ -20,7 +20,7 @@
 - Default permitted domain `ctyhp.vn`. Supabase region Singapore, Vercel `sin1`.
 - postgres.js connections: `max: 1`, `prepare: false` (Supabase pooler has 15 session slots).
 - Every page, server action and route handler that reads or writes data calls `requireUser()` / `requireAdmin()` itself. Layouts only render chrome: they do not re-run on client-side navigation, and actions and route handlers can be called without them. RLS stays the real gate.
-- Privileges are explicit: migration 0001 revokes Supabase's default grants from `anon`/`authenticated` and grants only what the app uses; a new table or function in a later migration must state its own grants.
+- Privileges are explicit: migration 0001 revokes Supabase's default grants from `anon`/`authenticated` and grants only what the app uses; a new table or function in a later migration must state its own grants. A new function is revoked from `public` by default; grant it to `authenticated` in its own migration when clients need it.
 - SQL tests touch the configured database only inside transactions that end in `ROLLBACK`.
 - Deviation from design Appendix A, deliberate: adds `my_access_status()` (the app needs to tell "suspended" from "not permitted"), the `spec-sheets` bucket insert, and the login error for a non-permitted account does not echo the email (no personal data in URLs). Also deliberate: `trg_sheet_guard` replaces the immutable-column trigger (a direct UPDATE can only trash or restore; content changes only through `save_sheet`; the database stamps who trashed a sheet), and `audit_log.actor_id` has no `on delete set null` (accounts are suspended, never deleted). Also deliberate: `is_allowed_user()` accepts only Google sessions (`app_metadata.provider = 'google'`); sheet rows must point at their own files (`spec_sheets_own_files`); `log_client_event` caps its detail at 2 KB and requires an existing sheet; admin functions raise `user_not_found` / `invalid_kind` instead of doing nothing.
 
@@ -803,6 +803,8 @@ create index audit_log_target on public.audit_log (target_type, target_id);
 -- ===== Access checks (BR-08) =====
 -- Google sign-in only: an email/password or anonymous session on a permitted domain is refused even
 -- if those providers are switched on by mistake (the email claim alone is not proof of the address).
+-- app_metadata.provider is the provider of the account's first sign-in; with only Google enabled
+-- (README, Setup step 2) that is always 'google'.
 create function public.is_allowed_user() returns boolean
 language sql stable security definer set search_path = public as $$
   with me as (
@@ -1094,13 +1096,15 @@ create policy sheets_update on public.spec_sheets for update to authenticated
 -- ===== Privileges =====
 -- RLS limits which rows; grants limit what a role may attempt at all. Stated here instead of relying
 -- on Supabase's default privileges, which give anon and authenticated everything (TRUNCATE included,
--- which RLS does not cover) and EXECUTE on every function. service_role keeps its defaults.
+-- which RLS does not cover) and EXECUTE on every function. service_role (the secret key) is granted explicitly below.
 revoke all on all tables    in schema public from anon, authenticated;
 revoke all on all sequences in schema public from anon, authenticated;
 revoke execute on all functions in schema public from public, anon, authenticated;
 alter default privileges in schema public revoke all on tables    from anon, authenticated;
 alter default privileges in schema public revoke all on sequences from anon, authenticated;
 alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
+-- Per-schema defaults only add to the global ones; PUBLIC's EXECUTE on new functions is global.
+alter default privileges revoke execute on functions from public;
 
 grant select on public.profiles, public.allowed_domains, public.allowed_emails,
                 public.app_settings, public.audit_log, public.spec_sheets to authenticated;
@@ -1113,6 +1117,15 @@ grant execute on function
   public.add_allowed(text, text, text), public.remove_allowed(text, text), public.set_setting(text, numeric),
   public.save_sheet(uuid, int, text, jsonb, jsonb), public.purge_sheet(uuid), public.log_maintenance(int, bigint)
   to authenticated;
+
+-- The secret-key client (logging rejected sign-ins, purge, orphan clean-up) must keep working even if
+-- the platform's default grants change.
+grant all on all tables    in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+grant execute on all functions in schema public to service_role;
+alter default privileges in schema public grant all on tables    to service_role;
+alter default privileges in schema public grant all on sequences to service_role;
+alter default privileges in schema public grant execute on functions to service_role;
 
 -- ===== Storage =====
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -1400,6 +1413,21 @@ describe.skipIf(!hasDb)("access rules (BR-08)", () => {
         select has_table_privilege('authenticated', 'public.spec_sheets', 'insert') as sheets_insert,
                has_function_privilege('authenticated', 'public.save_sheet(uuid, int, text, jsonb, jsonb)', 'execute') as save`;
       expect(q).toEqual({ sheets_insert: true, save: true });
+      const [s] = await tx<{ audit_insert: boolean; sheets_delete: boolean }[]>`
+        select has_table_privilege('service_role', 'public.audit_log', 'insert')    as audit_insert,
+               has_table_privilege('service_role', 'public.spec_sheets', 'delete')  as sheets_delete`;
+      expect(s).toEqual({ audit_insert: true, sheets_delete: true });
+    });
+  });
+
+  it("a function added by a later migration is not callable by clients until granted", async () => {
+    await rollback(async (tx) => {
+      await tx`create function public.zz_privilege_probe() returns int language sql as 'select 1'`;
+      const [p] = await tx<{ authed: boolean; anon: boolean; service: boolean }[]>`
+        select has_function_privilege('authenticated', 'public.zz_privilege_probe()', 'execute') as authed,
+               has_function_privilege('anon', 'public.zz_privilege_probe()', 'execute')          as anon,
+               has_function_privilege('service_role', 'public.zz_privilege_probe()', 'execute')  as service`;
+      expect(p).toEqual({ authed: false, anon: false, service: true });
     });
   });
 });
@@ -1694,7 +1722,7 @@ Expected: all SQL suites reported as skipped, exit code 0. (If `.env.local` defi
 - [ ] **Step 4: Run against the dev database**
 
 Run: `npm run db:migrate && npx vitest run tests/sql`
-Expected: `database is up to date`, then PASS — 4 files, 29 tests. Paste the full Vitest summary into the task report; do not trim it.
+Expected: `database is up to date`, then PASS — 4 files, 30 tests. Paste the full Vitest summary into the task report; do not trim it.
 
 - [ ] **Step 5: Commit**
 
@@ -2408,7 +2436,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
@@ -2518,7 +2546,7 @@ git commit -m "ci: lint, typecheck, tests and build on every push; README setup 
 ## M1 exit checklist
 
 - [ ] `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` all green locally and in CI.
-- [ ] SQL tests (29) green against the dev project — full Vitest summary pasted in the report.
+- [ ] SQL tests (30) green against the dev project — full Vitest summary pasted in the report.
 - [ ] Manual check (Task 7 Step 6) done in VI and EN with screenshots.
 - [ ] Diff scanned for `SO2`, `MO2`, `sb_secret_`, `service_role`, `.env.local` before push.
 - [ ] Next: write `2026-10-xx-m2-browser-ocr.md`.

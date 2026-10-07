@@ -78,6 +78,8 @@ create index audit_log_target on public.audit_log (target_type, target_id);
 -- ===== Access checks (BR-08) =====
 -- Google sign-in only: an email/password or anonymous session on a permitted domain is refused even
 -- if those providers are switched on by mistake (the email claim alone is not proof of the address).
+-- app_metadata.provider is the provider of the account's first sign-in; with only Google enabled
+-- (README, Setup step 2) that is always 'google'.
 create function public.is_allowed_user() returns boolean
 language sql stable security definer set search_path = public as $$
   with me as (
@@ -369,13 +371,15 @@ create policy sheets_update on public.spec_sheets for update to authenticated
 -- ===== Privileges =====
 -- RLS limits which rows; grants limit what a role may attempt at all. Stated here instead of relying
 -- on Supabase's default privileges, which give anon and authenticated everything (TRUNCATE included,
--- which RLS does not cover) and EXECUTE on every function. service_role keeps its defaults.
+-- which RLS does not cover) and EXECUTE on every function. service_role (the secret key) is granted explicitly below.
 revoke all on all tables    in schema public from anon, authenticated;
 revoke all on all sequences in schema public from anon, authenticated;
 revoke execute on all functions in schema public from public, anon, authenticated;
 alter default privileges in schema public revoke all on tables    from anon, authenticated;
 alter default privileges in schema public revoke all on sequences from anon, authenticated;
 alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
+-- Per-schema defaults only add to the global ones; PUBLIC's EXECUTE on new functions is global.
+alter default privileges revoke execute on functions from public;
 
 grant select on public.profiles, public.allowed_domains, public.allowed_emails,
                 public.app_settings, public.audit_log, public.spec_sheets to authenticated;
@@ -388,6 +392,15 @@ grant execute on function
   public.add_allowed(text, text, text), public.remove_allowed(text, text), public.set_setting(text, numeric),
   public.save_sheet(uuid, int, text, jsonb, jsonb), public.purge_sheet(uuid), public.log_maintenance(int, bigint)
   to authenticated;
+
+-- The secret-key client (logging rejected sign-ins, purge, orphan clean-up) must keep working even if
+-- the platform's default grants change.
+grant all on all tables    in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+grant execute on all functions in schema public to service_role;
+alter default privileges in schema public grant all on tables    to service_role;
+alter default privileges in schema public grant all on sequences to service_role;
+alter default privileges in schema public grant execute on functions to service_role;
 
 -- ===== Storage =====
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
