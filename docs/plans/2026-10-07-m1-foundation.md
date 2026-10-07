@@ -6,7 +6,7 @@
 
 **Architecture:** Next.js App Router; Supabase Auth (Google) via `@supabase/ssr` cookies, refreshed in `src/proxy.ts`. All authorisation lives in the database (`is_allowed_user()`, `is_admin()`, RLS); the app asks the database (`my_access_status()`, `profiles`) and turns the answer into allow / redirect / 404 with one pure function (`decideAccess`). Migrations are plain SQL applied by a small postgres.js runner over the Supabase session pooler; SQL tests run inside transactions that are always rolled back.
 
-**Tech Stack:** Next.js 16.3.3, React 19.2.8, TypeScript 5, Tailwind CSS 4, Zod 4, @supabase/ssr 0.12, @supabase/supabase-js 2.112, postgres 3.4 (scripts/tests), Vitest 4, tsx, dotenv.
+**Tech Stack:** Next.js 16.3.8, React 19.2.8, TypeScript 5, Tailwind CSS 4, Zod 4, @supabase/ssr 0.12, @supabase/supabase-js 2.112, postgres 3.4 (scripts/tests), Vitest 4, tsx, dotenv.
 
 **Spec:** [`docs/design/spec-sheet-editor-design.md`](../design/spec-sheet-editor-design.md) — chapters 2.4–2.5, 3, 5.4, 6 and Appendix A. Roadmap: [`2026-10-07-spec-sheet-editor-roadmap.md`](2026-10-07-spec-sheet-editor-roadmap.md).
 
@@ -76,7 +76,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.112.4",
-    "next": "16.3.3",
+    "next": "16.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",
@@ -89,7 +89,7 @@
     "@types/react-dom": "^19",
     "dotenv": "^17.4.2",
     "eslint": "^9",
-    "eslint-config-next": "16.3.3",
+    "eslint-config-next": "16.3.8",
     "postgres": "^3.4.9",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
