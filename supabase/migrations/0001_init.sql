@@ -61,7 +61,7 @@ create index spec_sheets_trash on public.spec_sheets (deleted_at desc) where del
 create table public.audit_log (
   id          bigint generated always as identity primary key,
   occurred_at timestamptz not null default now(),
-  actor_id    uuid references public.profiles (id) on delete set null,
+  actor_id    uuid references public.profiles (id),  -- accounts are suspended, never deleted (BR-13)
   actor_email text,
   action      text not null,
   target_type text,
@@ -220,17 +220,43 @@ begin
 end $$;
 
 -- ===== Sheets =====
-create function public.trg_sheet_immutable() returns trigger language plpgsql as $$
+-- BR-10/BR-15: a direct UPDATE may only move a sheet to or from the Trash. Content changes go through
+-- save_sheet, which raises the version by exactly one (and so is audited). Who trashed a sheet, and
+-- when, is recorded here rather than taken from the client.
+create function public.trg_sheet_guard() returns trigger language plpgsql as $$
+declare
+  v_content boolean := new.name is distinct from old.name or new.detections <> old.detections
+                       or new.edits <> old.edits or new.version <> old.version;
 begin
   if new.id <> old.id or new.created_by <> old.created_by or new.created_at <> old.created_at
      or new.source_path <> old.source_path or new.thumb_path <> old.thumb_path
-     or new.source_type <> old.source_type then
+     or new.source_type <> old.source_type
+     or new.page_px_w <> old.page_px_w or new.page_px_h <> old.page_px_h then
     raise exception 'immutable_column';
   end if;
+
+  if (old.deleted_at is null) <> (new.deleted_at is null) then
+    if v_content then raise exception 'trash_with_changes'; end if;
+    if new.deleted_at is not null then
+      new.deleted_at := now();
+      new.deleted_by := auth.uid();
+    else
+      new.deleted_by := null;
+    end if;
+  else
+    new.deleted_at := old.deleted_at;
+    new.deleted_by := old.deleted_by;
+    if v_content then
+      if old.deleted_at is not null then raise exception 'sheet_in_trash'; end if;
+      if new.version <> old.version + 1 then raise exception 'version_must_increment'; end if;
+    end if;
+  end if;
+
+  new.updated_at := now();
   return new;
 end $$;
-create trigger sheet_immutable before update on public.spec_sheets
-  for each row execute function public.trg_sheet_immutable();
+create trigger sheet_guard before update on public.spec_sheets
+  for each row execute function public.trg_sheet_guard();
 
 create function public.trg_sheet_audit() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -328,7 +354,7 @@ create policy spec_files_read on storage.objects for select to authenticated
   using (bucket_id = 'spec-sheets' and public.is_allowed_user());
 create policy spec_files_add  on storage.objects for insert to authenticated
   with check (bucket_id = 'spec-sheets' and public.is_allowed_user()
-              and (storage.foldername(name))[1] ~ '^[0-9a-f-]{36}$');
+              and (storage.foldername(name))[1] ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
 
 -- First Admin: run once, after that person's first sign-in
 --   update public.profiles set role = 'admin' where email = '<admin-email>';

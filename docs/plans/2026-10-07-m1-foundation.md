@@ -20,7 +20,7 @@
 - Default permitted domain `ctyhp.vn`. Supabase region Singapore, Vercel `sin1`.
 - postgres.js connections: `max: 1`, `prepare: false` (Supabase pooler has 15 session slots).
 - SQL tests touch the configured database only inside transactions that end in `ROLLBACK`.
-- Deviation from design Appendix A, deliberate: adds `my_access_status()` (the app needs to tell "suspended" from "not permitted"), the `spec-sheets` bucket insert, and the login error for a non-permitted account does not echo the email (no personal data in URLs).
+- Deviation from design Appendix A, deliberate: adds `my_access_status()` (the app needs to tell "suspended" from "not permitted"), the `spec-sheets` bucket insert, and the login error for a non-permitted account does not echo the email (no personal data in URLs). Also deliberate: `trg_sheet_guard` replaces the immutable-column trigger (a direct UPDATE can only trash or restore; content changes only through `save_sheet`; the database stamps who trashed a sheet), and `audit_log.actor_id` has no `on delete set null` (accounts are suspended, never deleted).
 
 ## File structure
 
@@ -770,7 +770,7 @@ create index spec_sheets_trash on public.spec_sheets (deleted_at desc) where del
 create table public.audit_log (
   id          bigint generated always as identity primary key,
   occurred_at timestamptz not null default now(),
-  actor_id    uuid references public.profiles (id) on delete set null,
+  actor_id    uuid references public.profiles (id),  -- accounts are suspended, never deleted (BR-13)
   actor_email text,
   action      text not null,
   target_type text,
@@ -929,17 +929,43 @@ begin
 end $$;
 
 -- ===== Sheets =====
-create function public.trg_sheet_immutable() returns trigger language plpgsql as $$
+-- BR-10/BR-15: a direct UPDATE may only move a sheet to or from the Trash. Content changes go through
+-- save_sheet, which raises the version by exactly one (and so is audited). Who trashed a sheet, and
+-- when, is recorded here rather than taken from the client.
+create function public.trg_sheet_guard() returns trigger language plpgsql as $$
+declare
+  v_content boolean := new.name is distinct from old.name or new.detections <> old.detections
+                       or new.edits <> old.edits or new.version <> old.version;
 begin
   if new.id <> old.id or new.created_by <> old.created_by or new.created_at <> old.created_at
      or new.source_path <> old.source_path or new.thumb_path <> old.thumb_path
-     or new.source_type <> old.source_type then
+     or new.source_type <> old.source_type
+     or new.page_px_w <> old.page_px_w or new.page_px_h <> old.page_px_h then
     raise exception 'immutable_column';
   end if;
+
+  if (old.deleted_at is null) <> (new.deleted_at is null) then
+    if v_content then raise exception 'trash_with_changes'; end if;
+    if new.deleted_at is not null then
+      new.deleted_at := now();
+      new.deleted_by := auth.uid();
+    else
+      new.deleted_by := null;
+    end if;
+  else
+    new.deleted_at := old.deleted_at;
+    new.deleted_by := old.deleted_by;
+    if v_content then
+      if old.deleted_at is not null then raise exception 'sheet_in_trash'; end if;
+      if new.version <> old.version + 1 then raise exception 'version_must_increment'; end if;
+    end if;
+  end if;
+
+  new.updated_at := now();
   return new;
 end $$;
-create trigger sheet_immutable before update on public.spec_sheets
-  for each row execute function public.trg_sheet_immutable();
+create trigger sheet_guard before update on public.spec_sheets
+  for each row execute function public.trg_sheet_guard();
 
 create function public.trg_sheet_audit() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -1037,7 +1063,7 @@ create policy spec_files_read on storage.objects for select to authenticated
   using (bucket_id = 'spec-sheets' and public.is_allowed_user());
 create policy spec_files_add  on storage.objects for insert to authenticated
   with check (bucket_id = 'spec-sheets' and public.is_allowed_user()
-              and (storage.foldername(name))[1] ~ '^[0-9a-f-]{36}$');
+              and (storage.foldername(name))[1] ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
 
 -- First Admin: run once, after that person's first sign-in
 --   update public.profiles set role = 'admin' where email = '<admin-email>';
@@ -1365,7 +1391,7 @@ describe.skipIf(!hasDb)("admin functions", () => {
 `tests/sql/audit.test.ts` (TC-69, TC-70, TC-71):
 ```ts
 import { afterAll, describe, expect, it } from "vitest";
-import { actAs, closeDb, expectError, hasDb, makeUser, rollback, staffEmail } from "./harness";
+import { actAs, actAsOwner, closeDb, expectError, hasDb, makeUser, rollback, staffEmail } from "./harness";
 
 afterAll(closeDb);
 
@@ -1397,6 +1423,16 @@ describe.skipIf(!hasDb)("audit log (BR-15)", () => {
       await tx`select public.touch_profile()`; // writes an auth.login row for this user
       const rows = await tx`select id from public.audit_log`;
       expect(rows.length).toBe(0);
+    });
+  });
+
+  it("an account with audit history cannot be deleted; it is suspended instead (BR-13)", async () => {
+    await rollback(async (tx) => {
+      const staff = await makeUser(tx, staffEmail());
+      await actAs(tx, staff);
+      await tx`select public.touch_profile()`; // writes an auth.login row for this user
+      await actAsOwner(tx);
+      await expectError(tx, (sp) => sp`delete from public.profiles where id = ${staff.id}`, "audit_log_actor_id_fkey");
     });
   });
 });
@@ -1449,6 +1485,46 @@ describe.skipIf(!hasDb)("sheets", () => {
     });
   });
 
+  it("a direct edit without a version bump is refused: content changes go through save_sheet (BR-10)", async () => {
+    await rollback(async (tx) => {
+      const a = await makeUser(tx, staffEmail());
+      await actAs(tx, a);
+      const id = await insertSheet(tx, a);
+      await expectError(
+        tx,
+        (sp) => sp`update public.spec_sheets set edits = '[{"x":9}]'::jsonb, updated_by = ${a.id} where id = ${id}`,
+        "version_must_increment",
+      );
+    });
+  });
+
+  it("a sheet in the Trash cannot be edited", async () => {
+    await rollback(async (tx) => {
+      const a = await makeUser(tx, staffEmail());
+      await actAs(tx, a);
+      const id = await insertSheet(tx, a);
+      await tx`update public.spec_sheets set deleted_at = now(), updated_by = ${a.id} where id = ${id}`;
+      await expectError(
+        tx,
+        (sp) => sp`update public.spec_sheets set edits = '[{"x":9}]'::jsonb, version = 2, updated_by = ${a.id} where id = ${id}`,
+        "sheet_in_trash",
+      );
+    });
+  });
+
+  it("the database, not the client, records who moved a sheet to the Trash and when", async () => {
+    await rollback(async (tx) => {
+      const a = await makeUser(tx, staffEmail());
+      const b = await makeUser(tx, staffEmail());
+      await actAs(tx, a);
+      const id = await insertSheet(tx, a);
+      await tx`update public.spec_sheets set deleted_at = '2000-01-01', deleted_by = ${b.id}, updated_by = ${a.id} where id = ${id}`;
+      const [row] = await tx<{ deleted_by: string; stamped_now: boolean }[]>`
+        select deleted_by, deleted_at = now() as stamped_now from public.spec_sheets where id = ${id}`;
+      expect(row).toEqual({ deleted_by: a.id, stamped_now: true });
+    });
+  });
+
   it("upload, save, trash and restore each write exactly one audit row with the actor", async () => {
     await rollback(async (tx) => {
       const a = await makeUser(tx, staffEmail());
@@ -1475,7 +1551,7 @@ Expected: all SQL suites reported as skipped, exit code 0. (If `.env.local` defi
 - [ ] **Step 4: Run against the dev database**
 
 Run: `npm run db:migrate && npx vitest run tests/sql`
-Expected: `database is up to date`, then PASS — 4 files, 19 tests. Paste the full Vitest summary into the task report; do not trim it.
+Expected: `database is up to date`, then PASS — 4 files, 23 tests. Paste the full Vitest summary into the task report; do not trim it.
 
 - [ ] **Step 5: Commit**
 
@@ -2242,7 +2318,7 @@ git commit -m "ci: lint, typecheck, tests and build on every push; README setup 
 ## M1 exit checklist
 
 - [ ] `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` all green locally and in CI.
-- [ ] SQL tests (19) green against the dev project — full Vitest summary pasted in the report.
+- [ ] SQL tests (23) green against the dev project — full Vitest summary pasted in the report.
 - [ ] Manual check (Task 7 Step 6) done in VI and EN with screenshots.
 - [ ] Diff scanned for `SO2`, `MO2`, `sb_secret_`, `service_role`, `.env.local` before push.
 - [ ] Next: write `2026-10-xx-m2-browser-ocr.md`.
