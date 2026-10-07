@@ -82,6 +82,7 @@ keep PP-OCRv4 small. Details: `research/ocr-bakeoff/README.md`, round 3.
 - M3: merge scan readings by box overlap instead of centre distance; clamp boxes to the page before converting them to the design's fractional boxes.
 - M3/M4: Worker errors carry a typed code (model download, runtime download, init failed) mapped to dictionary strings (TC-25); time clicks on the main thread for TC-24; do not send clicks while a scan runs (or stop the scan by disposing the client).
 - M4: tighten boxes to the digits before masking (UC-04 step 5); draw at the reading's `angle` along its `quad`.
+- M4: `quad` keeps the detector's corner order, not the text's (for a tall or upside-down read its first edge is the text's height); derive the design's `{cx, cy, w, h}` from `quad` and `angle` with one tested helper. Cancelling a scan means disposing the client and starting a new one (models reload in about 2 s from cache).
 - M7: the nonce-based CSP must allow the Blob-URL runtime (`worker-src 'self' blob:`, `script-src blob:`, `'wasm-unsafe-eval'`); serve the runtime from a versioned folder with an immutable cache; ship the Apache-2.0 licence text with the models; gate `/dev/*` with `requireAdmin()` if ENABLE_DEV_PAGES is ever set in production; note that Safari (no COEP credentialless) runs OCR on one thread.
 
 ### Prerequisites carried into M2
