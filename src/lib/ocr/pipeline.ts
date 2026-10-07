@@ -13,7 +13,15 @@ export type OcrModels = {
 };
 
 export type Reading = { text: string; score: number; quad: Quad };
-export type RegionReader = (models: OcrModels, image: Raster, opts?: { bothDirections?: boolean }) => Promise<Reading[]>;
+/**
+ * bothDirections: also read each crop upside down. With accept, only crops whose upright reading is not
+ * accepted are re-read, and the upside-down reading wins when it is accepted or more confident.
+ */
+export type RegionReader = (
+  models: OcrModels,
+  image: Raster,
+  opts?: { bothDirections?: boolean; accept?: (text: string) => boolean },
+) => Promise<Reading[]>;
 
 /** RapidOCR Global.text_score. */
 export const MIN_TEXT_SCORE = 0.5;
@@ -63,7 +71,7 @@ export async function recognizeCrops(models: OcrModels, crops: readonly Raster[]
 /**
  * Detects and reads every text line in the image: RapidOCR's pipeline without the 180° classifier
  * (callers turn the image themselves). Quads are in input pixels; readings under MIN_TEXT_SCORE are
- * dropped. With bothDirections each crop is also read upside down and the better reading kept.
+ * dropped. With bothDirections each crop is also read upside down (only those not accepted, when accept is given) and the better reading kept.
  */
 export const readRegion: RegionReader = async (models, image, opts = {}) => {
   const fitted = fitWithinBounds(image);
@@ -75,10 +83,16 @@ export const readRegion: RegionReader = async (models, image, opts = {}) => {
   if (boxes.length === 0) return [];
 
   const crops = boxes.map((box) => cropQuad(padded.raster, box.quad));
-  let texts = await recognizeCrops(models, crops);
+  const texts = await recognizeCrops(models, crops);
   if (opts.bothDirections) {
-    const flipped = await recognizeCrops(models, crops.map(rotate180));
-    texts = texts.map((t, i) => (flipped[i].score > t.score ? flipped[i] : t));
+    const accept = opts.accept ?? (() => false);
+    const retry = texts.flatMap((t, i) => (accept(t.text) ? [] : [i]));
+    if (retry.length > 0) {
+      const flipped = await recognizeCrops(models, retry.map((i) => rotate180(crops[i])));
+      retry.forEach((i, k) => {
+        if (accept(flipped[k].text) || flipped[k].score > texts[i].score) texts[i] = flipped[k];
+      });
+    }
   }
 
   return boxes

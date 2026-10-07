@@ -96,4 +96,15 @@ describe("readRegion", () => {
     expect(readings[0].text).toBe("3.00");
     expect(readings[0].score).toBeCloseTo(0.95, 2);
   });
+
+  it("with accept, re-reads upside down only what was not accepted", async () => {
+    const accepted = fakeModels([{ text: "16.30", score: 0.6 }]);
+    await readRegion(accepted, createRaster(64, 32), { bothDirections: true, accept: (t) => t === "16.30" });
+    expect(accepted.recCalls).toBe(1);
+
+    const rejected = fakeModels([{ text: "3.0", score: 0.9 }, { text: "16.30", score: 0.7 }]);
+    const readings = await readRegion(rejected, createRaster(64, 32), { bothDirections: true, accept: (t) => t === "16.30" });
+    expect(rejected.recCalls).toBe(2);
+    expect(readings[0].text).toBe("16.30");
+  });
 });

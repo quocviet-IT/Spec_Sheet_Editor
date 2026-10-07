@@ -93,10 +93,10 @@ export function Bench() {
 
   async function showSample(blob: Blob) {
     const raster = await blobToRaster(blob);
+    await client.current?.setPage(raster);
     setPage(raster);
     setScan(null);
     setClicks(null);
-    await client.current?.setPage(raster);
   }
 
   const pickSample = (file: File) => run("Reading the sample", () => showSample(file));
@@ -149,7 +149,7 @@ export function Bench() {
           {(["det", "rec", "keys"] as const).map((kind) => (
             <label key={kind} className="flex flex-col gap-1">
               <span>{kind === "keys" ? "Keys file (.txt)" : `${kind} model (.onnx)`}</span>
-              <input type="file" accept={kind === "keys" ? ".txt" : ".onnx"} onChange={(e) => setFiles((f) => ({ ...f, [kind]: e.target.files?.[0] }))} />
+              <input type="file" accept={kind === "keys" ? ".txt" : ".onnx"} disabled={busy !== null} onChange={(e) => setFiles((f) => ({ ...f, [kind]: e.target.files?.[0] }))} />
             </label>
           ))}
         </div>
@@ -175,6 +175,7 @@ export function Bench() {
             <input
               type="file"
               accept="image/png,image/jpeg"
+              disabled={busy !== null}
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) void pickSample(file);

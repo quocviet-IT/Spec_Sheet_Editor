@@ -1,13 +1,13 @@
 import { toDimension } from "./dimension-text";
 import { bounds, rectCentre, type Point, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type RegionReader } from "./pipeline";
-import { crop, resizeBilinear, rotateExpand, unrotatePoint, type Raster } from "./raster";
+import { crop, resizeBicubic, rotateExpand, unrotatePoint, type Raster } from "./raster";
 
 /** UC-06 step 2: the square around a click, as a fraction of the page width, scaled to 256 × 256. */
 export const CLICK_SIDE_FRACTION = 0.056;
 export const CLICK_SIZE = 256;
-/** UC-06: 0° first, then ±60° and ±90° in turn (degrees counter-clockwise). */
-export const CLICK_ANGLES = [0, 60, -60, 90, -90] as const;
+/** UC-06: upright first, then the two vertical turns, then the diagonals (degrees counter-clockwise). */
+export const CLICK_ANGLES = [0, -90, 90, 60, -60] as const;
 /** NFR-01 / TC-24. */
 export const CLICK_DEADLINE_MS = 5000;
 
@@ -29,15 +29,19 @@ export async function readAtPoint(
   const started = performance.now();
   const side = Math.round(CLICK_SIDE_FRACTION * page.width);
   const origin = { x: Math.round(point.x - side / 2), y: Math.round(point.y - side / 2) };
-  const square = resizeBilinear(crop(page, { ...origin, w: side, h: side }), CLICK_SIZE, CLICK_SIZE);
+  const square = resizeBicubic(crop(page, { ...origin, w: side, h: side }), CLICK_SIZE, CLICK_SIZE);
   const scale = side / CLICK_SIZE;
 
   let anglesTried = 0;
+  let longestAngleMs = 0;
   for (const angle of CLICK_ANGLES) {
-    if (anglesTried > 0 && performance.now() - started > deadlineMs) break;
+    // Do not start an angle that cannot finish before the deadline (TC-24).
+    if (anglesTried > 0 && performance.now() - started + longestAngleMs > deadlineMs) break;
     anglesTried++;
+    const angleStarted = performance.now();
     const image = angle === 0 ? square : rotateExpand(square, angle);
-    const readings = await read(models, image, { bothDirections: true });
+    const readings = await read(models, image, { bothDirections: true, accept: (text) => toDimension(text) !== null });
+    longestAngleMs = Math.max(longestAngleMs, performance.now() - angleStarted);
 
     let best: ClickReading | null = null;
     let bestDistance = Infinity;
@@ -62,7 +66,6 @@ export async function readAtPoint(
       }
     }
     if (best !== null) return { reading: best, ms: performance.now() - started, anglesTried };
-    if (performance.now() - started > deadlineMs) break;
   }
   return { reading: null, ms: performance.now() - started, anglesTried };
 }

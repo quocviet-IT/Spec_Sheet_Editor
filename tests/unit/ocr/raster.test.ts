@@ -4,6 +4,7 @@ import {
   createRaster,
   crop,
   cropQuad,
+  resizeBicubic,
   resizeBilinear,
   rotate180,
   rotate90ccw,
@@ -100,5 +101,24 @@ describe("toBgrCHW", () => {
     const r = createRaster(1, 1);
     r.data.set([255, 0, 0, 255]);
     expect(Array.from(toBgrCHW(r))).toEqual([-1, -1, 1]);
+  });
+});
+
+describe("resizeBicubic", () => {
+  const near = (actual: number[][], expected: number[][]) =>
+    actual.forEach((row, y) => row.forEach((v, x) => expect(Math.abs(v - expected[y][x])).toBeLessThanOrEqual(1)));
+
+  it("matches Pillow's BICUBIC when enlarging and shrinking", () => {
+    near(levels(resizeBicubic(grey([[0, 255, 0, 255]]), 8, 1)), [[0, 54, 216, 215, 40, 39, 201, 255]]);
+    near(levels(resizeBicubic(grey([[10, 20, 30, 40, 50, 60, 70, 80]]), 3, 1)), [[19, 45, 71]]);
+    near(levels(resizeBicubic(grey([[0, 0], [255, 255]]), 2, 5)), [[0, 0], [17, 17], [128, 128], [238, 238], [255, 255]]);
+  });
+
+  it("keeps a flat image flat", () => {
+    expect(levels(resizeBicubic(grey([[77, 77], [77, 77]]), 5, 3))).toEqual([
+      [77, 77, 77, 77, 77],
+      [77, 77, 77, 77, 77],
+      [77, 77, 77, 77, 77],
+    ]);
   });
 });

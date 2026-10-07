@@ -57,7 +57,7 @@ describe("readAtPoint (UC-06)", () => {
     let calls = 0;
     const read: RegionReader = async (_m, image) => {
       calls++;
-      if (calls < 4) return []; // 0°, 60°, -60° read nothing; 90° is the fourth angle
+      if (calls < 3) return []; // 0° and -90° read nothing; 90° is the third angle
       expect([image.width, image.height]).toEqual([256, 256]);
       return [{ text: "2.50", score: 0.9, quad: [{ x: 96, y: 112 }, { x: 160, y: 112 }, { x: 160, y: 144 }, { x: 96, y: 144 }] }];
     };
@@ -70,5 +70,31 @@ describe("readAtPoint (UC-06)", () => {
     expect(box.y).toBeCloseTo(592, 6);
     expect(box.w).toBeCloseTo(8, 6);
     expect(box.h).toBeCloseTo(16, 6);
+  });
+
+  it("tries upright, then vertical, then diagonal", () => {
+    expect([...CLICK_ANGLES]).toEqual([0, -90, 90, 60, -60]);
+  });
+
+  it("does not start an angle that cannot finish before the deadline", async () => {
+    const read: RegionReader = async () => {
+      await new Promise((r) => setTimeout(r, 40));
+      return [];
+    };
+    const result = await readAtPoint(models, page, { x: 300, y: 600 }, 70, read);
+    expect(result.anglesTried).toBe(1);
+    expect(result.reading).toBeNull();
+    expect(result.ms).toBeLessThan(70);
+  });
+
+  it("asks the reader to re-read upside down only non-dimensions", async () => {
+    let accept: ((text: string) => boolean) | undefined;
+    const read: RegionReader = async (_m, _image, opts) => {
+      accept = opts?.accept;
+      return [];
+    };
+    await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
+    expect(accept?.("1630")).toBe(true);
+    expect(accept?.("1.5p")).toBe(false);
   });
 });

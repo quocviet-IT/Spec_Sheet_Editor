@@ -1,7 +1,7 @@
 import { toDimension } from "./dimension-text";
 import { bounds, rectCentre, type Point, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type Reading, type RegionReader } from "./pipeline";
-import { crop, resizeBilinear, rotate90cw, type Raster } from "./raster";
+import { crop, resizeBicubic, rotate90cw, type Raster } from "./raster";
 
 /** A value found on the sheet. `box` is in page pixels; `angle` follows the design (-90 = vertical, read bottom-up). */
 export type Detection = { value: string; text: string; score: number; box: Rect; angle: 0 | -90 };
@@ -37,7 +37,7 @@ export async function scanArea(
   const frame = crop(page, area);
   const width = Math.round(targetWidth);
   const height = Math.round(frame.height * (width / frame.width));
-  const big = resizeBilinear(frame, width, height);
+  const big = resizeBicubic(frame, width, height);
   const toPage = (p: Point): Point => ({ x: area.x + (p.x * frame.width) / width, y: area.y + (p.y * frame.height) / height });
 
   const t0 = performance.now();
