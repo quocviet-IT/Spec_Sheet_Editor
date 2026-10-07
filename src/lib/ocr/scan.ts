@@ -7,7 +7,11 @@ import { crop, resizeBicubic, rotate90cw, type Raster } from "./raster";
 export type Detection = { value: string; text: string; score: number; box: Rect; angle: 0 | -90 };
 export type ScanResult = { detections: Detection[]; timing: { horizontalMs: number; verticalMs: number } };
 
-/** UC-04 step 3: the drawing area is scaled to about this width before scanning. */
+/**
+ * UC-04 step 3: the drawing area is enlarged by the whole number that brings it closest to this width
+ * (at least 1). A whole-number factor keeps every source pixel on the grid: on the sample sheet,
+ * 708 px × 3 finds 1.50 where 708 → 2100 px does not.
+ */
 export const SCAN_TARGET_WIDTH = 2100;
 /** Readings closer than this (fraction of the page width) are one value: 20 px on the 1135-px sample. */
 export const MERGE_DISTANCE = 20 / 1135;
@@ -35,8 +39,9 @@ export async function scanArea(
   read: RegionReader = readRegion,
 ): Promise<ScanResult> {
   const frame = crop(page, area);
-  const width = Math.round(targetWidth);
-  const height = Math.round(frame.height * (width / frame.width));
+  const factor = Math.max(1, Math.round(targetWidth / frame.width));
+  const width = frame.width * factor;
+  const height = frame.height * factor;
   const big = resizeBicubic(frame, width, height);
   const toPage = (p: Point): Point => ({ x: area.x + (p.x * frame.width) / width, y: area.y + (p.y * frame.height) / height });
 

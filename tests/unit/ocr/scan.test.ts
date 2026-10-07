@@ -34,6 +34,19 @@ describe("scanArea", () => {
     expect(upright.box.w).toBeCloseTo(5, 6);
     expect(upright.box.h).toBeCloseTo(5, 6);
   });
+
+  it("enlarges by the whole number nearest the target width", async () => {
+    const widths: number[] = [];
+    const read: RegionReader = async (_models, image) => {
+      widths.push(image.width);
+      return [];
+    };
+    await scanArea(models, createRaster(400, 300), { x: 10, y: 10, w: 100, h: 50 }, 290, read);
+    expect(widths).toEqual([300, 150]); // × 3: upright 300 × 150, then turned 150 × 300
+    widths.length = 0;
+    await scanArea(models, createRaster(400, 300), { x: 10, y: 10, w: 300, h: 50 }, 100, read);
+    expect(widths).toEqual([300, 50]); // never shrinks: × 1
+  });
 });
 
 describe("mergeOverlapping", () => {

@@ -3350,6 +3350,61 @@ The controller then re-runs the bench (Task 7 Steps 2–5).
 
 ---
 
+### Task 7b: Enlarge the scan by a whole number
+
+Second office-PC run after Task 7a: the scan still missed 1.50. Tracing the clockwise pass in Node:
+at 708 px × 3 = 2124 px the detector's box covers "1.50" and the recogniser reads "1.50" (0.99); at
+708 → 2100 px (× 2.966) the box is cut and it reads ".50". A whole-number factor keeps every source pixel
+on the grid. UC-04 says "about 2100 px", which the nearest whole-number factor satisfies.
+
+#### `src/lib/ocr/scan.ts`
+
+Replace the `SCAN_TARGET_WIDTH` doc comment:
+
+```ts
+/**
+ * UC-04 step 3: the drawing area is enlarged by the whole number that brings it closest to this width
+ * (at least 1). A whole-number factor keeps every source pixel on the grid: on the sample sheet,
+ * 708 px × 3 finds 1.50 where 708 → 2100 px does not.
+ */
+```
+
+In `scanArea`, replace:
+
+```ts
+  const width = Math.round(targetWidth);
+  const height = Math.round(frame.height * (width / frame.width));
+```
+
+with:
+
+```ts
+  const factor = Math.max(1, Math.round(targetWidth / frame.width));
+  const width = frame.width * factor;
+  const height = frame.height * factor;
+```
+
+#### `tests/unit/ocr/scan.test.ts`
+
+Add inside `describe("scanArea", …)`:
+
+```ts
+  it("enlarges by the whole number nearest the target width", async () => {
+    const widths: number[] = [];
+    const read: RegionReader = async (_models, image) => {
+      widths.push(image.width);
+      return [];
+    };
+    await scanArea(models, createRaster(400, 300), { x: 10, y: 10, w: 100, h: 50 }, 290, read);
+    expect(widths).toEqual([300, 150]); // × 3: upright 300 × 150, then turned 150 × 300
+    widths.length = 0;
+    await scanArea(models, createRaster(400, 300), { x: 10, y: 10, w: 300, h: 50 }, 100, read);
+    expect(widths).toEqual([300, 50]); // never shrinks: × 1
+  });
+```
+
+---
+
 ## M2 exit checklist
 
 - [ ] `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` all green locally.
