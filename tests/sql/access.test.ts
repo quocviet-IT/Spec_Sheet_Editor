@@ -75,7 +75,7 @@ describe.skipIf(!hasDb)("access rules (BR-08)", () => {
     });
   });
 
-  it("an email-and-password session on a permitted domain is refused: Google sign-in only", async () => {
+  it("an email-and-password session is refused unless an Admin created the account", async () => {
     await rollback(async (tx) => {
       const staff = await makeUser(tx, staffEmail());
       const claims = { sub: staff.id, email: staff.email, role: "authenticated", app_metadata: { provider: "email" } };
