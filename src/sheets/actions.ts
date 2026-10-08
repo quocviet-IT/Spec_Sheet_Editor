@@ -4,7 +4,9 @@ import { z } from "zod";
 import { requireUser } from "@/auth/session";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { fetchSheetPage } from "./queries";
-import type { SheetPage, SheetTab } from "./types";
+import { saveInputSchema, sheetDataSchema } from "@/editor/schema";
+import type { Detection, Edit } from "@/editor/types";
+import type { EditorState, SaveResult, SheetPage, SheetTab } from "./types";
 
 const loadInput = z.object({
   tab: z.enum(["live", "trash"]),
@@ -88,4 +90,53 @@ export async function createSheet(input: { id: string; name: string; sourceType:
     return { error: "unknown" };
   }
   return { ok: true, id };
+}
+
+type SaveRow = { saved: boolean; new_version: number | null; is_deleted: boolean | null; by_name: string | null; saved_at: string | null };
+
+/**
+ * UC-08: store the value list and the edits when the version still matches (BR-10). The name is not
+ * changed here (rename is F-06). A sheet in the Trash or saved by someone else in the meantime is
+ * reported, never overwritten.
+ */
+export async function saveSheet(input: { id: string; version: number; detections: Detection[]; edits: Edit[] }): Promise<SaveResult> {
+  await requireUser("/sheets");
+  const parsed = saveInputSchema.safeParse({
+    id: input?.id, version: input?.version, data: { detections: input?.detections, edits: input?.edits },
+  });
+  if (!parsed.success) return { error: "invalid" };
+  const { id, version, data } = parsed.data;
+  const supabase = await createSupabaseServer();
+  const { data: rows, error } = await supabase.rpc("save_sheet", {
+    p_id: id, p_version: version, p_name: null, p_detections: data.detections, p_edits: data.edits,
+  });
+  if (error) {
+    console.error("saveSheet failed:", error.message);
+    return { error: "unknown" };
+  }
+  const row = (Array.isArray(rows) ? rows[0] : rows) as SaveRow | undefined;
+  if (!row) return { error: "unknown" }; // the sheet is gone or hidden
+  if (row.saved && row.new_version !== null && row.saved_at) return { ok: true, version: row.new_version, savedAt: row.saved_at };
+  if (row.is_deleted) return { error: "trashed" };
+  return { error: "conflict", byName: row.by_name, savedAt: row.saved_at };
+}
+
+/** UC-08 extension 3a, "Load latest version": the stored lists and version. */
+export async function loadEditorState(id: string): Promise<EditorState | { error: "gone" | "unknown" }> {
+  await requireUser("/sheets");
+  if (!z.uuid().safeParse(id).success) return { error: "gone" };
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("spec_sheets")
+    .select("version, detections, edits, deleted_at")
+    .eq("id", id)
+    .maybeSingle<{ version: number; detections: unknown; edits: unknown; deleted_at: string | null }>();
+  if (error) {
+    console.error("loadEditorState failed:", error.message);
+    return { error: "unknown" };
+  }
+  if (!data) return { error: "gone" };
+  const parsed = sheetDataSchema.safeParse({ detections: data.detections, edits: data.edits });
+  if (!parsed.success) return { error: "unknown" };
+  return { version: data.version, detections: parsed.data.detections, edits: parsed.data.edits, deleted: data.deleted_at !== null };
 }

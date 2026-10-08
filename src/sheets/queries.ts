@@ -2,7 +2,8 @@ import "server-only";
 import { cache } from "react";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import type { SourceType } from "@/lib/form/template";
-import { PAGE_SIZE, type Cursor, type SheetPage, type SheetRow, type SheetTab, type UploadSettings } from "./types";
+import { sheetDataSchema } from "@/editor/schema";
+import { PAGE_SIZE, type Cursor, type EditorSheet, type SheetPage, type SheetRow, type SheetTab, type UploadSettings } from "./types";
 
 type ListRow = {
   id: string; name: string; source_type: SourceType; thumb_path: string; page_px_w: number; page_px_h: number;
@@ -95,5 +96,40 @@ export async function fetchSheet(id: string): Promise<SheetDetail | null> {
   return {
     id: data.id, name: data.name, sourceType: data.source_type, pageW: data.page_px_w, pageH: data.page_px_h,
     editCount: data.edit_count, deleted: data.deleted_at !== null, sourceUrl: signed?.signedUrl ?? null,
+  };
+}
+
+type EditorRow = {
+  id: string; name: string; source_type: SourceType; page_px_w: number; page_px_h: number; version: number;
+  detections: unknown; edits: unknown; deleted_at: string | null;
+};
+
+/** One sheet for the editor with a short-lived link to its original, or null when it does not exist (or RLS hides it). */
+export async function fetchEditorSheet(id: string): Promise<EditorSheet | null> {
+  const supabase = await createSupabaseServer();
+  const [{ data, error }, cfg] = await Promise.all([
+    supabase
+      .from("spec_sheets")
+      .select("id, name, source_type, page_px_w, page_px_h, version, detections, edits, deleted_at")
+      .eq("id", id)
+      .maybeSingle<EditorRow>(),
+    settings(),
+  ]);
+  if (error) throw error;
+  if (!data) return null;
+  const parsed = sheetDataSchema.safeParse({ detections: data.detections, edits: data.edits });
+  if (!parsed.success) console.error(`Sheet ${id}: stored detections or edits do not match the schema`);
+  const { data: signed } = await supabase.storage
+    .from("spec-sheets")
+    .createSignedUrl(`${id}/source.${data.source_type}`, cfg.signed_url_ttl_min * 60);
+  return {
+    id: data.id, name: data.name, sourceType: data.source_type, pageW: data.page_px_w, pageH: data.page_px_h,
+    version: data.version,
+    detections: parsed.success ? parsed.data.detections : [],
+    edits: parsed.success ? parsed.data.edits : [],
+    deleted: data.deleted_at !== null,
+    broken: !parsed.success,
+    sourceUrl: signed?.signedUrl ?? null,
+    lowRes: data.page_px_w < cfg.lowres_warn_px,
   };
 }
