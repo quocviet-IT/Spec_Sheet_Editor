@@ -9,6 +9,9 @@ import { fileLabel } from "@/sheets/format";
 import type { Cursor, SheetPage, SheetRow, SheetTab, UploadSettings } from "@/sheets/types";
 import { UploadDialog } from "./upload-dialog";
 
+const TIME_ZONE = "Asia/Ho_Chi_Minh";
+const TAB_KEYS = ["live", "trash"] as const;
+
 type Toast = { text: string; undo?: () => void } | null;
 
 export function SheetList({
@@ -24,14 +27,20 @@ export function SheetList({
   const [counts, setCounts] = useState(initialCounts);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [failedAfter, setFailedAfter] = useState<Cursor | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast>(null);
+  const [holdToast, setHoldToast] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const first = useRef(true);
+  const requestId = useRef(0);
+  const latestFetch = useRef<(after: Cursor | null) => Promise<void>>(async () => {});
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const sentinel = useRef<HTMLDivElement | null>(null);
 
   const when = useMemo(
-    () => new Intl.DateTimeFormat(locale === "vi" ? "vi-VN" : "en-GB", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" }),
+    () => new Intl.DateTimeFormat(locale === "vi" ? "vi-VN" : "en-GB", { dateStyle: "short", timeStyle: "short", timeZone: TIME_ZONE }),
     [locale],
   );
 
@@ -42,25 +51,35 @@ export function SheetList({
   }, [query]);
 
   const fetchPage = useCallback(async (after: Cursor | null) => {
+    const id = ++requestId.current;
     setLoading(true);
     setFailed(false);
     const result = await loadSheets({ tab, query: applied, after });
+    if (id !== requestId.current) return; // a newer request owns the list
     setLoading(false);
     if ("error" in result) {
       setFailed(true);
+      setFailedAfter(after);
       return;
     }
     setRows((old) => (after ? [...old, ...result.rows] : result.rows));
     setNext(result.next);
   }, [tab, applied]);
 
-  // a new tab or search starts from the first page; the server already rendered the first live page
+  // a new tab or search starts from an empty list and the first page; the server already rendered the first live page
   useEffect(() => {
     if (first.current) {
       first.current = false;
       return;
     }
+    setRows([]);
+    setNext(null);
+    setFailed(false);
     void fetchPage(null);
+  }, [fetchPage]);
+
+  useEffect(() => {
+    latestFetch.current = fetchPage;
   }, [fetchPage]);
 
   // load the next 50 when the end of the list scrolls into view (UC-02 step 3)
@@ -74,21 +93,69 @@ export function SheetList({
     return () => observer.disconnect();
   }, [next, loading, failed, fetchPage]);
 
+  // the toast stays 10 s; the timer pauses while the pointer or focus is on it
   useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 6000);
+    if (!toast || holdToast) return;
+    const timer = setTimeout(() => setToast(null), 10000);
     return () => clearTimeout(timer);
-  }, [toast]);
+  }, [toast, holdToast]);
+
+  // an open row menu: focus its first item, close on a press outside it
+  useEffect(() => {
+    if (!menuFor) return;
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const onPress = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuFor(null);
+    };
+    document.addEventListener("pointerdown", onPress);
+    return () => document.removeEventListener("pointerdown", onPress);
+  }, [menuFor]);
+
+  function focusPanel() {
+    document.getElementById("sheet-panel")?.focus();
+  }
+
+  function onTabKey(e: React.KeyboardEvent, index: number) {
+    let to = -1;
+    if (e.key === "ArrowRight") to = (index + 1) % TAB_KEYS.length;
+    else if (e.key === "ArrowLeft") to = (index + TAB_KEYS.length - 1) % TAB_KEYS.length;
+    else if (e.key === "Home") to = 0;
+    else if (e.key === "End") to = TAB_KEYS.length - 1;
+    if (to < 0) return;
+    e.preventDefault();
+    setTab(TAB_KEYS[to]);
+    setMenuFor(null);
+    document.getElementById(`sheet-tab-${TAB_KEYS[to]}`)?.focus();
+  }
+
+  function onMenuKey(e: React.KeyboardEvent, rowId: string) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setMenuFor(null);
+      document.getElementById(`sheet-menu-btn-${rowId}`)?.focus();
+      return;
+    }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? []);
+    if (items.length === 0) return;
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const to = e.key === "ArrowDown" ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
+    items[to].focus();
+  }
 
   async function onTrash(row: SheetRow) {
     setMenuFor(null);
+    setPendingId(row.id);
     const result = await trashSheet(row.id);
+    setPendingId(null);
     if ("error" in result) {
       setToast({ text: s.actionError });
       return;
     }
     setRows((old) => old.filter((r) => r.id !== row.id));
     setCounts((c) => ({ live: c.live - 1, trash: c.trash + 1 }));
+    focusPanel();
     setToast({
       text: fill(s.trashed, { name: row.name }),
       undo: async () => {
@@ -99,19 +166,22 @@ export function SheetList({
           return;
         }
         setCounts((c) => ({ live: c.live + 1, trash: c.trash - 1 }));
-        await fetchPage(null);
+        await latestFetch.current(null);
       },
     });
   }
 
   async function onRestore(row: SheetRow) {
+    setPendingId(row.id);
     const result = await restoreSheet(row.id);
+    setPendingId(null);
     if ("error" in result) {
       setToast({ text: s.actionError });
       return;
     }
     setRows((old) => old.filter((r) => r.id !== row.id));
     setCounts((c) => ({ live: c.live + 1, trash: c.trash - 1 }));
+    focusPanel();
     setToast({ text: fill(s.restored, { name: row.name }) });
   }
 
@@ -124,12 +194,16 @@ export function SheetList({
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div role="tablist" aria-label={s.title} className="flex gap-6 border-b border-line">
-          {(["live", "trash"] as const).map((key) => (
+          {TAB_KEYS.map((key, index) => (
             <button
               key={key}
+              id={`sheet-tab-${key}`}
               type="button"
               role="tab"
               aria-selected={tab === key}
+              aria-controls="sheet-panel"
+              tabIndex={tab === key ? 0 : -1}
+              onKeyDown={(e) => onTabKey(e, index)}
               onClick={() => { setTab(key); setMenuFor(null); }}
               className={"-mb-px border-b-2 px-1 pb-2 text-sm font-medium " + (tab === key ? "border-accent text-ink" : "border-transparent text-ink-2 hover:text-ink")}
             >
@@ -154,8 +228,18 @@ export function SheetList({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-line bg-surface">
+      <div
+        role="tabpanel"
+        id="sheet-panel"
+        aria-labelledby={`sheet-tab-${tab}`}
+        aria-busy={loading}
+        tabIndex={-1}
+        className="overflow-hidden rounded-lg border border-line bg-surface outline-none"
+      >
         <ul>
+          {loading && rows.length === 0 && (
+            <li className="px-4 py-10 text-center text-ink-2">{s.loading}</li>
+          )}
           {rows.map((row) => (
             <li key={row.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-4 py-3 first:border-t-0">
               <div className="h-14 w-[72px] flex-none overflow-hidden rounded border border-line bg-paper">
@@ -166,7 +250,7 @@ export function SheetList({
               </div>
               <div className="min-w-0 flex-1 basis-48">
                 {tab === "live"
-                  ? <Link href={`/sheets/${row.id}`} className="font-semibold hover:text-accent hover:underline">{row.name}</Link>
+                  ? <Link href={`/sheets/${row.id}`} prefetch={false} className="font-semibold hover:text-accent hover:underline">{row.name}</Link>
                   : <span className="font-semibold">{row.name}</span>}
                 <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-xs text-ink-2">
                   <span>{fileLabel(row.sourceType, row.pageW, row.pageH)}</span>
@@ -187,6 +271,8 @@ export function SheetList({
                   <>
                     <button
                       type="button"
+                      id={`sheet-menu-btn-${row.id}`}
+                      aria-haspopup="menu"
                       aria-label={fill(s.menu, { name: row.name })}
                       aria-expanded={menuFor === row.id}
                       onClick={() => setMenuFor(menuFor === row.id ? null : row.id)}
@@ -195,16 +281,32 @@ export function SheetList({
                       ⋯
                     </button>
                     {menuFor === row.id && (
-                      <div className="absolute right-0 z-10 mt-1 w-48 rounded-md border border-line bg-surface py-1 shadow-lg">
-                        <Link href={`/sheets/${row.id}`} className="block px-3 py-2 text-sm hover:bg-sunk">{s.open}</Link>
-                        <button type="button" onClick={() => void onTrash(row)} className="block w-full px-3 py-2 text-left text-sm text-danger hover:bg-sunk">
+                      <div
+                        ref={menuRef}
+                        role="menu"
+                        onKeyDown={(e) => onMenuKey(e, row.id)}
+                        className="absolute right-0 z-10 mt-1 w-48 rounded-md border border-line bg-surface py-1 shadow-lg"
+                      >
+                        <Link href={`/sheets/${row.id}`} prefetch={false} role="menuitem" className="block px-3 py-2 text-sm hover:bg-sunk">{s.open}</Link>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={pendingId === row.id}
+                          onClick={() => void onTrash(row)}
+                          className="block w-full px-3 py-2 text-left text-sm text-danger hover:bg-sunk disabled:opacity-60"
+                        >
                           {s.trash}
                         </button>
                       </div>
                     )}
                   </>
                 ) : (
-                  <button type="button" onClick={() => void onRestore(row)} className="rounded border border-line px-3 py-1 text-sm hover:bg-sunk">
+                  <button
+                    type="button"
+                    disabled={pendingId === row.id}
+                    onClick={() => void onRestore(row)}
+                    className="rounded border border-line px-3 py-1 text-sm hover:bg-sunk disabled:opacity-60"
+                  >
                     {s.restore}
                   </button>
                 )}
@@ -225,7 +327,7 @@ export function SheetList({
         {failed && (
           <div role="alert" className="flex flex-wrap items-center justify-center gap-3 border-t border-line px-4 py-4 text-sm">
             <span>{s.loadError}</span>
-            <button type="button" onClick={() => void fetchPage(rows.length > 0 ? next : null)} className="rounded border border-line px-3 py-1 hover:bg-sunk">
+            <button type="button" onClick={() => void fetchPage(failedAfter)} className="rounded border border-line px-3 py-1 hover:bg-sunk">
               {s.retry}
             </button>
           </div>
@@ -240,14 +342,22 @@ export function SheetList({
         {tab === "trash" && <p className="border-t border-line bg-sunk px-4 py-3 text-sm text-ink-2">{s.trashNote}</p>}
       </div>
 
-      {toast && (
-        <div role="status" className="fixed bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-lg bg-ink px-4 py-3 text-sm text-paper shadow-lg">
-          <span>{toast.text}</span>
-          {toast.undo && (
-            <button type="button" onClick={toast.undo} className="rounded border border-paper/40 px-2 py-1">{s.undo}</button>
-          )}
-        </div>
-      )}
+      <div role="status" aria-live="polite" className="fixed inset-x-4 bottom-6 z-20 mx-auto w-fit max-w-[calc(100vw-2rem)]">
+        {toast && (
+          <div
+            onPointerEnter={() => setHoldToast(true)}
+            onPointerLeave={() => setHoldToast(false)}
+            onFocus={() => setHoldToast(true)}
+            onBlur={() => setHoldToast(false)}
+            className="flex items-center gap-3 rounded-lg bg-ink px-4 py-3 text-sm text-paper shadow-lg"
+          >
+            <span>{toast.text}</span>
+            {toast.undo && (
+              <button type="button" onClick={toast.undo} className="rounded border border-paper/40 px-2 py-1">{s.undo}</button>
+            )}
+          </div>
+        )}
+      </div>
 
       {uploadOpen && <UploadDialog settings={settings} onClose={() => setUploadOpen(false)} />}
     </div>
