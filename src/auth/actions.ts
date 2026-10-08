@@ -4,7 +4,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { recordDenied } from "./denied";
-import { signInErrorCode, type SignInError } from "./errors";
+import { passwordUpdateErrorCode, signInErrorCode, type PasswordUpdateError, type SignInError } from "./errors";
+import { checkNewPassword, type NewPasswordError } from "./password";
 import { safeNext } from "./redirect";
 
 export type SignInState = { error: SignInError | "suspended" | "not_permitted" | null; email: string };
@@ -66,4 +67,37 @@ export async function signOut(): Promise<void> {
   const supabase = await createSupabaseServer();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+export type ChangePasswordState = { error: NewPasswordError | PasswordUpdateError | null };
+
+/**
+ * Sets a new password for the signed-in password account. After a one-time password this also lets
+ * the person in: the database clears the flag only once the stored hash has changed, then the
+ * sign-in is recorded (touch_profile).
+ */
+export async function changePassword(_prev: ChangePasswordState, form: FormData): Promise<ChangePasswordState> {
+  const password = String(form.get("password") ?? "");
+  const confirm = String(form.get("confirm") ?? "");
+  const next = safeNext(String(form.get("next") ?? ""));
+  const invalid = checkNewPassword(password, confirm);
+  if (invalid) return { error: invalid };
+
+  const supabase = await createSupabaseServer();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) redirect(`/login?next=${encodeURIComponent("/account/password")}`);
+  const { data: before } = await supabase.rpc("my_access_status");
+  if (before === "suspended" || before === "not_permitted") redirect(`/login?error=${before}`);
+
+  const { error } = await supabase.auth.updateUser({ password });
+  const failed = passwordUpdateErrorCode(error);
+  if (failed) return { error: failed };
+
+  const { error: finishError } = await supabase.rpc("finish_password_change");
+  if (finishError) return { error: "unknown" };
+  if (before === "must_change_password") {
+    const { error: touchError } = await supabase.rpc("touch_profile");
+    if (touchError) return { error: "unknown" };
+  }
+  redirect(next);
 }
