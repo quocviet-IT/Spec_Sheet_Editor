@@ -37,7 +37,7 @@ export function framedPng(width: number, height: number): Buffer {
 /** A value printed on a synthetic sheet: its digits' centre as page fractions, read at `angle` (app convention). */
 export type PlacedValue = { value: string; cx: number; cy: number; angle: 0 | -90 | 90 };
 
-/** Eleven values on the four drawing panels, three of them vertical, two of them 2.50 (section 2.3). */
+/** Eleven values on the four drawing panels: three read bottom-up, one top-down, two of them 2.50 (section 2.3). */
 export const PDF_VALUES: readonly PlacedValue[] = [
   { value: "6.90", cx: 0.12, cy: 0.2, angle: 0 },
   { value: "16.30", cx: 0.25, cy: 0.3, angle: 0 },
