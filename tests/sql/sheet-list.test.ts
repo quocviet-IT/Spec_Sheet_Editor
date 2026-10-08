@@ -27,8 +27,8 @@ describe.skipIf(!hasDb)("sheet list (UC-02, UC-11)", () => {
     });
   });
 
-  // A cursor must carry both time and id. The app always sends both (zod), and list_sheets returns no
-  // rows for a half cursor (the row comparison with a null id is never true).
+  // A cursor must carry both time and id; the app always sends both (zod). A cursor with a time but no
+  // id returns no rows; one with an id but no time returns the first page.
   it("pages by (time, id) without gaps or repeats, even when times are equal", async () => {
     await rollback(async (tx) => {
       const staff = await makeUser(tx, staffEmail());

@@ -397,7 +397,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 4. The system trims near-white borders (luminance ≥ 250) and checks the template ratio (BR-01).
 5. The system creates a 480-px-wide JPEG thumbnail and generates the sheet id.
 6. The system uploads the original and thumbnail to `spec-sheets/<id>/`, then creates the sheet record.
-7. The system performs UC-04, then opens the editor.
+7. The system opens the editor; UC-04 runs there the first time the sheet is opened (not inside the upload dialog).
 
 **Extensions:** 3a. Multi-page PDF: page 1 is used and the user is told.<br>4a. Image narrower than the warning threshold (default 2000 px): a low-resolution warning; processing continues.
 
@@ -409,12 +409,14 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Actors:** System
 
-**Postconditions:** Detected values are stored in the `detections` column; reopening the sheet does not rescan.
+**Postconditions:** Detected values are stored in the `detections` column with `save_sheet` (version 2, audit event `sheet.detect`), also when nothing was found, so the sheet is never scanned twice; reopening the sheet does not rescan.
+
+**Trigger:** The first time the sheet opens in the editor (version 1).
 
 **Main flow:**
 
 1. The system crops the drawing area using the template coordinates.
-2. If the PDF has a text layer in that area: take number-shaped strings with position and angle from the `transform` matrix (Mozilla, n.d.); skip steps 3–4.
+2. If the PDF has a text layer in that area: take number-shaped strings with position and angle from the `transform` matrix (Mozilla, n.d.); skip steps 3–4. Strings are taken exactly as written (no decimal point is inserted). A dimension split over several text runs is not found from the text layer; the sheet falls back to OCR (step 3) only when no value at all is found there.
 3. Otherwise: scale the area to about 2100 px wide and run PaddleOCR in a Web Worker in two orientations, 0° and 90° clockwise.
 4. Keep number-shaped results; for strings of only 3–4 digits, insert a point before the last two; where two results overlap, keep the more confident one.
 5. Tighten each box to the digits: keep only pixels darker than halfway between background and text colour, so the box does not cut into the dimension line.
@@ -436,7 +438,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 1. The user clicks a marked value.
 2. The system opens the edit popover: "Old value" is pre-filled with the machine reading; "New value" is empty and focused.
-3. The user checks the old value, corrects it if wrong, enters the new value and presses `Enter`.
+3. The user checks the old value, corrects it if wrong, enters the new value and presses `Enter`. The popover closes with `Esc`, the × button or a press elsewhere; focus returns to the value after `Esc`, × or Apply.
 4. The system validates the format and normalises the decimals (BR-05).
 5. The system masks the old value with the background colour and draws the new one at the same size, colour and angle, then marks the value as "edited".
 
@@ -737,17 +739,18 @@ sequenceDiagram
   V->>S: 5. Check file in storage · insert
   S-->>V: version = 1 · audit trigger
   V-->>B: OK
-  B->>W: 6. Detect values (0° and 90°)
+  Note over B: 6. First open in the editor (version 1)<br>no stored detection yet
+  B->>W: Detect values (0° and 90°)
   W-->>B: progress %
   W-->>B: values + boxes + angles
-  B->>V: 7. save_sheet(id, version 1, detections)
+  B->>V: 7. save_sheet(id, version 1, detections, also if none found)
   V->>S: 8. update … where version = 1
   S-->>V: version = 2
   V-->>B: OK
-  B-->>U: 9. Show sheet + marked values
+  B-->>U: 9. Show sheet + marked values (a later open skips steps 6–8)
 ```
 
-*Figure 5.2. Upload and detection sequence. The file reaches storage before the record is created; if step 5 fails, the file stays in storage and UC-18 removes it after 24 hours.*
+*Figure 5.2. Upload and detection sequence. The file reaches storage before the record is created; if step 5 fails, the file stays in storage and UC-18 removes it after 24 hours. Detection (steps 6–8) runs when the sheet first opens in the editor, not inside the upload dialog; the result is stored as version 2 even when nothing was found.*
 
 ### 5.4 Layered access control
 
@@ -954,6 +957,8 @@ type Edit = {
   textColor: string; bgColor: string     // "#676672", "#ffffff"
 }
 ```
+
+Positions are fractions of the trimmed page: `cx` is a fraction of the width, `cy` of the height, and `w`, `h` and `fontPx` all of the **width** (a box may be turned, so one unit serves both directions). `angle` is the reading direction in degrees with y pointing down, the angle canvas `rotate()` takes: 0 reads left to right, −90 bottom-up, 90 top-down. `w` lies along the text.
 
 ### 6.4 Functions and triggers
 

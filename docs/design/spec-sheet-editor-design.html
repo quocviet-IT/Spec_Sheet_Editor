@@ -836,7 +836,7 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
             <li>The system trims near-white borders (luminance ≥ 250) and checks the template ratio (BR-01).</li>
             <li>The system creates a 480-px-wide JPEG thumbnail and generates the sheet id.</li>
             <li>The system uploads the original and thumbnail to <span class="mono">spec-sheets/&lt;id&gt;/</span>, then creates the sheet record.</li>
-            <li>The system performs UC-04, then opens the editor.</li>
+            <li>The system opens the editor; UC-04 runs there the first time the sheet is opened (not inside the upload dialog).</li>
           </ol></dd>
           <dt>Extensions</dt><dd>3a. Multi-page PDF: page 1 is used and the user is told.<br>4a. Image narrower than the warning threshold (default 2000 px): a low-resolution warning; processing continues.</dd>
           <dt>Exceptions</dt><dd>2a. Wrong type or too large: rejected with the reason.<br>3b. Password-protected or damaged PDF: rejected.<br>4b. Wrong ratio: "This file does not match the sheet template…"<br>6a. Network error while uploading: error with retry; no record exists yet, so no half-finished sheet appears in the list.</dd>
@@ -846,10 +846,11 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
         <div class="uc-h"><span class="id">UC-04</span><h4>Detect values automatically</h4><span class="rel">F-09 · included by UC-03</span></div>
         <dl>
           <dt>Actors</dt><dd>System</dd>
-          <dt>Postconditions</dt><dd>Detected values are stored in the <span class="mono">detections</span> column; reopening the sheet does not rescan.</dd>
+          <dt>Postconditions</dt><dd>Detected values are stored in the <span class="mono">detections</span> column with <span class="mono">save_sheet</span> (version 2, audit event <span class="mono">sheet.detect</span>), also when nothing was found, so the sheet is never scanned twice; reopening the sheet does not rescan.</dd>
+          <dt>Trigger</dt><dd>The first time the sheet opens in the editor (version 1).</dd>
           <dt>Main flow</dt><dd><ol>
             <li>The system crops the drawing area using the template coordinates.</li>
-            <li>If the PDF has a text layer in that area: take number-shaped strings with position and angle from the <span class="mono">transform</span> matrix <a class="cite" href="#ref-pdfjs">(Mozilla, n.d.)</a>; skip steps 3–4.</li>
+            <li>If the PDF has a text layer in that area: take number-shaped strings with position and angle from the <span class="mono">transform</span> matrix <a class="cite" href="#ref-pdfjs">(Mozilla, n.d.)</a>; skip steps 3–4. Strings are taken exactly as written (no decimal point is inserted). A dimension split over several text runs is not found from the text layer; the sheet falls back to OCR (step 3) only when no value at all is found there.</li>
             <li>Otherwise: scale the area to about 2100 px wide and run PaddleOCR in a Web Worker in two orientations, 0° and 90° clockwise.</li>
             <li>Keep number-shaped results; for strings of only 3–4 digits, insert a point before the last two; where two results overlap, keep the more confident one.</li>
             <li>Tighten each box to the digits: keep only pixels darker than halfway between background and text colour, so the box does not cut into the dimension line.</li>
@@ -867,7 +868,7 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
           <dt>Main flow</dt><dd><ol>
             <li>The user clicks a marked value.</li>
             <li>The system opens the edit popover: "Old value" is pre-filled with the machine reading; "New value" is empty and focused.</li>
-            <li>The user checks the old value, corrects it if wrong, enters the new value and presses <span class="kbd">Enter</span>.</li>
+            <li>The user checks the old value, corrects it if wrong, enters the new value and presses <span class="kbd">Enter</span>. The popover closes with <span class="kbd">Esc</span>, the × button or a press elsewhere; focus returns to the value after <span class="kbd">Esc</span>, × or Apply.</li>
             <li>The system validates the format and normalises the decimals (BR-05).</li>
             <li>The system masks the old value with the background colour and draws the new one at the same size, colour and angle, then marks the value as "edited".</li>
           </ol></dd>
@@ -1140,17 +1141,17 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
           <path d="M580 262 H766" class="sv-line" marker-end="url(#arr)"/><text x="675" y="255" text-anchor="middle" class="sv-ts">5. check file in storage · insert</text>
           <path d="M770 290 H584" class="sv-line sv-dash" marker-end="url(#arr)"/><text x="675" y="284" text-anchor="middle" class="sv-ts">version = 1 · audit trigger</text>
           <path d="M580 316 H244" class="sv-line sv-dash" marker-end="url(#arr)"/><text x="410" y="310" text-anchor="middle" class="sv-ts">OK</text>
-          <path d="M240 350 H406" class="sv-line" marker-end="url(#arr)"/><text x="323" y="343" text-anchor="middle" class="sv-ts">6. Detect values (0° and 90°)</text>
+          <path d="M240 350 H406" class="sv-line" marker-end="url(#arr)"/><text x="323" y="343" text-anchor="middle" class="sv-ts">6. First open: detect values (0° and 90°)</text>
           <path d="M410 378 H244" class="sv-line sv-dash" marker-end="url(#arr)"/><text x="323" y="372" text-anchor="middle" class="sv-ts">progress %</text>
           <path d="M410 404 H244" class="sv-line sv-dash" marker-end="url(#arr)"/><text x="323" y="398" text-anchor="middle" class="sv-ts">values + boxes + angles</text>
-          <path d="M240 438 H576" class="sv-line" marker-end="url(#arr)"/><text x="410" y="431" text-anchor="middle" class="sv-ts">7. save_sheet(id, version 1, detections)</text>
+          <path d="M240 438 H576" class="sv-line" marker-end="url(#arr)"/><text x="410" y="431" text-anchor="middle" class="sv-ts">7. save_sheet(id, version 1, detections, also if none found)</text>
           <path d="M580 468 H766" class="sv-line" marker-end="url(#arr)"/><text x="675" y="461" text-anchor="middle" class="sv-ts">8. update … where version = 1</text>
           <path d="M770 496 H584" class="sv-line sv-dash" marker-end="url(#arr)"/><text x="675" y="490" text-anchor="middle" class="sv-ts">version = 2</text>
           <path d="M580 522 H244" class="sv-line sv-dash" marker-end="url(#arr)"/><text x="410" y="516" text-anchor="middle" class="sv-ts">OK</text>
-          <path d="M240 560 H74" class="sv-line sv-dash" marker-end="url(#arr)"/><text x="155" y="553" text-anchor="middle" class="sv-ts">9. Show sheet + marked values</text>
+          <path d="M240 560 H74" class="sv-line sv-dash" marker-end="url(#arr)"/><text x="155" y="553" text-anchor="middle" class="sv-ts">9. Show sheet + marked values (later opens skip 6–8)</text>
         </svg>
       </div>
-      <figcaption class="cap-f"><b>Figure 5.2.</b> Upload and detection sequence. The file reaches storage before the record is created; if step 5 fails, the file stays in storage and UC-18 removes it after 24 hours.</figcaption>
+      <figcaption class="cap-f"><b>Figure 5.2.</b> Upload and detection sequence. The file reaches storage before the record is created; if step 5 fails, the file stays in storage and UC-18 removes it after 24 hours. Detection (steps 6–8) runs when the sheet first opens in the editor, not inside the upload dialog; the result is stored as version 2 even when nothing was found.</figcaption>
     </figure>
   </div>
   <div class="sec">
@@ -1347,6 +1348,7 @@ type Edit = {
   fontPx: number                         // digit height, page fraction
   textColor: string; bgColor: string     // "#676672", "#ffffff"
 }</pre>
+    <p>Positions are fractions of the trimmed page: <span class="mono">cx</span> is a fraction of the width, <span class="mono">cy</span> of the height, and <span class="mono">w</span>, <span class="mono">h</span> and <span class="mono">fontPx</span> all of the <b>width</b> (a box may be turned, so one unit serves both directions). <span class="mono">angle</span> is the reading direction in degrees with y pointing down, the angle canvas <span class="mono">rotate()</span> takes: 0 reads left to right, −90 bottom-up, 90 top-down. <span class="mono">w</span> lies along the text.</p>
   </div>
   <div class="sec">
     <h3>6.4 Functions and triggers</h3>

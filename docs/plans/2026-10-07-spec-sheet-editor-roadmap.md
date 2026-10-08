@@ -66,7 +66,8 @@ These touch accounts and billing, so only the project owner does them.
 | M1 | Foundation | Next.js app, design tokens, bilingual shell, migration `0001_init.sql` (all tables, functions, triggers, RLS, bucket), migration runner, SQL test harness, Google sign-in, access guard, sign-out, CI | Unit tests green; `next build` green; SQL tests TC-03, 04, 05, 49, 50, 56, 57, 59, 61, 65, 69, 70, 71, 73 green against the dev project; manual sign-in with the first Admin's one-time password, forced password change, a second account created in Admin → Users, and a wrong password refused | Prerequisites 1–3 for the SQL tests and sign-in check |
 | M2 | Browser OCR | `lib/ocr`: PP-OCRv4 small on onnxruntime-web in a Web Worker (pre/post-processing ported from RapidOCR: DB box decoding, CTC decoding), scan of the drawing area at 0° and 90° CW, read-on-click; `/dev/ocr-bench` page that scores the 11-value sample | TC-20 ≥ 9/11 located in ≤ 60 s and TC-24 ≤ 5 s **in Chrome on an office PC**; decision recorded: keep v4 small or switch to v6 small | M1 (app shell only); can start in parallel with M1 Tasks 4–7 |
 | M3 | Sheets pipeline | `lib/form` (ratio, editable zone, trim), `lib/raster` (pdf.js 300 DPI + text layer, EXIF, alpha → white, thumbnail), upload dialog (S3), Storage upload, `createSheet`, sheet list with search + paging + Trash/restore (S2), E2E test-user login helper | TC-08 – TC-19, TC-48, TC-52 | M1 |
-| M4 | Editor | Detection on upload (PDF text layer or M2 OCR) stored in `detections`; editor S4: zoom/pan, markers, popover (old value confirm, new value), Draw box (K), read-on-click, revert, matching-value suggestion; `lib/numbers`; box tightening to the digits (UC-04 step 5, moved from M2); `lib/compose` (mask with sampled background + Arimo text at angle); `save_sheet` with conflict dialog S6; unsaved-changes guard | TC-21 – TC-41 | M2, M3 |
+| M4a | Editor core | Detection on the first open of a sheet in the editor (PDF text layer or M2 OCR) stored in `detections`; editor S4: zoom/pan, markers, popover (old value confirm, new value), revert, box tightening to the digits (UC-04 step 5, moved from M2), `lib/compose` (mask with sampled background + Arimo text at angle), save with conflict dialog S6, offline retry, unsaved-changes guard | TC-21, 23, 25 (load half), 26 – 29, 31 (revert as data), 33, 37 – 41 | M2, M3 |
+| M4b | Editor tools | Read on click, Draw box (K), matching-value suggestion, rename, typed Worker errors, visual tests | TC-24, 30 – 32, 34 – 36 | M4a |
 | M5 | Export | Pre-export check S5, PNG at source resolution, single-page PDF via pdf-lib (no text layer), file naming, `log_client_event` | TC-42 – TC-47 | M4 |
 | M6 | Admin area | `/admin` layout guard; S7 users (role, suspend), S8 access + settings, S9 audit log with filters + CSV (UTF-8 BOM), S10 Trash + permanent delete (typed confirm, service-role file delete) + orphan clean-up | TC-54 – TC-77 (TC-60 concurrency via two connections) | M1, M3 |
 | M7 | Hardening and release | Full E2E run, visual regression on Windows + macOS (TC-47), WCAG AA pass, dark mode check, Vercel production deploy, user guide (VI/EN), first Admin assigned | All 77 test cases green or explicitly waived by the owner; production sign-in works | M1–M6, Prerequisite 4 |
@@ -98,6 +99,30 @@ Carried into M4: detection on upload (OCR or PDF text layer) stored in `detectio
 project from the office, so profile and parallelise the server reads. The M3 final fixes already
 removed the redundant page refresh after list actions and made the list reads run in parallel; the
 timing above was measured before them and has not been re-measured.
+
+### M4a result (2026-10-08)
+
+Commits `f18fa9b..11cde25` on branch `feat/m4a-editor`: the editor on
+`/sheets/<id>` with detection on first open (version 1 to 2, also when nothing is found), markers,
+locked zones, zoom, the edit popover, revert, composing the new value over the masked old one, save
+with the conflict dialog, offline retry and the leave guard.
+
+Measured: unit tests 34 files, 196 tests passing; SQL tests 6 files, 51 tests passing (`npm test` total 40 files, 247 tests); end-to-end 23 tests passing (full run 4.7 minutes on
+the office PC). OCR on the synthetic 300-DPI image sheet found 11 of 11 values, 12–65 s from upload
+to the stored detection on the office PC; the text-layer PDF finds all 11 without OCR. The 3-second
+reopen (NFR-01) is to be confirmed on a production build in M7; the development server measured
+3.1–4.4 s for a cold reopen.
+
+### Carried into M4b and later from M4a
+
+- Box and colour sampling: the ink colour is the median of the darkest 10% of pixels, which drifts toward anti-aliased tones when ink is sparse; use the pixels darker than the paper by the minimum contrast. Prefer the run nearest the centre when two run counts are within 2x; do not let a single-pixel speck extend a run. State the half-pixel convention in the doc comment.
+- Detection: create the OCR client inside the `try` so a Worker constructor that throws is reported as an OCR load error; clamp confidence to 0–100; handle a dimension split over several text-layer runs.
+- Saving and loading: a stored value that fails the schema loads as unknown rather than broken; a refused save under a future RLS deny would read as a conflict; add tests for the schema bounds (confidence, angle, cx, string and array input, long ids) and for the save-result mapping.
+- Editor screen: the load effect resets the base state whenever it re-runs, so tie it to unmount or to the sheet id; Stay or `Esc` pressed in the conflict dialog while "Load latest" runs should be ignored or the load cancelled; the popover closes on `Esc` only from its form, and has no vertical clamp; focus returns to the marker, not the list row; the leave guard misses Back/Forward and server-action posts.
+- Copy: Vietnamese "detecting" text should say "up to a minute" naturally; review the wording of the "detected" state; the "no values" message needs its fix step (M4b).
+- Code: share the trim/replace of the dimension helpers; use `hourCycle: "h23"` in the clock helper; derive the baseline from the box height; the font check cannot tell Arimo from a same-metric fallback.
+- Tests: add cases for negative-zero guards, a 180° run, a 30° text line, a box off the page, a run pushed out by the trim offset, tightening to ink in the text layer, a vertical edit and OCR with no detections; compare floats with a tolerance; make the end-to-end version wait tolerate a skipped version; move the value that sits in the drawn frame (3.39) out of the frame.
+- M7: confirm the 3-second reopen on a production build.
 
 ### Carried into M3 and later from the M2 review
 

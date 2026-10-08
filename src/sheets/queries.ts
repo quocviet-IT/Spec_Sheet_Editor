@@ -33,8 +33,8 @@ export async function fetchUploadSettings(): Promise<UploadSettings> {
 
 /**
  * One page of the list (50 rows) with short-lived thumbnail links (signed_url_ttl_min).
- * A cursor must carry both time and id; the app always sends both (zod), and list_sheets returns no
- * rows for a half cursor.
+ * A cursor must carry both time and id; the app always sends both (zod). A cursor with a time but no
+ * id returns no rows; one with an id but no time returns the first page.
  */
 export async function fetchSheetPage(tab: SheetTab, query: string, after: Cursor | null): Promise<SheetPage> {
   const supabase = await createSupabaseServer();

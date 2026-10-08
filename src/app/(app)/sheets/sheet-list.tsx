@@ -264,9 +264,9 @@ export function SheetList({
           {rows.map((row) => (
             <li key={row.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-4 py-3 first:border-t-0">
               <div className="h-14 w-[72px] flex-none overflow-hidden rounded border border-line bg-paper">
-                {row.thumbUrl && !brokenThumbs.has(row.id)
+                {row.thumbUrl && !brokenThumbs.has(row.thumbUrl)
                   // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL from another origin, not optimisable
-                  ? <img src={row.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setBrokenThumbs((old) => new Set(old).add(row.id))} />
+                  ? <img src={row.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setBrokenThumbs((old) => new Set(old).add(row.thumbUrl!))} />
                   : <span className="flex h-full items-center justify-center text-[10px] text-ink-3">{s.noThumb}</span>}
               </div>
               <div className="min-w-0 flex-1 basis-48">

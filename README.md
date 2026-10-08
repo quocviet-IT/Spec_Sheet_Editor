@@ -30,7 +30,7 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
    switching on, check that Supabase links a Google identity to the existing account with the same
    verified email (Authentication → identity linking); otherwise the same person gets a second account.
 3. `cp .env.example .env.local` and fill in the four required values (`GOOGLE_SIGN_IN` is optional).
-4. `npm install`
+4. `npm install`. `npm run ocr:build` (run by `predev` and `prebuild`) copies the OCR worker, the pdf.js worker and the Arimo font (OFL-1.1) into `public/`; the font goes to `public/fonts/arimo/`.
 5. `npm run db:migrate` — applies `supabase/migrations/*.sql`.
    `DATABASE_URL` must point at the development project, never production: the SQL tests change data
    inside transactions that are always rolled back, but they are written for a disposable database.
@@ -51,7 +51,7 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
 | `npm test` | Unit tests; SQL tests too when `DATABASE_URL` is set (always rolled back) |
 | `npm run build` | Production build |
-| `npm run e2e` | End-to-end tests (Playwright) against the development project; needs the dev server and `.env.local`; creates and cleans up the account `e2e-staff@ctyhp.vn` and its sheets |
+| `npm run e2e` | End-to-end tests (Playwright) against the development project; needs the dev server and `.env.local`; creates and cleans up the accounts `e2e-staff@ctyhp.vn` and `e2e-staff-b@ctyhp.vn` and their sheets |
 | `npm run db:migrate` | Apply pending migrations |
 | `npm run admin:create` | Create the first Admin (once) |
 
@@ -60,9 +60,11 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 `npm run e2e` runs the Playwright tests against the development project. It needs the dev server
 running and `.env.local` filled in; when no dev server answers on port 3000, Playwright starts one.
 `.env.local` must also set `E2E_DEV_PROJECT_REF` to the project ref of the development project; the
-tests refuse to run unless the Supabase URL and the database user both name that ref. The first run creates the account `e2e-staff@ctyhp.vn` and later
-runs reuse it; every run resets that account's password to a random value held only in memory. The
-run deletes only that account's sheets: before the run, after each test and after the run.
+tests refuse to run unless the Supabase URL and the database user both name that ref. There are two reserved test accounts: `e2e-staff@ctyhp.vn` and `e2e-staff-b@ctyhp.vn` (the second
+only for the two-person conflict test). The first run creates them and later runs reuse them; every
+run resets both passwords to random values held only in memory. The run deletes only these accounts'
+sheets: before the run, during it (after each test) and after it. The OCR test takes one to three
+minutes.
 TC-17 (password-protected PDF): the error mapping is unit-tested; the full upload path for a locked
 PDF is not, because the test-file generator cannot encrypt PDFs.
 
