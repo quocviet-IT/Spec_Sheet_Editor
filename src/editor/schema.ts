@@ -50,4 +50,4 @@ export const sheetDataSchema = z
   });
 
 /** `version` is a Postgres int: anything above its range is refused here, not by the database. */
-export const saveInputSchema = z.object({ id: z.uuid(), version: z.number().int().min(1).max(2147483647), data: sheetDataSchema });
+export const saveInputSchema = z.object({ id: z.uuid(), version: z.number().int().min(1).max(2147483647), name: z.string().trim().min(1).max(200), data: sheetDataSchema });

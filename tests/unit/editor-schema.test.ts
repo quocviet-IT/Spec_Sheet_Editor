@@ -56,10 +56,18 @@ describe("sheetDataSchema", () => {
 describe("saveInputSchema", () => {
   it("needs a sheet id and a version from 1", () => {
     const data = { detections: [], edits: [] };
-    expect(saveInputSchema.safeParse({ id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 1, data }).success).toBe(true);
-    expect(saveInputSchema.safeParse({ id: "not-a-uuid", version: 1, data }).success).toBe(false);
-    expect(saveInputSchema.safeParse({ id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 0, data }).success).toBe(false);
-    expect(saveInputSchema.safeParse({ id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 1.5, data }).success).toBe(false);
-    expect(saveInputSchema.safeParse({ id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 2147483648, data }).success).toBe(false);
+    expect(saveInputSchema.safeParse({ id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 1, name: "Sheet", data }).success).toBe(true);
+    expect(saveInputSchema.safeParse({ id: "not-a-uuid", version: 1, name: "Sheet", data }).success).toBe(false);
+    expect(saveInputSchema.safeParse({ id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 0, name: "Sheet", data }).success).toBe(false);
+    expect(saveInputSchema.safeParse({ id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 1.5, name: "Sheet", data }).success).toBe(false);
+    expect(saveInputSchema.safeParse({ id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 2147483648, name: "Sheet", data }).success).toBe(false);
+  });
+  it("needs a name of 1 to 200 characters, trimmed", () => {
+    const base = { id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 1, data: { detections: [], edits: [] } };
+    const parsed = saveInputSchema.safeParse({ ...base, name: "  Emerald ring  " });
+    expect(parsed.success && parsed.data.name).toBe("Emerald ring");
+    expect(saveInputSchema.safeParse({ ...base, name: "   " }).success).toBe(false);
+    expect(saveInputSchema.safeParse({ ...base, name: "x".repeat(201) }).success).toBe(false);
+    expect(saveInputSchema.safeParse(base).success).toBe(false);
   });
 });

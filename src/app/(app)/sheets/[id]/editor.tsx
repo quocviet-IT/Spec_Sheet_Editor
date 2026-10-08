@@ -87,7 +87,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const inFlight = useRef(false);
   const alive = useRef(true);
   /** The latest lists and version, for saves started from listeners and after awaits. */
-  const latest = useRef({ detections: sheet.detections, edits: sheet.edits, version: sheet.version, saved: snapshot(sheet.detections, sheet.edits), firstStore: false });
+  const latest = useRef({ detections: sheet.detections, edits: sheet.edits, version: sheet.version, name: sheet.name, saved: snapshot(sheet.detections, sheet.edits), firstStore: false });
 
   useEffect(() => {
     latest.current = { ...latest.current, detections, edits, saved: savedSnapshot, firstStore };
@@ -120,7 +120,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       return false;
     }
     const saved = snapshot(state.detections, state.edits);
-    latest.current = { detections: state.detections, edits: state.edits, version: state.version, saved, firstStore: false };
+    latest.current = { detections: state.detections, edits: state.edits, version: state.version, name: sheet.name, saved, firstStore: false };
     setFirstStore(false);
     setConflict(null);
     setDetections(state.detections);
@@ -130,7 +130,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     setDetect(state.detections.length === 0 ? "none" : "idle");
     setSave({ state: state.deleted ? "trashed" : "idle" });
     return true;
-  }, [sheet.id]);
+  }, [sheet.id, sheet.name]);
 
   /**
    * UC-08: save the lists with the version this screen holds. Nothing happens while a save is running
@@ -146,7 +146,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       setSave({ state: "saving" });
       let result: SaveResult | undefined;
       try {
-        result = await saveSheet({ id: sheet.id, version: sent.version, detections: sent.detections, edits: sent.edits });
+        result = await saveSheet({ id: sheet.id, version: sent.version, name: sent.name, detections: sent.detections, edits: sent.edits });
       } catch {
         inFlight.current = false;
         if (alive.current) setSave({ state: "offline" });
