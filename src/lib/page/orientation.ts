@@ -13,7 +13,7 @@ export function readJpegOrientation(bytes: Uint8Array): number {
     const len = (bytes[p + 2] << 8) | bytes[p + 3];
     if (len < 2) return 1;
     if (marker === 0xe1 && len >= 16 && String.fromCharCode(...bytes.subarray(p + 4, p + 8)) === "Exif") {
-      return orientationFromTiff(bytes, p + 10, p + 2 + len);
+      return orientationFromTiff(bytes, p + 10, Math.min(p + 2 + len, bytes.length));
     }
     p += 2 + len;
   }
@@ -64,4 +64,40 @@ export function orientationMatrix(orientation: number, width: number, height: nu
     case 8: return [0, -1, 1, 0, 0, width];
     default: return [1, 0, 0, 1, 0, 0];
   }
+}
+
+const SOF_MARKERS = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+
+/** Stored frame size of a JPEG, from the first SOF marker. null when not a JPEG or the SOF is missing or cut off. */
+export function readJpegSize(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  let p = 2;
+  while (p + 4 <= bytes.length) {
+    if (bytes[p] !== 0xff) return null;
+    const marker = bytes[p + 1];
+    if (marker === 0xd9 || marker === 0xda) return null;
+    const len = (bytes[p + 2] << 8) | bytes[p + 3];
+    if (len < 2) return null;
+    if (SOF_MARKERS.has(marker)) {
+      if (p + 9 > bytes.length) return null;
+      const height = (bytes[p + 5] << 8) | bytes[p + 6];
+      const width = (bytes[p + 7] << 8) | bytes[p + 8];
+      return width > 0 && height > 0 ? { width, height } : null;
+    }
+    p += 2 + len;
+  }
+  return null;
+}
+
+/**
+ * True when we must rotate the decoded bitmap ourselves: the file asks for a quarter turn (5–8) but the
+ * browser handed us the stored, unrotated size, i.e. it did not apply EXIF. Chrome and Edge normally do.
+ */
+export function needsOwnRotation(
+  orientation: number,
+  stored: { width: number; height: number } | null,
+  decoded: { width: number; height: number },
+): boolean {
+  if (orientation < 5 || orientation > 8 || !stored) return false;
+  return decoded.width === stored.width && decoded.height === stored.height;
 }

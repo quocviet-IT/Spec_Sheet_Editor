@@ -5,7 +5,7 @@
  * It also copies the pdf.js worker into public/pdfjs/.
  */
 import { build, type Plugin } from "esbuild";
-import { copyFile, mkdir, rm } from "node:fs/promises";
+import { copyFile, cp, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 const root = process.cwd();
@@ -53,3 +53,8 @@ await copyFile(
   path.join(pdfjsOut, "pdf.worker.min.mjs"),
 );
 console.log("pdf.js worker copied: public/pdfjs/pdf.worker.min.mjs");
+// Fonts, CMaps, ICC profiles and WASM decoders pdf.js fetches at run time (see getDocument options in render.ts).
+for (const dir of ["cmaps", "standard_fonts", "wasm", "iccs"]) {
+  await cp(path.join(root, "node_modules", "pdfjs-dist", dir), path.join(pdfjsOut, dir), { recursive: true });
+  console.log(`pdf.js assets copied: public/pdfjs/${dir}/`);
+}
