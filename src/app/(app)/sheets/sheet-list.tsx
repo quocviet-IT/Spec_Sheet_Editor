@@ -5,11 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fill } from "@/messages/format";
 import { useMessages } from "@/messages/client";
 import { loadSheets, restoreSheet, trashSheet } from "@/sheets/actions";
-import { fileLabel } from "@/sheets/format";
+import { fileLabel, TIME_ZONE } from "@/sheets/format";
 import type { Cursor, SheetPage, SheetRow, SheetTab, UploadSettings } from "@/sheets/types";
 import { UploadDialog } from "./upload-dialog";
 
-const TIME_ZONE = "Asia/Ho_Chi_Minh";
 const TAB_KEYS = ["live", "trash"] as const;
 
 type Toast = { text: string; undo?: () => void } | null;
