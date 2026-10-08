@@ -2,7 +2,8 @@
  * Bundles the OCR Worker (src/lib/ocr/worker.ts) into public/ocr/ocr-worker.js and copies the
  * onnxruntime-web runtime it loads into public/ocr/ort/. Turbopack copies `new Worker(new URL(...))`
  * targets without bundling them, so the Worker is built here instead; `predev` and `prebuild` run it.
- * It also copies the pdf.js worker into public/pdfjs/.
+ * It also copies the pdf.js worker into public/pdfjs/. It also copies the Arimo font and its licence into
+ * public/fonts/arimo/.
  */
 import { build, type Plugin } from "esbuild";
 import { copyFile, cp, mkdir, rm } from "node:fs/promises";
@@ -58,3 +59,12 @@ for (const dir of ["cmaps", "standard_fonts", "wasm", "iccs"]) {
   await cp(path.join(root, "node_modules", "pdfjs-dist", dir), path.join(pdfjsOut, dir), { recursive: true });
   console.log(`pdf.js assets copied: public/pdfjs/${dir}/`);
 }
+
+// Arimo (OFL-1.1) draws every new value, so the same font ships with the app on every machine (NFR-05).
+const fontsOut = path.join(root, "public", "fonts", "arimo");
+const arimo = path.join(root, "node_modules", "@fontsource", "arimo");
+await rm(fontsOut, { recursive: true, force: true });
+await mkdir(fontsOut, { recursive: true });
+await copyFile(path.join(arimo, "files", "arimo-latin-400-normal.woff2"), path.join(fontsOut, "arimo-latin-400-normal.woff2"));
+await copyFile(path.join(arimo, "LICENSE"), path.join(fontsOut, "LICENSE.txt"));
+console.log("Arimo copied: public/fonts/arimo/");
