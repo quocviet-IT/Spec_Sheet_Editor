@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { db } from "./db";
-import { OUTSIDE_VALUES, PDF_VALUES, type PlacedValue } from "./files";
+import { OUTSIDE_VALUES, PDF_VALUES, valuesPdf, type PlacedValue } from "./files";
 
 export type StoredBox = { cx: number; cy: number; w: number; h: number };
 export type StoredDetection = { id: string; box: StoredBox; angle: number; readValue: string | null; confidence: number | null; source: string };
@@ -22,13 +22,13 @@ export async function uploadSheet(page: Page, fileName: string, mimeType: string
   return { id: page.url().split("/").pop()!, name: fileName.replace(/\.[^.]+$/, "") };
 }
 
-export async function storedSheet(id: string): Promise<{ version: number; detections: StoredDetection[]; edits: StoredEdit[]; deleted: boolean }> {
+export async function storedSheet(id: string): Promise<{ name: string; version: number; detections: StoredDetection[]; edits: StoredEdit[]; deleted: boolean }> {
   const sql = db();
   try {
-    const [row] = await sql<{ version: number; detections: StoredDetection[]; edits: StoredEdit[]; deleted_at: Date | null }[]>`
-      select version, detections, edits, deleted_at from public.spec_sheets where id = ${id}`;
+    const [row] = await sql<{ name: string; version: number; detections: StoredDetection[]; edits: StoredEdit[]; deleted_at: Date | null }[]>`
+      select name, version, detections, edits, deleted_at from public.spec_sheets where id = ${id}`;
     if (!row) throw new Error(`sheet ${id} not found`);
-    return { version: row.version, detections: row.detections, edits: row.edits, deleted: row.deleted_at !== null };
+    return { name: row.name, version: row.version, detections: row.detections, edits: row.edits, deleted: row.deleted_at !== null };
   } finally {
     await sql.end();
   }
@@ -78,7 +78,7 @@ export function unmatchedValues(expected: readonly PlacedValue[], found: readonl
 }
 
 /** A 300-DPI PNG of the same values drawn by the browser (no text layer, so the editor uses OCR). */
-export async function drawValuesPng(page: Page): Promise<Buffer> {
+export async function drawValuesPng(page: Page, values: readonly PlacedValue[] = [...PDF_VALUES, ...OUTSIDE_VALUES]): Promise<Buffer> {
   const base64 = await page.evaluate((values) => {
     const W = 3300;
     const H = 2550;
@@ -103,8 +103,70 @@ export async function drawValuesPng(page: Page): Promise<Buffer> {
       ctx.restore();
     }
     return canvas.toDataURL("image/png").slice("data:image/png;base64,".length);
-  }, [...PDF_VALUES, ...OUTSIDE_VALUES]);
+  }, [...values]);
   return Buffer.from(base64, "base64");
+}
+
+/** A value drawn by the browser as a PNG: 38 px Arial in the sheet's ink on white, as at 300 DPI. */
+export async function textPng(page: Page, text: string): Promise<{ png: Buffer; width: number; height: number }> {
+  const out = await page.evaluate((t) => {
+    const probe = document.createElement("canvas").getContext("2d")!;
+    probe.font = "38px Arial";
+    const width = Math.ceil(probe.measureText(t).width) + 16;
+    const height = 38 + 16;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#676672";
+    ctx.font = "38px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(t, width / 2, height / 2);
+    return { base64: canvas.toDataURL("image/png").slice("data:image/png;base64,".length), width, height };
+  }, text);
+  return { png: Buffer.from(out.base64, "base64"), width: out.width, height: out.height };
+}
+
+/** The viewport point for a page fraction, after scrolling the canvas into view. */
+export async function canvasPoint(page: Page, fx: number, fy: number): Promise<{ x: number; y: number }> {
+  const canvas = page.getByRole("img", { name: /^(Phiếu|Sheet) / });
+  await canvas.scrollIntoViewIfNeeded();
+  const box = (await canvas.boundingBox())!;
+  const point = { x: box.x + fx * box.width, y: box.y + fy * box.height };
+  const view = page.viewportSize()!;
+  expect(point.x >= 0 && point.x <= view.width && point.y >= 0 && point.y <= view.height, `point ${point.x},${point.y} should be inside the viewport`).toBe(true);
+  return point;
+}
+
+/** Drags a box between two page fractions. */
+export async function dragBox(page: Page, fx0: number, fy0: number, fx1: number, fy1: number): Promise<void> {
+  const a = await canvasPoint(page, fx0, fy0);
+  const b = await canvasPoint(page, fx1, fy1);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 8 });
+  await page.mouse.up();
+}
+
+/** A fresh synthetic sheet with its 11 values detected and stored (version 2). */
+export async function openValuesSheet(page: Page, tag: string): Promise<{ id: string; name: string }> {
+  const sheet = await uploadSheet(page, `${tag}-${Date.now()}.pdf`, "application/pdf", await valuesPdf());
+  await expect(markers(page)).toHaveCount(11, { timeout: 30_000 });
+  await waitForVersion(sheet.id, 2);
+  return sheet;
+}
+
+export async function editValue(page: Page, value: string, panel: RegExp, next: string, confirmedOld?: string): Promise<void> {
+  await marker(page, value, panel).click();
+  const popover = page.getByRole("dialog", { name: /Sửa kích thước|Edit dimension/ });
+  await expect(popover).toBeVisible();
+  if (confirmedOld !== undefined) await popover.getByLabel(/Số cũ|Old value/).fill(confirmedOld);
+  await popover.getByLabel(/Số mới|New value/).fill(next);
+  await popover.getByLabel(/Số mới|New value/).press("Enter");
+  await expect(popover).toBeHidden();
 }
 
 /** Records every request for the OCR Worker or its models made by the page from now on. */
