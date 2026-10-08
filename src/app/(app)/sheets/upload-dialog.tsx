@@ -120,7 +120,7 @@ export function UploadDialog({ settings, onClose }: { settings: UploadSettings; 
       const page = await renderSource(file, checked.sourceType);
       if (!mounted.current) return;
       setStep(2);
-      const trimmed = trimPage(page);
+      const { raster: trimmed } = trimPage(page);
       if (!ratioMatches(trimmed.width, trimmed.height, settings.aspectTolerancePct)) {
         setError({ code: "wrongTemplate" });
         setStage("error");

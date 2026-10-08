@@ -5,8 +5,10 @@ import { trimBounds, type SourceType } from "@/lib/form/template";
 import { flattenOnWhite } from "./flatten";
 import { needsOwnRotation, orientationMatrix, orientedSize, readJpegOrientation, readJpegSize } from "./orientation";
 import { pdfErrorCode, pdfScale, type PdfError } from "./pdf-errors";
+import { toPageText, type PageTextItem } from "./text";
 
-export type RenderedPage = { raster: Raster; pageCount: number };
+export type RenderedPage = { raster: Raster; pageCount: number; text: PageTextItem[] };
+export type TrimmedPage = { raster: Raster; offsetX: number; offsetY: number };
 
 export class PageError extends Error {
   constructor(readonly code: PdfError | "image_unreadable") {
@@ -56,7 +58,15 @@ async function renderPdf(file: Blob): Promise<RenderedPage> {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       // pdf.js 6 prefers `canvas`; `canvasContext` is only for backwards compatibility.
       await page.render({ canvas, viewport }).promise;
-      return { raster: canvasRaster(canvas), pageCount: doc.numPages };
+      const raster = canvasRaster(canvas);
+      let text: PageTextItem[] = [];
+      try {
+        const content = await page.getTextContent();
+        text = toPageText(content.items, viewport.transform, viewport.scale);
+      } catch {
+        // The page is still shown when its text cannot be read; detection then uses OCR.
+      }
+      return { raster, pageCount: doc.numPages, text };
     } catch (error) {
       canvas.width = 0; // release the backing store on failure too
       canvas.height = 0;
@@ -90,7 +100,7 @@ async function renderImage(file: Blob, sourceType: SourceType): Promise<Rendered
     if (!ctx) throw new PageError("image_unreadable");
     if (own) ctx.setTransform(...orientationMatrix(orientation, bitmap.width, bitmap.height));
     ctx.drawImage(bitmap, 0, 0);
-    return { raster: flattenOnWhite(canvasRaster(canvas)), pageCount: 1 };
+    return { raster: flattenOnWhite(canvasRaster(canvas)), pageCount: 1, text: [] };
   } finally {
     bitmap.close();
   }
@@ -101,11 +111,13 @@ export function renderSource(file: Blob, sourceType: SourceType): Promise<Render
   return sourceType === "pdf" ? renderPdf(file) : renderImage(file, sourceType);
 }
 
-/** The page with its near-white borders removed (UC-03 step 4). */
-export function trimPage(page: RenderedPage): Raster {
+/** The page with its near-white borders removed (UC-03 step 4), and where it sat in the rendered page. */
+export function trimPage(page: RenderedPage): TrimmedPage {
   const b = trimBounds(page.raster);
-  if (b.x === 0 && b.y === 0 && b.w === page.raster.width && b.h === page.raster.height) return page.raster;
-  return crop(page.raster, b);
+  if (b.x === 0 && b.y === 0 && b.w === page.raster.width && b.h === page.raster.height) {
+    return { raster: page.raster, offsetX: 0, offsetY: 0 };
+  }
+  return { raster: crop(page.raster, b), offsetX: b.x, offsetY: b.y };
 }
 
 export function drawRaster(canvas: HTMLCanvasElement, raster: Raster): void {

@@ -20,7 +20,7 @@ export function SheetPreview({ sourceUrl, sourceType, name, pageW, pageH }: { so
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const page = await renderSource(await response.blob(), sourceType);
         if (cancelled || !canvas.current) return;
-        const trimmed = trimPage(page);
+        const { raster: trimmed } = trimPage(page);
         // M4 turns this into a hard check; for now a mismatch with the stored size is only reported.
         if (trimmed.width !== pageW || trimmed.height !== pageH) {
           console.warn(`Sheet preview size ${trimmed.width}x${trimmed.height} differs from the stored ${pageW}x${pageH}`);

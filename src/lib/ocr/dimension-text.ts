@@ -12,3 +12,12 @@ export function toDimension(text: string): string | null {
   const value = /^\d{3,4}$/.test(t) ? `${t.slice(0, -2)}.${t.slice(-2)}` : t;
   return DIMENSION.test(value) && Number(value) > 0 ? value : null;
 }
+
+/**
+ * A dimension written in a PDF's text layer (UC-04 step 2). Symbols are trimmed only at the ends; no
+ * decimal point is inserted (that repair is for OCR readings), so an order number never becomes a value.
+ */
+export function exactDimension(text: string): string | null {
+  const t = text.replace(/^[^0-9]+/, "").replace(/[^0-9]+$/, "").replace(/,/g, ".");
+  return DIMENSION.test(t) && Number(t) > 0 ? t : null;
+}
