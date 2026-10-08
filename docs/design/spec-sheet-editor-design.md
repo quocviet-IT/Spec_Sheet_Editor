@@ -878,7 +878,7 @@ erDiagram
 | name | text | 1–200 characters | Sheet name; defaults to the file name without extension. |
 | source_type | text | pdf \| png \| jpg; immutable | Type of the original file. |
 | source_path, thumb_path | text | not null; immutable | `<id>/source.<ext>`, `<id>/thumb.jpg` |
-| page_px_w, page_px_h | int | > 0 | Size of the rendered page. |
+| page_px_w, page_px_h | int | > 0 | Size of the rendered page after trimming near-white borders; every view repeats the same render and trim. |
 | detections, edits | jsonb | array | Detected values and edits (section 6.3). |
 | version | int | default 1 | Incremented on every save; detects conflicts. |
 | created_by, updated_by, deleted_by | uuid | FK profiles | Creator, last editor, deleter. |
@@ -968,6 +968,9 @@ Every change to roles, status, access and settings goes through a `security defi
 | touch_profile() | function | callback | Creates or updates the profile from the JWT (a password account keeps its Admin-entered name); logs `auth.login`. Cannot change role or status. |
 | save_sheet(…) | function (invoker) | Staff | Saves with a version check in a single statement (BR-10). |
 | log_client_event(…) | function | Staff | Accepts only `sheet.export_png` and `sheet.export_pdf`; other actions cannot be forged. |
+| sheet_list | view (security invoker) | Staff | Sheet rows for the list, read with the caller's own rights so RLS applies. |
+| list_sheets(…) | function (invoker) | Staff | Keyset paging for the sheet list (50 rows per load); search treats `%` and `_` as literal characters. |
+| sheet_counts() | function (invoker) | Staff | Counts of active and trashed sheets for the list tabs. |
 | my_access_status() | function | server | Access state of the caller; adds `must_change_password`. |
 | admin_register_password_account(…) | function | Admin (via server) | Registers a password account an Admin created. |
 | admin_mark_password_reset(…) | function | Admin (via server) | Marks a one-time password issued; signs the person out on every device. |

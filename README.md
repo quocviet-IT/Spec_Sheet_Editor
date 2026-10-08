@@ -51,8 +51,18 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
 | `npm test` | Unit tests; SQL tests too when `DATABASE_URL` is set (always rolled back) |
 | `npm run build` | Production build |
+| `npm run e2e` | End-to-end tests (Playwright) against the development project; needs the dev server and `.env.local`; creates and cleans up the account `e2e-staff@ctyhp.vn` and its sheets |
 | `npm run db:migrate` | Apply pending migrations |
 | `npm run admin:create` | Create the first Admin (once) |
+
+## End-to-end tests
+
+`npm run e2e` runs the Playwright tests against the development project. It needs the dev server
+running and `.env.local` filled in. The first run creates the account `e2e-staff@ctyhp.vn` and later
+runs reuse it; every run resets that account's password to a random value held only in memory. The
+run deletes only that account's sheets, before the tests, between the list tests and after the run.
+TC-17 (password-protected PDF) is covered by a unit test, because the test-file generator cannot
+encrypt PDFs.
 
 ## Database migrations
 

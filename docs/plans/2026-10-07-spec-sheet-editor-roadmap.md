@@ -79,6 +79,24 @@ Measured in Chromium on the office PC with the bench page: scan located 9/11 (re
 slowest click 4.2 s, clicks read 8/11 — TC-20 and TC-24 pass, matching the Python benchmark. Decision:
 keep PP-OCRv4 small. Details: `research/ocr-bakeoff/README.md`, round 3.
 
+### M3 result (2026-10-08)
+
+Built: the sheet list (`/sheets`: 50 rows per load with infinite scroll and a "Load more" button,
+search 300 ms after typing, Trash tab, Move to Trash with Undo, Restore, keyboard tabs and menu);
+upload in the browser (checks type and size, renders PDF page 1 at 300 DPI with pdf.js 6.4.299 or an
+image with EXIF orientation, flattens transparency on white, trims near-white borders, checks the
+1.294 ratio, makes a 480-px JPEG thumbnail, uploads the original and thumbnail to Supabase Storage,
+then the server checks both files and creates the row); and a read-only sheet page `/sheets/<id>`
+that repeats the same render and trim. Migration `0003_sheet_list.sql` adds the `sheet_list` view
+(security invoker), `list_sheets()` and `sheet_counts()`.
+
+Tests: SQL 49 (7 new), unit 142, end-to-end 9 (TC-08, 09, 12, 15, 16, 18, 19, 48, 52; Playwright
+1.63.0). TC-10, 11, 13, 14 and 17 are unit tests; TC-17 because the generator cannot encrypt PDFs.
+
+Carried into M4: detection on upload (OCR or PDF text layer) stored in `detections`; the editor on
+`/sheets/<id>`; rename through save; list paging takes about 2 s per 50 rows against the development
+project from the office, so profile and parallelise the server reads.
+
 ### Carried into M3 and later from the M2 review
 
 - M3 (sheet decode): composite transparency onto white before OCR; the Raster sent to the Worker is always opaque.
