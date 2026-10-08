@@ -55,14 +55,25 @@ export async function createPasswordUser(_prev: CreateUserState, form: FormData)
   if (error || !data.user) return { error: createUserErrorCode(error) ?? "unknown", issued: null, values };
 
   const supabase = await createSupabaseServer();
-  const { error: registerError } = await supabase.rpc("admin_register_password_account", {
-    p_user: data.user.id,
-    p_full_name: fullName,
-    p_role: role,
-  });
-  if (registerError) {
-    await admin.auth.admin.deleteUser(data.user.id);
-    return { error: registerError.message.includes("forbidden") ? "forbidden" : "unknown", issued: null, values };
+  let failure: string | null = null;
+  try {
+    const { error: registerError } = await supabase.rpc("admin_register_password_account", {
+      p_user: data.user.id,
+      p_full_name: fullName,
+      p_role: role,
+    });
+    if (registerError) failure = registerError.message;
+  } catch (e) {
+    failure = e instanceof Error ? e.message : String(e);
+  }
+  if (failure !== null) {
+    try {
+      const { error: deleteError } = await admin.auth.admin.deleteUser(data.user.id);
+      if (deleteError) console.error("orphan sign-in account left behind:", data.user.id, deleteError.message);
+    } catch (e) {
+      console.error("orphan sign-in account left behind:", data.user.id, e instanceof Error ? e.message : String(e));
+    }
+    return { error: failure.includes("forbidden") ? "forbidden" : "unknown", issued: null, values };
   }
   revalidatePath("/admin/users");
   return { error: null, issued: { email, tempPassword }, values: EMPTY };

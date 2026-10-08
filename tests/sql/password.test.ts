@@ -25,6 +25,14 @@ describe.skipIf(!hasDb)("password sign-in (BR-08, decisions of 2026-10-08)", () 
     });
   });
 
+  it("a password account whose session also carries a Google identity is the same person", async () => {
+    await rollback(async (tx) => {
+      const member = await makePasswordUser(tx, `p-${randomUUID().slice(0, 8)}@gmail.com`);
+      await actAs(tx, member, "google");
+      expect(await status(tx)).toEqual({ ok: true, s: "ok" });
+    });
+  });
+
   it("a one-time password blocks every read and write until the person sets their own", async () => {
     await rollback(async (tx) => {
       const other = await makeUser(tx, staffEmail());

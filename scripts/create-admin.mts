@@ -57,7 +57,13 @@ async function main(): Promise<number> {
                          ${tx.json({ email, role: "admin", sign_in: "password", by: "setup script" })})`;
       });
     } catch (e) {
-      await admin.auth.admin.deleteUser(id);
+      console.error("Registering the Admin failed:", e);
+      try {
+        const { error: deleteError } = await admin.auth.admin.deleteUser(id);
+        if (deleteError) console.error(`Clean-up failed; delete ${email} under Authentication → Users:`, deleteError.message);
+      } catch (cleanup) {
+        console.error(`Clean-up failed; delete ${email} under Authentication → Users:`, cleanup);
+      }
       throw e;
     }
     console.log(`First Admin created: ${email}`);

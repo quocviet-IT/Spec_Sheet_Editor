@@ -48,7 +48,7 @@ export default async function UsersPage() {
               <th className="px-3 py-2 font-medium">{u.columns.status}</th>
               <th className="px-3 py-2 font-medium">{u.columns.signIn}</th>
               <th className="px-3 py-2 font-medium">{u.columns.lastSeen}</th>
-              <th className="px-3 py-2" />
+              <th className="px-3 py-2"><span className="sr-only">{u.columns.actions}</span></th>
             </tr>
           </thead>
           <tbody>
@@ -73,7 +73,7 @@ export default async function UsersPage() {
                   {row.last_seen_at ? when.format(new Date(row.last_seen_at)) : u.never}
                 </td>
                 <td className="px-3 py-2 text-right">
-                  {row.password_account && row.id !== me.id && <ResetPasswordButton userId={row.id} />}
+                  {row.password_account && row.id !== me.id && <ResetPasswordButton userId={row.id} email={row.email} />}
                 </td>
               </tr>
             ))}

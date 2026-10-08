@@ -8,15 +8,15 @@ import { IssuedPasswordNotice } from "./issued-password";
 const initial: ResetPasswordState = { error: null, issued: null };
 
 /** A two-step control: ask first (no browser dialogs), then show the new one-time password once. */
-export function ResetPasswordButton({ userId }: { userId: string }) {
+export function ResetPasswordButton({ userId, email }: { userId: string; email: string }) {
   const t = useMessages();
   const u = t.admin.users;
   const [confirming, setConfirming] = useState(false);
   const [state, action, pending] = useActionState(resetPassword, initial);
-  if (state.issued) return <IssuedPasswordNotice title={u.resetTitle} issued={state.issued} />;
+  if (state.issued) return <IssuedPasswordNotice key={state.issued.tempPassword} title={u.resetTitle} issued={state.issued} />;
   if (!confirming) {
     return (
-      <button type="button" onClick={() => setConfirming(true)} className="rounded border border-line px-3 py-1 hover:bg-sunk">
+      <button type="button" onClick={() => setConfirming(true)} aria-label={`${u.reset}: ${email}`} className="rounded border border-line px-3 py-1 hover:bg-sunk">
         {u.reset}
       </button>
     );

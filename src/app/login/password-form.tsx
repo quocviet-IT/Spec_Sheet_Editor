@@ -8,7 +8,7 @@ const initial: SignInState = { error: null, email: "" };
 
 const field = "w-full rounded-md border border-line bg-surface px-3 py-2";
 
-export function PasswordSignInForm({ next }: { next: string }) {
+export function PasswordSignInForm({ next, notice }: { next: string; notice: string | null }) {
   const t = useMessages();
   const [state, action, pending] = useActionState(signInWithPassword, initial);
   const errors = {
@@ -18,7 +18,8 @@ export function PasswordSignInForm({ next }: { next: string }) {
     suspended: t.login.errors.suspended,
     not_permitted: t.login.errors.notPermitted,
   } as const;
-  const message = state.error ? errors[state.error] : null;
+  // One alert at a time: the reason the page was opened with, until the form has an answer of its own.
+  const message = state === initial ? notice : state.error ? errors[state.error] : null;
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="next" value={next} />

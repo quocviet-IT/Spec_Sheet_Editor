@@ -34,12 +34,7 @@ export default async function LoginPage({
           </div>
           <LanguageSwitch />
         </div>
-        {error && (
-          <p role="alert" className="rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm">
-            {error}
-          </p>
-        )}
-        <PasswordSignInForm next={next} />
+        <PasswordSignInForm next={next} notice={error} />
         {google && (
           <>
             <div className="flex items-center gap-3 text-xs text-ink-3">

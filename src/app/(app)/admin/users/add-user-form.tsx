@@ -24,7 +24,7 @@ export function AddUserForm() {
   return (
     <section className="space-y-3 rounded-lg border border-line bg-surface p-4">
       <h2 className="font-semibold">{u.add}</h2>
-      {state.issued && <IssuedPasswordNotice title={u.createdTitle} issued={state.issued} />}
+      {state.issued && <IssuedPasswordNotice key={state.issued.tempPassword} title={u.createdTitle} issued={state.issued} />}
       {message && (
         <p role="alert" className="rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm">
           {message}
