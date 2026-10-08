@@ -30,11 +30,13 @@ type Props = {
   onOpen: (id: string) => void;
   onPageClick?: (p: Point) => void;
   drawing: boolean;
+  /** A drawn box waiting for its direction: shown as the dashed outline of the drag. */
+  pendingRect?: Rect | null;
   onDrawn: (rect: Rect) => void;
   children?: ReactNode;
 };
 
-export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edits, activeId, scale, onFitScale, onOpen, onPageClick, drawing, onDrawn, children }: Props) {
+export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edits, activeId, scale, onFitScale, onOpen, onPageClick, drawing, pendingRect = null, onDrawn, children }: Props) {
   const t = useMessages();
   const viewport = useRef<HTMLDivElement | null>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
@@ -128,10 +130,21 @@ export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edi
             </button>
           );
         })}
+        {pendingRect ? <DrawnOutline rect={pendingRect} scale={scale} /> : null}
         {drawing ? <DrawLayer pageW={pageW} pageH={pageH} scale={scale} onDrawn={onDrawn} /> : null}
         {children}
       </div>
     </div>
+  );
+}
+
+function DrawnOutline({ rect, scale }: { rect: Rect; scale: number }) {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute z-10 border-2 border-dashed border-mark bg-mark/10"
+      style={{ left: rect.x * scale, top: rect.y * scale, width: rect.w * scale, height: rect.h * scale }}
+    />
   );
 }
 
@@ -146,8 +159,9 @@ function DrawLayer({ pageW, pageH, scale, onDrawn }: { pageW: number; pageH: num
   return (
     <div
       aria-hidden
-      className="absolute inset-0 z-10 cursor-crosshair"
+      className="absolute inset-0 z-10 cursor-crosshair touch-none"
       onPointerDown={(e) => {
+        if (e.button !== 0) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         const p = toPage(e);
         setDrag({ a: p, b: p });
@@ -155,6 +169,8 @@ function DrawLayer({ pageW, pageH, scale, onDrawn }: { pageW: number; pageH: num
       onPointerMove={(e) => {
         if (drag) setDrag({ a: drag.a, b: toPage(e) });
       }}
+      onPointerCancel={() => setDrag(null)}
+      onLostPointerCapture={() => setDrag(null)}
       onPointerUp={(e) => {
         if (!drag) return;
         const rect = rectFromDrag(drag.a, toPage(e));

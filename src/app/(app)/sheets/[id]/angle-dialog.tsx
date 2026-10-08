@@ -12,6 +12,7 @@ export function AngleDialog({ style, onChoose, onCancel }: { style: CSSPropertie
   const a = t.editor.angle;
   const id = useId();
   const first = useRef<HTMLInputElement | null>(null);
+  const degreesInput = useRef<HTMLInputElement | null>(null);
   const [choice, setChoice] = useState<Choice>("horizontal");
   const [degrees, setDegrees] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +20,10 @@ export function AngleDialog({ style, onChoose, onCancel }: { style: CSSPropertie
   useEffect(() => {
     first.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (choice === "free") degreesInput.current?.focus();
+  }, [choice]);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -29,6 +34,7 @@ export function AngleDialog({ style, onChoose, onCancel }: { style: CSSPropertie
     const n = Number(degrees.trim().replace(",", "."));
     if (degrees.trim() === "" || !Number.isFinite(n) || n < -179 || n > 180) {
       setError(a.invalid);
+      degreesInput.current?.focus();
       return;
     }
     onChoose(Math.round(n * 100) / 100);
@@ -68,6 +74,7 @@ export function AngleDialog({ style, onChoose, onCancel }: { style: CSSPropertie
       <div className="space-y-1">
         <label htmlFor={`${id}-deg`} className="block text-sm font-medium">{a.degrees}</label>
         <input
+          ref={degreesInput}
           id={`${id}-deg`}
           inputMode="decimal"
           autoComplete="off"

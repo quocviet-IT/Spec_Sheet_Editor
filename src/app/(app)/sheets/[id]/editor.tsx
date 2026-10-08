@@ -89,9 +89,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const [fitScale, setFitScale] = useState(0.25);
   const reader = useValueReader();
   const ensureReader = useRef(reader.ensure);
-  const [notice, setNotice] = useState<{ kind: "status" | "alert"; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ kind: "status" | "alert"; text: string; draw?: boolean } | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [drawn, setDrawn] = useState<Rect | null>(null);
+  const drawButton = useRef<HTMLButtonElement | null>(null);
   const readingNow = useRef(false);
   const inFlight = useRef(false);
   const alive = useRef(true);
@@ -113,8 +114,16 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const conflictOpen = conflict !== null;
   const drawnOpen = drawn !== null;
   const popoverOpen = activeId !== null;
+  const loadedReady = loaded !== null;
+  const detectRunning = detect === "running";
   const scale = zoom === "fit" ? fitScale : zoom;
   const onFitScale = useCallback((s: number) => setFitScale(s), []);
+  /** Leaves draw mode; an alert raised while drawing goes with it. */
+  const endDraw = useCallback(() => {
+    setDrawing(false);
+    setDrawn(null);
+    setNotice((n) => (n?.draw ? null : n));
+  }, []);
 
   /** Take what the database holds (after a conflict, or when someone else stored the first detection). */
   const reloadLatest = useCallback(async (): Promise<boolean> => {
@@ -280,12 +289,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       const target = e.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
       if (e.key === "k" || e.key === "K") {
-        if (conflictOpen || drawnOpen || popoverOpen || target?.closest("[role='dialog']")) return;
-        setDrawing((d) => !d);
-        setDrawn(null);
+        if (e.repeat || !loadedReady || detectRunning || conflictOpen || drawnOpen || popoverOpen || target?.closest("[role='dialog']")) return;
+        if (drawing) endDraw();
+        else setDrawing(true);
       } else if (e.key === "Escape" && drawing) {
-        setDrawing(false);
-        setDrawn(null);
+        endDraw();
       } else if (e.key === "+" || e.key === "=") setZoom(zoomIn(scale));
       else if (e.key === "-") setZoom(zoomOut(scale));
       else if (e.key === "0") setZoom("fit");
@@ -294,7 +302,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [store, scale, conflictOpen, drawing, drawnOpen, popoverOpen]);
+  }, [store, scale, conflictOpen, drawing, drawnOpen, popoverOpen, loadedReady, detectRunning, endDraw]);
 
   useLeaveGuard(dirty, t.editor.leave);
 
@@ -357,10 +365,19 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     );
   }
 
+  function focusDrawButton() {
+    requestAnimationFrame(() => drawButton.current?.focus());
+  }
+
   function onDrawn(rect: Rect) {
     if (rect.w < MIN_DRAWN_PX || rect.h < MIN_DRAWN_PX) return;
+    if (detect === "running") {
+      // The first detection replaces the value list when it finishes, which would drop a drawn value.
+      setNotice({ kind: "status", text: t.editor.waitDetect });
+      return;
+    }
     if (!rectInDrawingArea(rect, W, H)) {
-      setNotice({ kind: "alert", text: t.editor.drawOutside });
+      setNotice({ kind: "alert", text: t.editor.drawOutside, draw: true });
       return;
     }
     setNotice(null);
@@ -372,13 +389,14 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     const px = boxForDrawnRect(drawn, angle);
     setDrawn(null);
     if (!analyseBox(loaded.page.raster, px)) {
-      setNotice({ kind: "alert", text: t.editor.drawEmpty });
+      setNotice({ kind: "alert", text: t.editor.drawEmpty, draw: true });
+      focusDrawButton();
       return;
     }
     const added = toDetection(loaded.page.raster, px, { readValue: null, confidence: null, source: "manual" }, () => crypto.randomUUID());
     latest.current = { ...latest.current, detections: [...latest.current.detections, added] };
     setDetections((list) => [...list, added]);
-    setDrawing(false);
+    endDraw();
     open(added.id);
   }
 
@@ -413,7 +431,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         open(hit.id);
         return;
       }
-      const added = toDetection(loaded.page.raster, px, { readValue: r.value, confidence: Math.round(r.score * 100), source: "click" }, () => crypto.randomUUID());
+      const added = toDetection(loaded.page.raster, px, { readValue: r.value, confidence: Math.min(100, Math.max(0, Math.round(r.score * 100))), source: "click" }, () => crypto.randomUUID());
       latest.current = { ...latest.current, detections: [...latest.current.detections, added] };
       setDetections((list) => [...list, added]);
       open(added.id);
@@ -440,7 +458,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     <AngleDialog
       style={besideStyle(drawn.x + drawn.w / 2, drawn.y + drawn.h / 2, (Math.hypot(drawn.w, drawn.h) / 2) * scale + 12, W, H, scale, 288, 360)}
       onChoose={onAngle}
-      onCancel={() => setDrawn(null)}
+      onCancel={() => { setDrawn(null); focusDrawButton(); }}
     />
   ) : null;
 
@@ -466,8 +484,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     return null;
   }
 
+  // "Still finding the values…" goes as soon as the detection has finished.
+  const current = notice?.text === t.editor.waitDetect && !detectRunning ? null : notice;
   const shownNotice: { kind: "status" | "alert"; text: string } | null =
-    notice?.kind === "alert" ? notice : drawing ? { kind: "status", text: t.editor.drawHint } : notice;
+    current?.kind === "alert" ? current : drawing ? { kind: "status", text: t.editor.drawHint } : current;
   const errorText = loadError === "font" ? t.editor.fontFailed : loadError === "size" ? t.editor.sizeMismatch : t.sheet.loadError;
 
   return (
@@ -478,10 +498,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         <div role="status" aria-live="polite" className="text-sm">{status()}</div>
         <button
           type="button"
-          onClick={() => { setDrawing((d) => !d); setDrawn(null); }}
+          ref={drawButton}
+          onClick={() => { if (drawing) endDraw(); else { setDrawing(true); setDrawn(null); } }}
           aria-pressed={drawing}
           aria-keyshortcuts="K"
-          disabled={!loaded}
+          disabled={!loaded || detectRunning}
           className={"ml-auto rounded-md border px-3 py-2 text-sm " + (drawing ? "border-mark bg-mark/10 text-ink" : "border-line")}
         >
           {t.editor.drawBox} <kbd aria-hidden className="ml-1 font-sans text-xs opacity-75">K</kbd>
@@ -527,6 +548,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
               onFitScale={onFitScale}
               onOpen={open}
               onPageClick={(p) => void readAt(p)}
+              pendingRect={drawn}
               drawing={drawing && !drawn}
               onDrawn={onDrawn}
             >
