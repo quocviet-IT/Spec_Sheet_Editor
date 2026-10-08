@@ -39,7 +39,7 @@ PaddleOCR PP-OCRv4 small (ONNX), pdf-lib, Vitest 4, Playwright 1.6x, pixelmatch.
 
 ## Prerequisites (owner: project owner, before M1 Task 6)
 
-These touch accounts and billing, so the project owner does them; the agent does not.
+These touch accounts and billing, so only the project owner does them.
 
 1. **Supabase:** create a new project in region **Southeast Asia (Singapore)**. Then:
    - *Authentication → Providers → Google:* enable, paste the Google OAuth client id/secret (step 2).
