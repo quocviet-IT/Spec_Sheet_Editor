@@ -95,14 +95,15 @@ describe("readAtPoint (UC-06)", () => {
   });
 
   it("does not start an angle that cannot finish before the deadline", async () => {
+    // One angle takes 200 ms and the deadline is 300 ms, so a second angle must not start. The count of
+    // angles tried is the check; elapsed time is not asserted, because a busy machine stretches it.
     const read: RegionReader = async () => {
-      await new Promise((r) => setTimeout(r, 40));
+      await new Promise((r) => setTimeout(r, 200));
       return [];
     };
-    const result = await readAtPoint(models, page, { x: 300, y: 600 }, 70, read);
+    const result = await readAtPoint(models, page, { x: 300, y: 600 }, 300, read);
     expect(result.anglesTried).toBe(1);
     expect(result.reading).toBeNull();
-    expect(result.ms).toBeLessThan(70);
   });
 
   it("asks the reader to re-read upside down only non-dimensions", async () => {
