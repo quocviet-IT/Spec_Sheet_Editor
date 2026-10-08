@@ -144,4 +144,21 @@ describe("detectionAt", () => {
     expect(detectionAt(list, { x: 0.4 * 3300, y: 0.3 * 2550 + 25 }, 3300, 2550)?.id).toBe("b"); // along a vertical text
     expect(detectionAt(list, { x: 0.3 * 3300, y: 0.3 * 2550 }, 3300, 2550)).toBeNull();
   });
+
+  it("reaches half the digit height beyond the box, and no further", () => {
+    // "a" is 66 × 33 px: half-width 33, margin 16.5 along the text and across it.
+    const list = [det("a", 0.2, 0.3), det("b", 0.4, 0.3, -90)];
+    const a = { x: 0.2 * 3300, y: 0.3 * 2550 };
+    expect(detectionAt(list, { x: a.x + 33 + 10, y: a.y }, 3300, 2550)?.id).toBe("a");
+    expect(detectionAt(list, { x: a.x + 33 + 17, y: a.y }, 3300, 2550)).toBeNull();
+    // across the vertical "b" (x is across its text): half-height 16.5 + margin 16.5
+    const b = { x: 0.4 * 3300, y: 0.3 * 2550 };
+    expect(detectionAt(list, { x: b.x + 30, y: b.y }, 3300, 2550)?.id).toBe("b");
+    expect(detectionAt(list, { x: b.x + 34, y: b.y }, 3300, 2550)).toBeNull();
+  });
+
+  it("picks the nearer of two values whose margins overlap", () => {
+    const list = [det("c", 0.2, 0.3), det("d", 0.2 + 70 / 3300, 0.3)];
+    expect(detectionAt(list, { x: 0.2 * 3300 + 40, y: 0.3 * 2550 }, 3300, 2550)?.id).toBe("d");
+  });
 });

@@ -144,13 +144,23 @@ const HIT_MARGIN = 0.5;
 
 /** The value whose box (in its own frame, with a small margin) holds the point, if any. */
 export function detectionAt(detections: readonly Detection[], p: Point, pageW: number, pageH: number): Detection | null {
+  let best: Detection | null = null;
+  let bestDistance = Infinity;
   for (const d of detections) {
     const px = toPx(d.box, d.angle, pageW, pageH);
     const { u, v } = axes(px.angle);
     const dx = p.x - px.cx;
     const dy = p.y - px.cy;
+    const s = dx * u.x + dy * u.y;
+    const t = dx * v.x + dy * v.y;
     const margin = HIT_MARGIN * px.h;
-    if (Math.abs(dx * u.x + dy * u.y) <= px.w / 2 + margin && Math.abs(dx * v.x + dy * v.y) <= px.h / 2 + margin) return d;
+    if (Math.abs(s) > px.w / 2 + margin || Math.abs(t) > px.h / 2 + margin) continue;
+    // Where the margins of two close values overlap, the one whose own box is nearest wins.
+    const distance = (s / Math.max(px.w / 2, 1e-9)) ** 2 + (t / Math.max(px.h / 2, 1e-9)) ** 2;
+    if (distance < bestDistance) {
+      best = d;
+      bestDistance = distance;
+    }
   }
-  return null;
+  return best;
 }
