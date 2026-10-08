@@ -358,7 +358,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Extensions:** 2a. Once Google sign-in is switched on, the user clicks "Sign in with Google", Google authenticates and redirects to `/auth/callback`, and the flow continues at step 3. If the user cancels on Google's screen: back to Sign in, no error shown.
 
-**Exceptions:** 3a. Email not permitted: the system ends the session, logs `auth.denied`, and shows "{email} is not in a permitted domain. Sign in with your company email."<br>3b. Account suspended: the system ends the session and shows "Your account has been suspended. Contact an administrator."
+**Exceptions:** 3a. Email not permitted: the system ends the session, logs `auth.denied`, and shows "This account has not been given access. Contact an administrator."<br>3b. Account suspended: the system ends the session and shows "Your account has been suspended. Contact an administrator."
 
 #### UC-02 · Browse and search sheets
 

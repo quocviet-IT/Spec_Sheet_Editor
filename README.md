@@ -21,8 +21,11 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
    production one) — needed once Google is switched on.
 2. Google sign-in is optional and off by default (`GOOGLE_SIGN_IN=off`). To switch it on later:
    enable the Google provider, turn sign-ups back on (the database still admits only Google accounts
-   on the permitted lists and accounts an Admin created), and set `GOOGLE_SIGN_IN=on`.
-3. `cp .env.example .env.local` and fill in the four values.
+   on the permitted lists and accounts an Admin created), and set `GOOGLE_SIGN_IN=on`. The flag both
+   shows the button and lets the app accept Google sign-ins; with `off` the server refuses them. Before
+   switching on, check that Supabase links a Google identity to the existing account with the same
+   verified email (Authentication → identity linking); otherwise the same person gets a second account.
+3. `cp .env.example .env.local` and fill in the four required values (`GOOGLE_SIGN_IN` is optional).
 4. `npm install`
 5. `npm run db:migrate` — applies `supabase/migrations/*.sql`.
    `DATABASE_URL` must point at the development project, never production: the SQL tests change data
@@ -30,6 +33,11 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 6. Create the first Admin once: `npm run admin:create -- you@ctyhp.vn "Your Name"`. It prints a
    one-time password; sign in with it at `/login` and set your own password. Further accounts:
    Admin → Users.
+
+   There is no self-service "forgot password": an Admin issues a new one-time password
+   (Admin → Users). If `createUser` reports the email already exists (a stray sign-up from when
+   sign-ups were on), delete that user under Authentication → Users first. The app offers no email
+   change; keep "Secure email change" on in Supabase.
 
 ## Scripts
 
