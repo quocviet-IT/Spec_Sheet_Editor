@@ -1,4 +1,4 @@
-<!-- Markdown edition of spec-sheet-editor-design.html (v1.2). Diagrams are Mermaid redraws of the HTML figures; wireframes stay in the HTML edition. -->
+<!-- Markdown edition of spec-sheet-editor-design.html (v1.3). Diagrams are Mermaid redraws of the HTML figures; wireframes stay in the HTML edition. -->
 
 Software Requirements and Design Specification
 
@@ -6,9 +6,9 @@ Software Requirements and Design Specification
 
 A system for editing the dimension values on Product Specifications sheets and exporting a copy for customer approval
 
-**Version:** 1.2 (draft for review)
+**Version:** 1.3 (draft for review)
 
-**Date:** 6 October 2026
+**Date:** 8 October 2026
 
 **Prepared by:** IT Department, CTYHP
 
@@ -25,6 +25,7 @@ A system for editing the dimension values on Product Specifications sheets and e
 | 1.0 | 06/10/2026 | First issue: business process, functions, use cases, architecture, database, technology, UI/UX, test cases. Based on the OCR bake-off in `research/ocr-bakeoff/`. |
 | 1.1 | 06/10/2026 | Added the Admin role with full rights (BR-12 to BR-17, F-20 to F-29, UC-13 to UC-18, screens S7–S10, TC-54 to TC-77) and an audit log; evaluated moving image processing to Python (section 7.3); restructured as an academic report with Harvard referencing. |
 | 1.2 | 06/10/2026 | Translated into English. Content is unchanged from 1.1. Wireframes and on-screen messages are shown in English; the language of the shipped interface is still an open assumption (Table 1.2). |
+| 1.3 | 08/10/2026 | Password sign-in for accounts an Admin creates (one-time password replaced at first sign-in); Google sign-in kept for later, side by side. BR-08, F-01, F-30, UC-01, UC-13, 6.2 and 6.4 updated. |
 
 ## Abstract
 
@@ -97,7 +98,7 @@ Identifiers: `BR` business rule, `F` function, `NFR` non-functional requirement,
 | Assumption | Supabase and Vercel are hosted in Singapore. | Chapters 5, 7 |
 | Assumption | Exported PNG and PDF files are not stored in the system. | UC-09 |
 | Assumption | The default permitted domain is `ctyhp.vn`. | UC-01, UC-14 |
-| Assumption | The first Admin is assigned with one SQL statement after their first sign-in; from then on Admins grant the role to others. | UC-13, Appendix A |
+| Assumption | The first Admin is created once with `npm run admin:create`; from then on Admins create accounts in Admin → Users. | UC-13, Appendix A |
 | Decided | Admins hold all four permission groups: users; access and settings; audit log; permanent deletion and clean-up. | Chapters 2–9 |
 | Decided | Staff can still move sheets to the Trash and restore them; only Admins delete permanently. | BR-09, UC-11, UC-17 |
 | Decided | Recognition uses PaddleOCR; no line removal before reading; users always confirm the old value. | Chapter 7 |
@@ -176,7 +177,7 @@ Editable and locked zones are fixed by position on the template. Coordinates wer
 | BR-05 | A new value contains only digits and one decimal separator, matching `^\d{1,3}([.,]\d{1,3})?$`; a comma becomes a point; the new value takes the same number of decimals as the old one ("2.50" + typing 2.6 gives "2.60"). | Keeps the CAD drawing's number format. |
 | BR-06 | Exported files are flattened pages; the PDF has no text layer. | Old values cannot leak when the customer selects, copies or searches the file. |
 | BR-07 | Before exporting, the system lists the edited values, suggests other places that still show the same old value, and reminds the user that the right-hand table does not change. | Prevents a sheet that says Size 5.75 while the drawing says 16.51. |
-| BR-08 | A user may enter the system if and only if their email belongs to a permitted domain *or* is on the permitted email list, *and* their account is not suspended. Domains are matched on the whole part after the `@`, case-insensitively. | Sheets contain order numbers and order specifications. |
+| BR-08 | A user may enter the system if and only if their account is not suspended, has replaced any one-time password, and either (a) signed in with Google with an email in a permitted domain or on the permitted email list, or (b) is a password account an Admin created. Domains are matched on the whole part after the `@`, case-insensitively. | Sheets contain order numbers and order specifications. |
 | BR-09 | Staff and Admins can both move sheets to the Trash and restore them. | Prevents losing a sheet through a mis-click. |
 | BR-10 | When two people edit the same sheet, the one who saves second is told about the conflict; nobody's work is silently overwritten. | Everyone can edit every sheet. |
 | BR-11 | Phone photos of paper sheets are not accepted. For multi-page PDFs only page 1 is used. | Photos are skewed and shadowed and do not match the template. |
@@ -217,7 +218,7 @@ Priority: **Must** is required in the first release; **Should** is built if time
 | ID | Function | Description | Use case | Priority |
 |---|---|---|---|---|
 | **Authentication** |  |  |  |  |
-| F-01 | Google sign-in | Sign in with a Google account; reject emails that are not permitted and suspended accounts. | UC-01 | Must |
+| F-01 | Sign-in | Sign in with an email and password an Admin issued; a one-time password must be replaced at the first sign-in. Google sign-in (permitted domains and emails) can be switched on later and runs alongside. | UC-01 | Must |
 | F-02 | Sign out | End the session in the current browser. | UC-12 | Must |
 | **Sheet management** |  |  |  |  |
 | F-03 | Sheet list | Thumbnail, name, number of edits, last editor, time; newest first; 50 more rows per load. | UC-02 | Must |
@@ -251,6 +252,7 @@ Priority: **Must** is required in the first release; **Should** is built if time
 | F-27 | View, filter, export log | Filter by time, person, action and sheet; export CSV. | UC-16 | Must |
 | F-28 | Permanent deletion | Delete the record and files of a sheet in the Trash, with typed confirmation. | UC-17 | Must |
 | F-29 | Orphan file clean-up | Delete storage folders with no matching record that are older than 24 hours. | UC-18 | Should |
+| F-30 | Password accounts | Create an account (name, email, role) with a one-time password shown once; issue a new one-time password, which signs the person out everywhere. | UC-13 | Must |
 
 ### 3.2 Non-functional requirements
 
@@ -340,20 +342,21 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 *Traces to: F-01 · BR-08 · BR-14*
 
-**Actors:** Staff (primary), Google OAuth (secondary)
+**Actors:** Staff (primary), Google OAuth (secondary, once switched on)
 
-**Preconditions:** The user has a Google account permitted under BR-08.
+**Preconditions:** The user has an account an Admin created (or, once switched on, a Google account permitted under BR-08).
 
 **Postconditions:** A valid session exists; the profile is created or updated; the audit log has an `auth.login` entry.
 
 **Main flow:**
 
 1. The user opens any page without a session; the system redirects to Sign in and remembers the intended page.
-2. The user clicks "Sign in with Google"; Google authenticates and redirects to `/auth/callback`.
-3. The system exchanges the code for a session and calls `touch_profile()`, which checks BR-08 and writes the profile and the audit entry.
-4. The system redirects to the intended page, by default the sheet list.
+2. The user enters email and password.
+3. The system checks BR-08. On a one-time password the system asks for a new password (at least 10 characters) before anything else.
+4. The profile is touched and the audit entry written.
+5. The system redirects to the intended page, by default the sheet list.
 
-**Extensions:** 2a. The user cancels on Google's screen: back to Sign in, no error shown.
+**Extensions:** 2a. Once Google sign-in is switched on, the user clicks "Sign in with Google", Google authenticates and redirects to `/auth/callback`, and the flow continues at step 3. If the user cancels on Google's screen: back to Sign in, no error shown.
 
 **Exceptions:** 3a. Email not permitted: the system ends the session, logs `auth.denied`, and shows "{email} is not in a permitted domain. Sign in with your company email."<br>3b. Account suspended: the system ends the session and shows "Your account has been suspended. Contact an administrator."
 
@@ -569,6 +572,8 @@ All use cases below share these preconditions: signed in, role Admin, account ac
 2. The Admin searches by name or email.
 3. The Admin switches a role between Staff and Admin and confirms; the system calls `set_user_role`.
 4. The Admin clicks "Suspend" and confirms; the system calls `set_user_status`. The suspended user loses access on their next request.
+5. The Admin clicks "Add user" (name, email, role); the system creates the account and the one-time password is shown once.
+6. The Admin clicks "Issue new password" (password accounts only, not one's own); the person is signed out on every device.
 
 **Extensions:** 4a. "Reinstate": the account works again from its next sign-in.
 
@@ -884,11 +889,19 @@ erDiagram
 | Column | Type | Meaning |
 |---|---|---|
 | id | uuid | PK, FK auth.users, cascades on delete. |
-| email, full_name, avatar_url | text | Taken from Google at every sign-in. |
+| email, full_name, avatar_url | text | Taken from Google at every sign-in; a password account keeps its Admin-entered name. |
 | role | text | `user` (Staff) or `admin`; changed only through `set_user_role`. |
 | status | text | `active` or `suspended`; changed only through `set_user_status`. |
 | suspended_at, suspended_by | timestamptz, uuid | When and by whom the account was suspended. |
 | last_seen_at, updated_at | timestamptz | Last sign-in; last profile change. |
+| password_account | boolean | True for an account an Admin created with a password. |
+| must_change_password | boolean | True while the account still has a one-time password. |
+
+**Table 6.2a.** Table `password_snapshots`
+
+| Column | Type | Meaning |
+|---|---|---|
+| user_id, hash, set_by, taken_at | uuid, text, uuid, timestamptz | The password hash last seen for each password account, who set it, and when. No client access. |
 
 **Table 6.3.** Tables `allowed_domains` and `allowed_emails`
 
@@ -950,11 +963,15 @@ Every change to roles, status, access and settings goes through a `security defi
 
 | Name | Kind | Called by | Purpose |
 |---|---|---|---|
-| is_allowed_user() | function | RLS | BR-08: permitted domain or email, and account not suspended. |
+| is_allowed_user() | function | RLS | BR-08: Google under the permitted lists, or an account an Admin created; never while suspended or on a one-time password. |
 | is_admin() | function | RLS, other functions | `is_allowed_user()` and an active admin role. |
-| touch_profile() | function | callback | Creates or updates the profile from the JWT; logs `auth.login`. Cannot change role or status. |
+| touch_profile() | function | callback | Creates or updates the profile from the JWT (a password account keeps its Admin-entered name); logs `auth.login`. Cannot change role or status. |
 | save_sheet(…) | function (invoker) | Staff | Saves with a version check in a single statement (BR-10). |
 | log_client_event(…) | function | Staff | Accepts only `sheet.export_png` and `sheet.export_pdf`; other actions cannot be forged. |
+| my_access_status() | function | server | Access state of the caller; adds `must_change_password`. |
+| admin_register_password_account(…) | function | Admin (via server) | Registers a password account an Admin created. |
+| admin_mark_password_reset(…) | function | Admin (via server) | Marks a one-time password issued; signs the person out on every device. |
+| finish_password_change(…) | function | server | Ends the one-time password state; records only a real change. |
 | set_user_role(…), set_user_status(…) | function | Admin | Change role, suspend, reinstate; block self-suspension. |
 | add_allowed(…), remove_allowed(…) | function | Admin | Add or remove a domain or email; roll back if the Admin would lose access (BR-17). |
 | set_setting(…) | function | Admin | Range-check then save; log old and new values. |

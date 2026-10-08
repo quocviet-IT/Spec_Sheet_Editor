@@ -42,11 +42,12 @@ PaddleOCR PP-OCRv4 small (ONNX), pdf-lib, Vitest 4, Playwright 1.6x, pixelmatch.
 These touch accounts and billing, so only the project owner does them.
 
 1. **Supabase:** create a new project in region **Southeast Asia (Singapore)**. Then:
-   - *Authentication → Providers → Google:* enable, paste the Google OAuth client id/secret (step 2).
-   - *Authentication → URL configuration:* Site URL `http://localhost:3000`; add redirect URLs
-     `http://localhost:3000/auth/callback` and (later) `https://<vercel-domain>/auth/callback`.
-   - *Authentication → Sign In / Providers:* turn **off** "Allow new users to sign up" for Email,
-     leave Email provider **on** (used only by admin-created test users in E2E, M3+).
+   - *Authentication → Sign In / Providers:* keep **Email** enabled and turn **off** "Allow new users to
+     sign up": accounts are created only by an Admin (the admin API ignores this switch). Turn off
+     Phone and Anonymous sign-ins.
+   - *Authentication → URL configuration:* list only exact callback URLs
+     (`http://localhost:3000/auth/callback`, later the production one) — needed once Google is
+     switched on (Google sign-in is optional and off by default, `GOOGLE_SIGN_IN=off`).
    - *Project Settings → API Keys:* copy the **publishable** key and a **secret** key.
    - *Connect → Session pooler:* copy the connection string (port 5432) with the DB password.
 2. **Google Cloud Console:** OAuth client (Web application) with authorised redirect URI
@@ -62,13 +63,15 @@ These touch accounts and billing, so only the project owner does them.
 
 | # | Milestone | Delivers | Exit criteria (design test cases) | Depends on |
 |---|---|---|---|---|
-| M1 | Foundation | Next.js app, design tokens, bilingual shell, migration `0001_init.sql` (all tables, functions, triggers, RLS, bucket), migration runner, SQL test harness, Google sign-in, access guard, sign-out, CI | Unit tests green; `next build` green; SQL tests TC-03, 04, 05, 49, 50, 56, 57, 59, 61, 65, 69, 70, 71, 73 green against the dev project; manual sign-in with a `ctyhp.vn` account and rejection of a gmail account | Prerequisites 1–3 for the SQL tests and sign-in check |
+| M1 | Foundation | Next.js app, design tokens, bilingual shell, migration `0001_init.sql` (all tables, functions, triggers, RLS, bucket), migration runner, SQL test harness, Google sign-in, access guard, sign-out, CI | Unit tests green; `next build` green; SQL tests TC-03, 04, 05, 49, 50, 56, 57, 59, 61, 65, 69, 70, 71, 73 green against the dev project; manual sign-in with the first Admin's one-time password, forced password change, a second account created in Admin → Users, and a wrong password refused | Prerequisites 1–3 for the SQL tests and sign-in check |
 | M2 | Browser OCR | `lib/ocr`: PP-OCRv4 small on onnxruntime-web in a Web Worker (pre/post-processing ported from RapidOCR: DB box decoding, CTC decoding), scan of the drawing area at 0° and 90° CW, read-on-click; `/dev/ocr-bench` page that scores the 11-value sample | TC-20 ≥ 9/11 located in ≤ 60 s and TC-24 ≤ 5 s **in Chrome on an office PC**; decision recorded: keep v4 small or switch to v6 small | M1 (app shell only); can start in parallel with M1 Tasks 4–7 |
 | M3 | Sheets pipeline | `lib/form` (ratio, editable zone, trim), `lib/raster` (pdf.js 300 DPI + text layer, EXIF, alpha → white, thumbnail), upload dialog (S3), Storage upload, `createSheet`, sheet list with search + paging + Trash/restore (S2), E2E test-user login helper | TC-08 – TC-19, TC-48, TC-52 | M1 |
 | M4 | Editor | Detection on upload (PDF text layer or M2 OCR) stored in `detections`; editor S4: zoom/pan, markers, popover (old value confirm, new value), Draw box (K), read-on-click, revert, matching-value suggestion; `lib/numbers`; box tightening to the digits (UC-04 step 5, moved from M2); `lib/compose` (mask with sampled background + Arimo text at angle); `save_sheet` with conflict dialog S6; unsaved-changes guard | TC-21 – TC-41 | M2, M3 |
 | M5 | Export | Pre-export check S5, PNG at source resolution, single-page PDF via pdf-lib (no text layer), file naming, `log_client_event` | TC-42 – TC-47 | M4 |
 | M6 | Admin area | `/admin` layout guard; S7 users (role, suspend), S8 access + settings, S9 audit log with filters + CSV (UTF-8 BOM), S10 Trash + permanent delete (typed confirm, service-role file delete) + orphan clean-up | TC-54 – TC-77 (TC-60 concurrency via two connections) | M1, M3 |
 | M7 | Hardening and release | Full E2E run, visual regression on Windows + macOS (TC-47), WCAG AA pass, dark mode check, Vercel production deploy, user guide (VI/EN), first Admin assigned | All 77 test cases green or explicitly waived by the owner; production sign-in works | M1–M6, Prerequisite 4 |
+
+**Change 2026-10-08:** password sign-in for accounts an Admin creates (plan `2026-10-08-password-sign-in.md`); Google sign-in moves to a later milestone and will run side by side. Part of UC-13 (create accounts, issue passwords) moves forward from M6.
 
 ### M2 result (2026-10-07)
 
