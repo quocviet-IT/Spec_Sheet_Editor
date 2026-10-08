@@ -15,10 +15,14 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 ## Setup
 
 1. Create a Supabase project in Singapore. Under Authentication → Sign In / Providers keep **Email**
-   enabled and turn **off** "Allow new users to sign up": accounts are created only by an Admin
-   (the admin API ignores this switch). Turn off Phone and Anonymous sign-ins. Also turn on Secure password change (Authentication → Providers → Email): Supabase then asks a person who signed in long ago to sign in again before a password change, which the app explains. Under URL
-   Configuration list only exact callback URLs (`http://localhost:3000/auth/callback`, later the
-   production one) — needed once Google is switched on.
+   enabled. Accounts are created only by an Admin (the admin API ignores the sign-up switch), so
+   turning **off** "Allow new users to sign up" is recommended but not required: a self-made account
+   gets a Supabase login but the database refuses it, because no Admin created it
+   (`tests/sql/password.test.ts`). Turn off Phone and Anonymous sign-ins. Also turn on Secure password
+   change (Authentication → Providers → Email): Supabase then asks a person who signed in long ago to
+   sign in again before a password change, which the app explains. Under URL Configuration list only
+   exact callback URLs (`http://localhost:3000/auth/callback`, later the production one) — needed once
+   Google is switched on.
 2. Google sign-in is optional and off by default (`GOOGLE_SIGN_IN=off`). To switch it on later:
    enable the Google provider, turn sign-ups back on (the database still admits only Google accounts
    on the permitted lists and accounts an Admin created), and set `GOOGLE_SIGN_IN=on`. The flag both
