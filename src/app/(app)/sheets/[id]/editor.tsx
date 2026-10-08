@@ -7,7 +7,6 @@ import { detectValues, makeEdit, type LoadedPage } from "@/editor/detections";
 import { sameSize, toPx } from "@/editor/geometry";
 import type { Detection, Edit } from "@/editor/types";
 import { zoomIn, zoomOut, type Zoom } from "@/editor/zoom";
-import { OcrClient } from "@/lib/ocr/client";
 import { drawRaster, renderSource, trimPage, type RenderedPage } from "@/lib/page/render";
 import { useLocale, useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
@@ -18,6 +17,7 @@ import { ConflictDialog } from "./conflict-dialog";
 import { EditPopover } from "./edit-popover";
 import { SheetCanvas } from "./sheet-canvas";
 import { useLeaveGuard } from "./use-leave-guard";
+import { useValueReader } from "./use-value-reader";
 import { ValueList, type DetectState } from "./value-list";
 
 const WIDE = "(min-width: 1024px)";
@@ -82,7 +82,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [fitScale, setFitScale] = useState(0.25);
-  const ocr = useRef<OcrClient | null>(null); // kept for read on click (M4b)
+  const reader = useValueReader();
+  const ensureReader = useRef(reader.ensure);
   const inFlight = useRef(false);
   const alive = useRef(true);
   /** The latest lists and version, for saves started from listeners and after awaits. */
@@ -90,6 +91,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
 
   useEffect(() => {
     latest.current = { ...latest.current, detections, edits, saved: savedSnapshot, firstStore };
+    ensureReader.current = reader.ensure;
   });
   useEffect(() => {
     alive.current = true;
@@ -182,7 +184,6 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   // Load the page and the font; on the first open, detect and store the values (UC-04).
   useEffect(() => {
     let cancelled = false;
-    let client = null as OcrClient | null; // assigned inside the factory below; the cast stops TS narrowing it to never
     const controller = new AbortController();
     const font = loadArimo();
     font.catch(() => {}); // handled below; avoids an unhandled rejection when the page fails first
@@ -224,16 +225,12 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       // (stored or pending) stays, because the edits point at its ids.
       const held = latest.current;
       if (held.version !== 1 || held.detections.length > 0 || held.firstStore) return;
-      const result = await detectValues(page, () => (client ??= new OcrClient()));
+      const result = await detectValues(page, () => ensureReader.current(page.raster), undefined, () => cancelled);
       if (cancelled) return;
       if (!result.ok) {
-        client?.dispose(); // onnxruntime cannot initialise twice in one Worker
-        client = null;
-        ocr.current = null;
-        setDetect(result.reason);
+        if (result.reason !== "cancelled") setDetect(result.reason);
         return;
       }
-      ocr.current = client;
       latest.current = { ...latest.current, detections: result.detections, firstStore: true };
       setDetections(result.detections);
       setFirstStore(true);
@@ -243,8 +240,6 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     return () => {
       cancelled = true;
       controller.abort();
-      client?.dispose();
-      if (ocr.current === client) ocr.current = null;
     };
   }, [sheet.id, sheet.sourceUrl, sheet.sourceType, sheet.pageW, sheet.pageH, store]);
 

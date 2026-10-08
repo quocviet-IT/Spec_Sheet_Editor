@@ -134,6 +134,7 @@ export const en: Messages = {
     detecting: "Finding the values on the drawing… This can take up to a minute.",
     noValues: "No values were found automatically.",
     ocrLoad: "The value reader could not be loaded. Check your connection, then reload the page.",
+    ocrUnsupported: "This browser cannot run the value reader. Use a current Chrome or Edge; Draw box still works.",
     ocrScan: "The values on this sheet could not be read. Reload the page to try again.",
     fontFailed: "The font for new values could not be loaded. Reload the page.",
     sizeMismatch: "This sheet renders differently from when it was uploaded, so values cannot be placed. Upload the file again.",

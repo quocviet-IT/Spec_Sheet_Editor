@@ -1,6 +1,6 @@
 import { readAtPoint } from "./click";
 import { loadModels, type LoadedModels } from "./engine";
-import type { OcrRequest, OcrResponse } from "./protocol";
+import { OcrFailure, type OcrRequest, type OcrResponse } from "./protocol";
 import type { Raster } from "./raster";
 import { scanArea } from "./scan";
 
@@ -9,7 +9,7 @@ let models: LoadedModels | null = null;
 let page: Raster | null = null;
 
 function need<T>(value: T | null, what: string): T {
-  if (value === null) throw new Error(`The OCR worker has no ${what} yet.`);
+  if (value === null) throw new OcrFailure("bad_request", `The OCR worker has no ${what} yet.`);
   return value;
 }
 
@@ -30,7 +30,7 @@ async function handle(request: OcrRequest): Promise<unknown> {
       const sheet = need(page, "page");
       const { x, y, w, h } = request.area;
       const inside = [x, y, w, h].every(Number.isFinite) && w >= 1 && h >= 1 && x < sheet.width && y < sheet.height && x + w > 0 && y + h > 0;
-      if (!inside) throw new Error("The scan area is empty or outside the page.");
+      if (!inside) throw new OcrFailure("bad_request", "The scan area is empty or outside the page.");
       return scanArea(loaded, sheet, request.area, request.targetWidth);
     }
     case "read": {
@@ -38,7 +38,7 @@ async function handle(request: OcrRequest): Promise<unknown> {
       const sheet = need(page, "page");
       const { x, y } = request.point;
       const inside = Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x < sheet.width && y < sheet.height;
-      if (!inside) throw new Error("The point is outside the page.");
+      if (!inside) throw new OcrFailure("bad_request", "The point is outside the page.");
       return readAtPoint(loaded, sheet, request.point);
     }
     case "release":
@@ -59,7 +59,12 @@ self.onmessage = (event: MessageEvent<OcrRequest>) => {
     try {
       response = { id: request.id, ok: true, result: await handle(request) };
     } catch (error) {
-      response = { id: request.id, ok: false, error: error instanceof Error ? error.message : String(error) };
+      response = {
+        id: request.id,
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        code: error instanceof OcrFailure ? error.code : "failed",
+      };
     }
     self.postMessage(response);
   });

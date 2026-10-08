@@ -33,4 +33,17 @@ export type OcrRequest =
   | { id: number; type: "read"; point: Point }
   | { id: number; type: "release" };
 
-export type OcrResponse = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
+/** Why the OCR Worker refused a request (roadmap: typed Worker errors, TC-25). */
+export type OcrErrorCode = "model_download" | "runtime_download" | "init_failed" | "bad_request" | "failed";
+
+export class OcrFailure extends Error {
+  constructor(
+    readonly code: OcrErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "OcrFailure";
+  }
+}
+
+export type OcrResponse = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string; code: OcrErrorCode };

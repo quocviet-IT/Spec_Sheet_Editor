@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_MODELS } from "@/lib/ocr/client";
+import { OcrFailure } from "@/lib/ocr/protocol";
 import type { Quad } from "@/lib/ocr/geometry";
 import { createRaster, type Raster } from "@/lib/ocr/raster";
 import type { ScanResult } from "@/lib/ocr/scan";
 import type { PageTextItem } from "@/lib/page/text";
-import { detectValues, fromPdfText, fromScan, makeEdit, type LoadedPage, type OcrLike } from "@/editor/detections";
+import { detectValues, fromPdfText, fromScan, makeEdit, ocrFailureReason, type LoadedPage, type OcrLike } from "@/editor/detections";
 
 const W = 1100; // a small page with the template's ratio keeps the tests fast
 const H = 850;
@@ -72,53 +72,54 @@ describe("fromPdfText", () => {
   });
 });
 
-describe("detectValues", () => {
-  function fakeOcr(over: Partial<Record<keyof OcrLike, unknown>> = {}) {
-    const ocr = {
-      init: vi.fn(async () => ({})),
-      setPage: vi.fn(async () => {}),
-      scan: vi.fn(async () => scan()),
-      ...over,
-    };
-    return ocr as unknown as OcrLike & typeof ocr;
-  }
+describe("ocrFailureReason", () => {
+  it("tells a connection problem from a browser that cannot run the reader", () => {
+    expect(ocrFailureReason(new OcrFailure("model_download", "x"))).toBe("ocr_load");
+    expect(ocrFailureReason(new OcrFailure("runtime_download", "x"))).toBe("ocr_load");
+    expect(ocrFailureReason(new OcrFailure("init_failed", "x"))).toBe("ocr_unsupported");
+    expect(ocrFailureReason(new Error("Worker blocked"))).toBe("ocr_load");
+  });
+});
 
+describe("detectValues", () => {
+  const ready = (over: Partial<Record<"scan", unknown>> = {}) => {
+    const reader = { scan: vi.fn(async () => scan()), ...over };
+    return reader as unknown as OcrLike & typeof reader;
+  };
   const loaded = (text: PageTextItem[] = []): LoadedPage => ({ raster: page(), text, offsetX: 0, offsetY: 0 });
 
-  it("uses the text layer and never starts OCR when it has values", async () => {
-    const start = vi.fn(() => fakeOcr());
+  it("uses the text layer and never asks for the reader when it has values", async () => {
+    const getReader = vi.fn(async () => ready());
     const text: PageTextItem[] = [{ str: "2.50", transform: [37.5, 0, 0, -37.5, 200, 212], width: 41 }];
-    const result = await detectValues(loaded(text), start, ids());
-    expect(result).toMatchObject({ ok: true, source: "pdf-text" });
-    expect(start).not.toHaveBeenCalled();
+    expect(await detectValues(loaded(text), getReader, ids())).toMatchObject({ ok: true, source: "pdf-text" });
+    expect(getReader).not.toHaveBeenCalled();
   });
 
-  it("scans the drawing area when the text layer has no values there", async () => {
-    const ocr = fakeOcr();
-    const text: PageTextItem[] = [{ str: "SO 12345", transform: [37.5, 0, 0, -37.5, 200, 212], width: 150 }];
-    const result = await detectValues(loaded(text), () => ocr, ids());
+  it("scans the drawing area with the ready reader otherwise", async () => {
+    const reader = ready();
+    const result = await detectValues(loaded(), async () => reader, ids());
     expect(result).toMatchObject({ ok: true, source: "ocr" });
     expect(result.ok && result.detections).toHaveLength(2);
-    expect(ocr.init).toHaveBeenCalledWith({ det: DEFAULT_MODELS.det, rec: DEFAULT_MODELS.rec, keys: DEFAULT_MODELS.keys });
-    expect(ocr.scan).toHaveBeenCalledWith({ x: 51, y: 113, w: 686, h: 521 });
+    expect(reader.scan).toHaveBeenCalledWith({ x: 51, y: 113, w: 686, h: 521 });
   });
 
-  it("reports a reader that could not be loaded", async () => {
-    const ocr = fakeOcr({ init: vi.fn(async () => { throw new Error("model download failed"); }) });
-    expect(await detectValues(loaded(), () => ocr, ids())).toEqual({ ok: false, reason: "ocr_load" });
-    expect(ocr.setPage).not.toHaveBeenCalled();
-  });
-
-  it("reports a reader whose Worker cannot start", async () => {
-    const start = () => {
-      throw new Error("Worker blocked");
+  it("passes on why the reader could not start", async () => {
+    const fail = (code: "model_download" | "init_failed") => async () => {
+      throw new OcrFailure(code, "x");
     };
-    expect(await detectValues(loaded(), start, ids())).toEqual({ ok: false, reason: "ocr_load" });
+    expect(await detectValues(loaded(), fail("model_download"), ids())).toEqual({ ok: false, reason: "ocr_load" });
+    expect(await detectValues(loaded(), fail("init_failed"), ids())).toEqual({ ok: false, reason: "ocr_unsupported" });
+  });
+
+  it("does not scan when the page was closed while the reader started", async () => {
+    const reader = ready();
+    expect(await detectValues(loaded(), async () => reader, ids(), () => true)).toEqual({ ok: false, reason: "cancelled" });
+    expect(reader.scan).not.toHaveBeenCalled();
   });
 
   it("reports a scan that failed", async () => {
-    const ocr = fakeOcr({ scan: vi.fn(async () => { throw new Error("worker stopped"); }) });
-    expect(await detectValues(loaded(), () => ocr, ids())).toEqual({ ok: false, reason: "ocr_scan" });
+    const reader = ready({ scan: vi.fn(async () => { throw new Error("worker stopped"); }) });
+    expect(await detectValues(loaded(), async () => reader, ids())).toEqual({ ok: false, reason: "ocr_scan" });
   });
 });
 

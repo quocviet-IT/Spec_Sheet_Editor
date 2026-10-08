@@ -1,15 +1,30 @@
 import * as ort from "onnxruntime-web/wasm";
 import { buildAlphabet } from "./alphabet";
 import type { OcrModels, Tensor } from "./pipeline";
-import type { InitOptions, InitResult, ModelInput } from "./protocol";
+import { OcrFailure, type InitOptions, type InitResult, type ModelInput } from "./protocol";
 
 export type LoadedModels = OcrModels & { release(): Promise<void> };
 
 async function bytesOf(input: ModelInput): Promise<ArrayBuffer> {
   if (typeof input !== "string") return input;
-  const response = await fetch(input);
-  if (!response.ok) throw new Error(`Model download failed: ${input} (HTTP ${response.status})`);
-  return response.arrayBuffer();
+  const failed = (why: string) => new OcrFailure("model_download", `Model download failed: ${input} (${why})`);
+  let response: Response;
+  try {
+    response = await fetch(input);
+  } catch (error) {
+    throw failed(error instanceof Error ? error.message : String(error));
+  }
+  if (!response.ok) throw failed(`HTTP ${response.status}`);
+  try {
+    return await response.arrayBuffer();
+  } catch (error) {
+    throw failed(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function asInitFailure(error: unknown): OcrFailure {
+  if (error instanceof OcrFailure) return error;
+  return new OcrFailure("init_failed", error instanceof Error ? error.message : String(error));
 }
 
 async function run(session: ort.InferenceSession, input: Tensor): Promise<Tensor> {
@@ -24,9 +39,17 @@ async function run(session: ort.InferenceSession, input: Tensor): Promise<Tensor
  * a Worker could not start a nested Worker from a network URL in the browser this was tested in.
  */
 async function runtimePaths(prefix: string): Promise<{ mjs: string; wasm: string }> {
-  const glue = await fetch(`${prefix}ort-wasm-simd-threaded.mjs`);
-  if (!glue.ok) throw new Error(`OCR runtime download failed: ${prefix}ort-wasm-simd-threaded.mjs (HTTP ${glue.status})`);
-  const mjs = URL.createObjectURL(new Blob([await glue.text()], { type: "text/javascript" }));
+  const url = `${prefix}ort-wasm-simd-threaded.mjs`;
+  let text: string;
+  try {
+    const glue = await fetch(url);
+    if (!glue.ok) throw new OcrFailure("runtime_download", `OCR runtime download failed: ${url} (HTTP ${glue.status})`);
+    text = await glue.text();
+  } catch (error) {
+    if (error instanceof OcrFailure) throw error;
+    throw new OcrFailure("runtime_download", `OCR runtime download failed: ${url} (${error instanceof Error ? error.message : String(error)})`);
+  }
+  const mjs = URL.createObjectURL(new Blob([text], { type: "text/javascript" }));
   return { mjs, wasm: `${prefix}ort-wasm-simd-threaded.wasm` };
 }
 
@@ -51,13 +74,18 @@ export async function loadModels(options: InitOptions): Promise<{ models: Loaded
     executionProviders: ["wasm"],
     graphOptimizationLevel: "all",
   };
-  const detSession = await ort.InferenceSession.create(new Uint8Array(det), sessionOptions);
+  let detSession: ort.InferenceSession;
+  try {
+    detSession = await ort.InferenceSession.create(new Uint8Array(det), sessionOptions);
+  } catch (error) {
+    throw asInitFailure(error);
+  }
   let recSession: ort.InferenceSession;
   try {
     recSession = await ort.InferenceSession.create(new Uint8Array(rec), sessionOptions);
   } catch (error) {
     await detSession.release();
-    throw error;
+    throw asInitFailure(error);
   }
   const chars = buildAlphabet(new TextDecoder().decode(keys));
   const loaded = performance.now();
@@ -81,7 +109,7 @@ export async function loadModels(options: InitOptions): Promise<{ models: Loaded
     }
   } catch (error) {
     await models.release();
-    throw error;
+    throw asInitFailure(error);
   }
 
   return {
