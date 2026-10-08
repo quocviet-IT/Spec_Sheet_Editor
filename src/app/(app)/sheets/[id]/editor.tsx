@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { loadArimo, type FontMetrics } from "@/editor/canvas";
-import { detectValues, makeEdit, type LoadedPage } from "@/editor/detections";
-import { sameSize, toPx } from "@/editor/geometry";
+import { detectValues, makeEdit, ocrFailureReason, toDetection, type LoadedPage } from "@/editor/detections";
+import { boxFromQuad, detectionAt, pointInDrawingArea, sameSize, toPx } from "@/editor/geometry";
 import type { Detection, Edit } from "@/editor/types";
 import { zoomIn, zoomOut, type Zoom } from "@/editor/zoom";
+import type { OcrClient } from "@/lib/ocr/client";
+import type { Point } from "@/lib/ocr/geometry";
 import { drawRaster, renderSource, trimPage, type RenderedPage } from "@/lib/page/render";
 import { useLocale, useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
@@ -84,6 +86,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const [fitScale, setFitScale] = useState(0.25);
   const reader = useValueReader();
   const ensureReader = useRef(reader.ensure);
+  const [notice, setNotice] = useState<{ kind: "status" | "alert"; text: string } | null>(null);
+  const readingNow = useRef(false);
   const inFlight = useRef(false);
   const alive = useRef(true);
   /** The latest lists and version, for saves started from listeners and after awaits. */
@@ -281,6 +285,16 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const W = loaded?.page.raster.width ?? sheet.pageW;
   const H = loaded?.page.raster.height ?? sheet.pageH;
 
+  const ensureNow = reader.ensure;
+  // A sheet whose values all came from the PDF text layer needs no reader until someone clicks (no OCR download on open).
+  const textLayerOnly = detections.length > 0 && detections.every((d) => d.source === "pdf-text");
+  // Start the reader shortly after the page is ready, so a click usually reads at once (NFR-01: ≤ 5 s).
+  useEffect(() => {
+    if (!loaded || textLayerOnly || (detect !== "idle" && detect !== "none")) return;
+    const timer = window.setTimeout(() => void ensureNow(loaded.page.raster).catch(() => {}), 1500);
+    return () => window.clearTimeout(timer);
+  }, [loaded, detect, textLayerOnly, ensureNow]);
+
   function focusMarker(id: string) {
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-detection="${CSS.escape(id)}"]`)?.focus());
   }
@@ -303,10 +317,51 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   }
 
   function open(id: string) {
+    setNotice(null);
     setActiveId(id);
     requestAnimationFrame(() =>
       document.querySelector(`[data-detection="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" }),
     );
+  }
+
+  async function readAt(p: Point) {
+    if (!loaded || readingNow.current || !pointInDrawingArea(p, W, H)) return;
+    if (detect === "running") {
+      setNotice({ kind: "status", text: t.editor.waitDetect });
+      return;
+    }
+    readingNow.current = true;
+    setNotice({ kind: "status", text: reader.state === "ready" ? t.editor.reading : t.editor.readerLoading });
+    try {
+      let client: OcrClient;
+      try {
+        client = await reader.ensure(loaded.page.raster);
+      } catch (error) {
+        if (alive.current) setNotice({ kind: "alert", text: ocrFailureReason(error) === "ocr_unsupported" ? t.editor.ocrUnsupported : t.editor.ocrLoad });
+        return;
+      }
+      if (alive.current) setNotice({ kind: "status", text: t.editor.reading });
+      const result = await client.read(p).catch(() => null);
+      if (!alive.current) return;
+      const r = result?.reading ?? null;
+      const px = r ? boxFromQuad(r.quad, r.angle) : null;
+      if (!r || !px || !pointInDrawingArea({ x: px.cx, y: px.cy }, W, H)) {
+        setNotice({ kind: "alert", text: t.editor.clickNoRead });
+        return;
+      }
+      setNotice(null);
+      const hit = detectionAt(latest.current.detections, { x: px.cx, y: px.cy }, W, H);
+      if (hit) {
+        open(hit.id);
+        return;
+      }
+      const added = toDetection(loaded.page.raster, px, { readValue: r.value, confidence: Math.round(r.score * 100), source: "click" }, () => crypto.randomUUID());
+      latest.current = { ...latest.current, detections: [...latest.current.detections, added] };
+      setDetections((list) => [...list, added]);
+      open(added.id);
+    } finally {
+      readingNow.current = false;
+    }
   }
 
   const active = loaded && activeId ? detections.find((d) => d.id === activeId) ?? null : null;
@@ -347,7 +402,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const errorText = loadError === "font" ? t.editor.fontFailed : loadError === "size" ? t.editor.sizeMismatch : t.sheet.loadError;
 
   return (
-    <section aria-label={sheet.name} data-wide className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col gap-3">
+    <section aria-label={sheet.name} data-wide data-reader-state={reader.state} className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col gap-3">
       <header className="flex flex-wrap items-center gap-3">
         <Link href="/sheets" className="text-sm text-ink-2 hover:text-ink">← {t.sheet.back}</Link>
         <h1 className="text-lg font-bold">{sheet.name}</h1>
@@ -363,8 +418,15 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         </button>
       </header>
       <div className="flex min-h-0 flex-1 gap-3">
-        <div className="min-w-0 flex-1 overflow-hidden rounded-lg border border-line">
+        <div className="flex min-w-0 flex-1 flex-col">
           <div role="status" aria-live="polite" className="sr-only">{!loadError && !loaded ? t.sheet.loading : ""}</div>
+          <div role="status" aria-live="polite" className="sr-only">{notice?.kind === "status" ? notice.text : ""}</div>
+          {notice ? (
+            <p role={notice.kind === "alert" ? "alert" : undefined} className={"mb-2 rounded-md px-3 py-1.5 text-sm " + (notice.kind === "alert" ? "bg-danger-soft" : "bg-sunk text-ink-2")}>
+              {notice.text}
+            </p>
+          ) : null}
+          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-line">
           {loadError ? (
             <p role="alert" className="m-4 rounded-md bg-danger-soft px-3 py-2 text-sm">{errorText}</p>
           ) : !loaded ? (
@@ -382,13 +444,15 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
               scale={scale}
               onFitScale={onFitScale}
               onOpen={open}
+              onPageClick={(p) => void readAt(p)}
             >
               {popover}
             </SheetCanvas>
           )}
+          </div>
         </div>
         <div className="w-72 shrink-0">
-          <ValueList detections={detections} edits={edits} activeId={activeId} detect={detect} onOpen={open} />
+          <ValueList detections={detections} edits={edits} activeId={activeId} detect={detect} showHint={!!loaded && detect !== "running"} onOpen={open} />
         </div>
       </div>
       <footer className="flex flex-wrap items-center gap-4 text-xs text-ink-2">

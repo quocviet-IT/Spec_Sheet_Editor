@@ -5,6 +5,7 @@ import { paintSheet, type FontMetrics } from "@/editor/canvas";
 import { panelOf, readingOrder, toPx } from "@/editor/geometry";
 import type { Detection, Edit } from "@/editor/types";
 import { DRAWING_AREA } from "@/lib/form/template";
+import type { Point } from "@/lib/ocr/geometry";
 import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 
@@ -27,10 +28,11 @@ type Props = {
   scale: number;
   onFitScale: (scale: number) => void;
   onOpen: (id: string) => void;
+  onPageClick?: (p: Point) => void;
   children?: ReactNode;
 };
 
-export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edits, activeId, scale, onFitScale, onOpen, children }: Props) {
+export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edits, activeId, scale, onFitScale, onOpen, onPageClick, children }: Props) {
   const t = useMessages();
   const viewport = useRef<HTMLDivElement | null>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
@@ -72,7 +74,17 @@ export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edi
   const band = { top: `${a.y0 * 100}%`, height: `${(a.y1 - a.y0) * 100}%` };
   return (
     <div ref={viewport} tabIndex={0} role="region" aria-label={t.editor.viewport} className="h-full overflow-auto bg-sunk p-4">
-      <div className="relative mx-auto bg-white shadow" style={{ width: pageW * scale, height: pageH * scale }}>
+      <div
+        className="relative mx-auto bg-white shadow"
+        style={{ width: pageW * scale, height: pageH * scale }}
+        onClick={(e) => {
+          if (!onPageClick) return;
+          const target = e.target instanceof Element ? e.target : null;
+          if (target?.closest("[data-detection], [role='dialog'], form")) return; // markers and popovers handle their own clicks
+          const r = e.currentTarget.getBoundingClientRect();
+          onPageClick({ x: ((e.clientX - r.left) / r.width) * pageW, y: ((e.clientY - r.top) / r.height) * pageH });
+        }}
+      >
         <canvas ref={canvas} role="img" aria-label={fill(t.editor.canvas, { name })} className="absolute inset-0 h-full w-full" />
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0" style={{ height: `${a.y0 * 100}%`, backgroundImage: HATCH }} />
         <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${(1 - a.y1) * 100}%`, backgroundImage: HATCH }} />

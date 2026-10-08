@@ -12,11 +12,12 @@ type Props = {
   edits: readonly Edit[];
   activeId: string | null;
   detect: DetectState;
+  showHint?: boolean;
   onOpen: (id: string) => void;
 };
 
 /** The side list (Figure 8.1): every value in reading order, with its state. Keyboard users use the markers. */
-export function ValueList({ detections, edits, activeId, detect, onOpen }: Props) {
+export function ValueList({ detections, edits, activeId, detect, showHint, onOpen }: Props) {
   const t = useMessages();
   const v = t.editor.values;
   const byId = new Map(edits.map((e) => [e.detectionId, e]));
@@ -57,6 +58,7 @@ export function ValueList({ detections, edits, activeId, detect, onOpen }: Props
           );
         })}
       </ul>
+      {showHint ? <p className="border-t border-line px-3 py-2 text-xs text-ink-2">{t.editor.missingHint}</p> : null}
     </aside>
   );
 }
