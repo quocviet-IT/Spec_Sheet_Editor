@@ -46,9 +46,31 @@ export function SheetList({
 
   // 300 ms after typing stops (UC-02 step 2)
   useEffect(() => {
-    const timer = setTimeout(() => setApplied(query.trim()), 300);
+    const timer = setTimeout(() => {
+      const q = query.trim();
+      if (q !== applied) clearList();
+      setApplied(q);
+    }, 300);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, applied]);
+
+  // an unmounted toast never fires its leave/blur events, so every change resets the pause
+  function showToast(next: Toast) {
+    setHoldToast(false);
+    setToast(next);
+  }
+
+  function clearList() {
+    setRows([]);
+    setNext(null);
+    setFailed(false);
+  }
+
+  function selectTab(key: SheetTab) {
+    if (key !== tab) clearList();
+    setTab(key);
+    setMenuFor(null);
+  }
 
   const fetchPage = useCallback(async (after: Cursor | null) => {
     const id = ++requestId.current;
@@ -72,9 +94,6 @@ export function SheetList({
       first.current = false;
       return;
     }
-    setRows([]);
-    setNext(null);
-    setFailed(false);
     void fetchPage(null);
   }, [fetchPage]);
 
@@ -105,7 +124,9 @@ export function SheetList({
     if (!menuFor) return;
     menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const onPress = (e: PointerEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuFor(null);
+      const target = e.target as Element;
+      if (target.closest('[aria-haspopup="menu"]')) return; // the trigger toggles its own menu
+      if (!menuRef.current?.contains(target)) setMenuFor(null);
     };
     document.addEventListener("pointerdown", onPress);
     return () => document.removeEventListener("pointerdown", onPress);
@@ -123,8 +144,7 @@ export function SheetList({
     else if (e.key === "End") to = TAB_KEYS.length - 1;
     if (to < 0) return;
     e.preventDefault();
-    setTab(TAB_KEYS[to]);
-    setMenuFor(null);
+    selectTab(TAB_KEYS[to]);
     document.getElementById(`sheet-tab-${TAB_KEYS[to]}`)?.focus();
   }
 
@@ -150,19 +170,20 @@ export function SheetList({
     const result = await trashSheet(row.id);
     setPendingId(null);
     if ("error" in result) {
-      setToast({ text: s.actionError });
+      showToast({ text: s.actionError });
+      document.getElementById(`sheet-menu-btn-${row.id}`)?.focus();
       return;
     }
     setRows((old) => old.filter((r) => r.id !== row.id));
     setCounts((c) => ({ live: c.live - 1, trash: c.trash + 1 }));
     focusPanel();
-    setToast({
+    showToast({
       text: fill(s.trashed, { name: row.name }),
       undo: async () => {
-        setToast(null);
+        showToast(null);
         const back = await restoreSheet(row.id);
         if ("error" in back) {
-          setToast({ text: s.actionError });
+          showToast({ text: s.actionError });
           return;
         }
         setCounts((c) => ({ live: c.live + 1, trash: c.trash - 1 }));
@@ -176,13 +197,13 @@ export function SheetList({
     const result = await restoreSheet(row.id);
     setPendingId(null);
     if ("error" in result) {
-      setToast({ text: s.actionError });
+      showToast({ text: s.actionError });
       return;
     }
     setRows((old) => old.filter((r) => r.id !== row.id));
     setCounts((c) => ({ live: c.live + 1, trash: c.trash - 1 }));
     focusPanel();
-    setToast({ text: fill(s.restored, { name: row.name }) });
+    showToast({ text: fill(s.restored, { name: row.name }) });
   }
 
   const empty =
@@ -204,7 +225,7 @@ export function SheetList({
               aria-controls="sheet-panel"
               tabIndex={tab === key ? 0 : -1}
               onKeyDown={(e) => onTabKey(e, index)}
-              onClick={() => { setTab(key); setMenuFor(null); }}
+              onClick={() => selectTab(key)}
               className={"-mb-px border-b-2 px-1 pb-2 text-sm font-medium " + (tab === key ? "border-accent text-ink" : "border-transparent text-ink-2 hover:text-ink")}
             >
               {s.tabs[key]} <span className="ml-1 rounded-full bg-sunk px-2 py-0.5 font-mono text-xs">{counts[key]}</span>
@@ -285,6 +306,10 @@ export function SheetList({
                         ref={menuRef}
                         role="menu"
                         onKeyDown={(e) => onMenuKey(e, row.id)}
+                        onBlur={(e) => {
+                          const to = e.relatedTarget as Node | null;
+                          if (to && !e.currentTarget.contains(to) && to !== document.getElementById(`sheet-menu-btn-${row.id}`)) setMenuFor(null);
+                        }}
                         className="absolute right-0 z-10 mt-1 w-48 rounded-md border border-line bg-surface py-1 shadow-lg"
                       >
                         <Link href={`/sheets/${row.id}`} prefetch={false} role="menuitem" className="block px-3 py-2 text-sm hover:bg-sunk">{s.open}</Link>
