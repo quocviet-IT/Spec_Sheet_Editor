@@ -100,6 +100,7 @@ describe("needsOwnRotation", () => {
     expect(needsOwnRotation(6, stored, { width: 1135, height: 877 })).toBe(false); // browser rotated
     expect(needsOwnRotation(3, stored, { width: 877, height: 1135 })).toBe(false);
     expect(needsOwnRotation(1, stored, { width: 877, height: 1135 })).toBe(false);
+    expect(needsOwnRotation(6, { width: 900, height: 900 }, { width: 900, height: 900 })).toBe(false); // square: never rotate
     expect(needsOwnRotation(6, null, { width: 877, height: 1135 })).toBe(false);
   });
 });

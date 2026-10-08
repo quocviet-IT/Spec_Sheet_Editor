@@ -104,6 +104,7 @@ export const en: Messages = {
     another: "Choose another file",
     cancel: "Cancel",
     errors: {
+      oneFile: "Choose one file at a time.",
       wrongType: "Only PDF, PNG or JPG files are accepted.",
       tooLarge: "This file is {n} MB; the limit is {max} MB.",
       pdfLocked: "This PDF cannot be opened (it is password-protected or damaged).",

@@ -19,6 +19,9 @@ export type FileCheck =
 const BY_EXTENSION: Record<string, SourceType> = { pdf: "pdf", png: "png", jpg: "jpg", jpeg: "jpg" };
 const MIME: Record<SourceType, string> = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg" };
 
+/** Non-standard type names some browsers and systems report for the same formats. */
+const MIME_ALIASES: Record<string, SourceType> = { "image/jpg": "jpg", "application/x-pdf": "pdf" };
+
 export function mimeOf(sourceType: SourceType): string {
   return MIME[sourceType];
 }
@@ -29,7 +32,7 @@ export function checkFile(file: { name: string; size: number; type: string }, ma
   const ext = dot > 0 ? file.name.slice(dot + 1).toLowerCase() : "";
   const sourceType = BY_EXTENSION[ext];
   if (!sourceType) return { ok: false, reason: "wrong_type" };
-  if (file.type !== "" && file.type !== MIME[sourceType]) return { ok: false, reason: "wrong_type" };
+  if (file.type !== "" && file.type !== MIME[sourceType] && MIME_ALIASES[file.type] !== sourceType) return { ok: false, reason: "wrong_type" };
   if (file.size > maxFileMb * MIB) return { ok: false, reason: "too_large", sizeMb: Math.ceil(file.size / MIB) };
   return { ok: true, sourceType };
 }

@@ -6,7 +6,7 @@ import { drawRaster, renderSource, trimPage } from "@/lib/page/render";
 import { useMessages } from "@/messages/client";
 
 /** Renders the original exactly as the upload did (same render and trim), on white (section 8.1). */
-export function SheetPreview({ sourceUrl, sourceType, name }: { sourceUrl: string; sourceType: SourceType; name: string }) {
+export function SheetPreview({ sourceUrl, sourceType, name, pageW, pageH }: { sourceUrl: string; sourceType: SourceType; name: string; pageW: number; pageH: number }) {
   const t = useMessages();
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -20,14 +20,19 @@ export function SheetPreview({ sourceUrl, sourceType, name }: { sourceUrl: strin
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const page = await renderSource(await response.blob(), sourceType);
         if (cancelled || !canvas.current) return;
-        drawRaster(canvas.current, trimPage(page));
+        const trimmed = trimPage(page);
+        // M4 turns this into a hard check; for now a mismatch with the stored size is only reported.
+        if (trimmed.width !== pageW || trimmed.height !== pageH) {
+          console.warn(`Sheet preview size ${trimmed.width}x${trimmed.height} differs from the stored ${pageW}x${pageH}`);
+        }
+        drawRaster(canvas.current, trimmed);
         setState("ready");
       } catch {
         if (!cancelled) setState("error");
       }
     })();
     return () => { cancelled = true; controller.abort(); };
-  }, [sourceUrl, sourceType]);
+  }, [sourceUrl, sourceType, pageW, pageH]);
 
   return (
     <div className="rounded-lg border border-line bg-sunk p-4" aria-busy={state === "loading"}>

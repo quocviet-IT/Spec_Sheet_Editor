@@ -11,8 +11,9 @@ describe("pdfErrorCode (TC-17)", () => {
 });
 
 describe("pdfScale", () => {
-  it("keeps Letter at 300 DPI and caps very large pages at 6600 px wide", () => {
-    expect(pdfScale(792)).toBe(300 / 72);
-    expect(pdfScale(2592)).toBe(6600 / 2592);
+  it("keeps Letter at 300 DPI and caps very large pages at 6600 px on the longer side", () => {
+    expect(pdfScale(792, 612)).toBe(300 / 72);
+    expect(pdfScale(2592, 1000)).toBe(6600 / 2592);
+    expect(pdfScale(1000, 2592)).toBe(6600 / 2592); // a tall page is capped by its height
   });
 });

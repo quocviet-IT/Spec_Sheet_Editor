@@ -7,6 +7,9 @@ describe("checkFile (BR-01, TC-15, TC-16)", () => {
     expect(checkFile({ name: "Sheet.PDF", size: 1000, type: "application/pdf" }, 20)).toEqual({ ok: true, sourceType: "pdf" });
     expect(checkFile({ name: "a.png", size: 1000, type: "image/png" }, 20)).toEqual({ ok: true, sourceType: "png" });
     expect(checkFile({ name: "a.jpeg", size: 1000, type: "image/jpeg" }, 20)).toEqual({ ok: true, sourceType: "jpg" });
+    expect(checkFile({ name: "a.jpg", size: 1000, type: "image/jpg" }, 20)).toEqual({ ok: true, sourceType: "jpg" });
+    expect(checkFile({ name: "a.pdf", size: 1000, type: "application/x-pdf" }, 20)).toEqual({ ok: true, sourceType: "pdf" });
+    expect(checkFile({ name: "a.png", size: 1000, type: "image/jpg" }, 20)).toEqual({ ok: false, reason: "wrong_type" });
     expect(checkFile({ name: "a.jpg", size: 1000, type: "" }, 20)).toEqual({ ok: true, sourceType: "jpg" });
   });
 

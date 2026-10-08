@@ -44,17 +44,24 @@ async function renderPdf(file: Blob): Promise<RenderedPage> {
   }
   try {
     const page = await doc.getPage(1);
-    const viewport = page.getViewport({ scale: pdfScale(page.getViewport({ scale: 1 }).width) });
+    const unit = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: pdfScale(unit.width, unit.height) });
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(viewport.width);
     canvas.height = Math.round(viewport.height);
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) throw new PageError("pdf_damaged");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // pdf.js 6 prefers `canvas`; `canvasContext` is only for backwards compatibility.
-    await page.render({ canvas, viewport }).promise;
-    return { raster: canvasRaster(canvas), pageCount: doc.numPages };
+    try {
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) throw new PageError("pdf_damaged");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // pdf.js 6 prefers `canvas`; `canvasContext` is only for backwards compatibility.
+      await page.render({ canvas, viewport }).promise;
+      return { raster: canvasRaster(canvas), pageCount: doc.numPages };
+    } catch (error) {
+      canvas.width = 0; // release the backing store on failure too
+      canvas.height = 0;
+      throw error;
+    }
   } catch (error) {
     if (error instanceof PageError) throw error;
     throw new PageError("pdf_damaged");

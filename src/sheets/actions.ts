@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/auth/session";
 import { createSupabaseServer } from "@/lib/supabase/server";
@@ -10,7 +9,7 @@ import type { SheetPage, SheetTab } from "./types";
 const loadInput = z.object({
   tab: z.enum(["live", "trash"]),
   query: z.string().max(200),
-  after: z.object({ time: z.string().min(1), id: z.uuid() }).nullable(),
+  after: z.object({ time: z.string().min(1).max(64), id: z.uuid() }).nullable(),
 });
 
 /** The next 50 rows, or a fresh first page after a tab or search change (UC-02 steps 2–3). */
@@ -40,7 +39,6 @@ export async function trashSheet(id: string): Promise<Result> {
     .is("deleted_at", null)
     .select("id");
   if (error || !data || data.length !== 1) return { error: "unknown" };
-  revalidatePath("/sheets");
   return { ok: true };
 }
 
@@ -56,7 +54,6 @@ export async function restoreSheet(id: string): Promise<Result> {
     .not("deleted_at", "is", null)
     .select("id");
   if (error || !data || data.length !== 1) return { error: "unknown" };
-  revalidatePath("/sheets");
   return { ok: true };
 }
 
@@ -90,6 +87,5 @@ export async function createSheet(input: { id: string; name: string; sourceType:
     console.error("createSheet insert failed:", error.message);
     return { error: "unknown" };
   }
-  revalidatePath("/sheets");
   return { ok: true, id };
 }

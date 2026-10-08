@@ -6,7 +6,7 @@ export function pdfErrorCode(error: unknown): PdfError {
   return name === "PasswordException" ? "pdf_locked" : "pdf_damaged";
 }
 
-/** PDF page 1 is drawn at 300 DPI, but never wider than 6600 px (a Letter page: 3300 px). */
-export function pdfScale(pageWidthPt: number): number {
-  return Math.min(300 / 72, 6600 / pageWidthPt);
+/** PDF page 1 is drawn at 300 DPI, but its longer side never exceeds 6600 px (a Letter page: 3300 px). */
+export function pdfScale(widthPt: number, heightPt: number): number {
+  return Math.min(300 / 72, 6600 / Math.max(widthPt, heightPt));
 }

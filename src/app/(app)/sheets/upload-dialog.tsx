@@ -12,7 +12,7 @@ import { defaultSheetName, fileLabel } from "@/sheets/format";
 import type { UploadSettings } from "@/sheets/types";
 
 type Prepared = { id: string; file: File; sourceType: SourceType; thumb: Blob; width: number; height: number; pageCount: number };
-type ErrorCode = "wrongType" | "tooLarge" | "pdfLocked" | "pdfDamaged" | "imageUnreadable" | "wrongTemplate" | "uploadFailed" | "createFailed";
+type ErrorCode = "oneFile" | "wrongType" | "tooLarge" | "pdfLocked" | "pdfDamaged" | "imageUnreadable" | "wrongTemplate" | "uploadFailed" | "createFailed";
 type Stage = "pick" | "reading" | "ready" | "uploading" | "error";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -54,6 +54,20 @@ export function UploadDialog({ settings, onClose }: { settings: UploadSettings; 
       if (opener && document.contains(opener)) opener.focus();
     };
   }, []);
+
+  useEffect(() => {
+    if (dialog.current && !dialog.current.contains(document.activeElement)) heading.current?.focus();
+  }, [stage]);
+
+  function chosen(files: FileList | null | undefined) {
+    if (!files || files.length === 0) return;
+    if (files.length > 1) {
+      setError({ code: "oneFile" });
+      setStage("error");
+      return;
+    }
+    void prepare(files[0]);
+  }
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
@@ -171,7 +185,7 @@ export function UploadDialog({ settings, onClose }: { settings: UploadSettings; 
       <section ref={dialog} onKeyDown={onKeyDown} role="dialog" aria-modal="true" aria-labelledby="upload-title" className="m-auto w-full max-w-xl space-y-4 rounded-xl bg-surface p-6 shadow-xl">
         <div className="flex items-center justify-between gap-3">
           <h2 id="upload-title" ref={heading} tabIndex={-1} className="text-xl font-bold">{u.title}</h2>
-          <button type="button" onClick={onClose} aria-label={u.close} className="rounded px-2 py-1 text-xl leading-none hover:bg-sunk">×</button>
+          <button type="button" onClick={onClose} disabled={stage === "uploading"} aria-label={u.close} className="rounded px-2 py-1 text-xl leading-none hover:bg-sunk disabled:opacity-60">×</button>
         </div>
 
         {(stage === "pick" || stage === "error") && (
@@ -181,8 +195,7 @@ export function UploadDialog({ settings, onClose }: { settings: UploadSettings; 
             onDrop={(e) => {
               e.preventDefault();
               setDragging(false);
-              const f = e.dataTransfer.files[0];
-              if (f) void prepare(f);
+              chosen(e.dataTransfer.files);
             }}
             className={"space-y-3 rounded-lg border-2 border-dashed p-8 text-center " + (dragging ? "border-accent bg-accent-soft" : "border-line bg-paper")}
           >
@@ -192,11 +205,11 @@ export function UploadDialog({ settings, onClose }: { settings: UploadSettings; 
               ref={input}
               type="file"
               accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-              className="sr-only"
+              className="peer sr-only"
               id="upload-file"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) void prepare(f); }}
+              onChange={(e) => chosen(e.target.files)}
             />
-            <label htmlFor="upload-file" className="inline-block cursor-pointer rounded-md bg-accent px-4 py-2 font-semibold text-accent-ink hover:opacity-90">
+            <label htmlFor="upload-file" className="inline-block cursor-pointer rounded-md bg-accent px-4 py-2 font-semibold text-accent-ink hover:opacity-90 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent">
               {u.choose}
             </label>
             <p className="text-xs text-ink-2">{u.photoNote}</p>

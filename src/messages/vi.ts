@@ -102,6 +102,7 @@ export const vi = {
     another: "Chọn tệp khác",
     cancel: "Huỷ",
     errors: {
+      oneFile: "Chọn một tệp mỗi lần.",
       wrongType: "Chỉ nhận tệp PDF, PNG hoặc JPG.",
       tooLarge: "Tệp này nặng {n} MB; giới hạn là {max} MB.",
       pdfLocked: "Không mở được PDF này (có mật khẩu hoặc bị hỏng).",

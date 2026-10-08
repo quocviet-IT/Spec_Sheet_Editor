@@ -99,5 +99,6 @@ export function needsOwnRotation(
   decoded: { width: number; height: number },
 ): boolean {
   if (orientation < 5 || orientation > 8 || !stored) return false;
+  if (stored.width === stored.height) return false; // a square cannot be told apart; never risk a second rotation
   return decoded.width === stored.width && decoded.height === stored.height;
 }
