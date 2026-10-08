@@ -56,9 +56,8 @@ export async function makePasswordUser(
   const account = await makeSignInAccount(tx, email);
   await tx`insert into public.profiles (id, email, full_name, role, password_account, must_change_password)
            values (${account.id}, ${email}, ${email.split("@")[0]}, ${opts.role ?? "user"}, true, ${opts.mustChange ?? false})`;
-  if (opts.mustChange) {
-    await tx`insert into public.password_handovers (user_id, temp_hash) values (${account.id}, ${account.hash})`;
-  }
+  // every real password account has a snapshot from the moment it is registered
+  await tx`insert into public.password_snapshots (user_id, hash) values (${account.id}, ${account.hash})`;
   return account;
 }
 

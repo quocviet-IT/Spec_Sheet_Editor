@@ -8,22 +8,46 @@ alter table public.profiles
   add column password_account     boolean not null default false,
   add column must_change_password boolean not null default false;
 
--- The password hash an account had when an Admin issued its one-time password. Setting a new password
--- changes the hash, which is how the database knows the one-time password is no longer in use.
+-- The password hash the database last saw for each password account, and who set that password (an
+-- Admin issuing a one-time password, or the person). A new password means a new hash, which is how
+-- the database tells a real change from a call that changed nothing.
 -- No policies and no client grants: only the functions below read or write it.
-create table public.password_handovers (
-  user_id   uuid primary key references public.profiles (id) on delete cascade,
-  temp_hash text not null,
-  issued_by uuid references public.profiles (id),
-  issued_at timestamptz not null default now()
+create table public.password_snapshots (
+  user_id  uuid primary key references public.profiles (id) on delete cascade,
+  hash     text not null,
+  set_by   uuid references public.profiles (id),
+  taken_at timestamptz not null default now()
 );
-alter table public.password_handovers enable row level security;
-revoke all on public.password_handovers from anon, authenticated;
+alter table public.password_snapshots enable row level security;
+revoke all on public.password_snapshots from anon, authenticated;
+
+-- A password account keeps the name its Admin entered: the JWT's user_metadata is editable by the
+-- person and may be empty. Otherwise identical to 0001.
+create or replace function public.touch_profile() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_allowed_user() then raise exception 'forbidden'; end if;
+  insert into profiles (id, email, full_name, avatar_url, last_seen_at)
+  values (auth.uid(), lower(auth.jwt() ->> 'email'),
+          auth.jwt() -> 'user_metadata' ->> 'full_name',
+          auth.jwt() -> 'user_metadata' ->> 'avatar_url', now())
+  on conflict (id) do update
+     set email        = excluded.email,
+         -- a password account keeps the name its Admin entered; never replace a name with nothing
+         full_name    = case when profiles.password_account then profiles.full_name
+                             else coalesce(excluded.full_name, profiles.full_name) end,
+         avatar_url   = coalesce(excluded.avatar_url, profiles.avatar_url),
+         last_seen_at = now(),
+         updated_at   = now();
+  perform _audit('auth.login', 'user', auth.uid()::text, '{}');
+end $$;
 
 -- ===== Access checks (BR-08), revised =====
 -- Google: the address is proven by Google; the permitted-domain and permitted-email lists decide.
 -- Password: only an account an Admin created (password_account) may enter. A self-made email account,
--- should sign-ups ever be switched on, has no such profile and is refused.
+-- should sign-ups ever be switched on, has no such profile and is refused. An account an Admin created
+-- may enter whichever way it signs in: a Google identity linked to the same email later is the same
+-- person (owner decision: side by side).
 -- Either way the account must not be suspended or still be on a one-time password.
 create or replace function public.is_allowed_user() returns boolean
 language sql stable security definer set search_path = public as $$
@@ -78,7 +102,7 @@ begin
   if exists (select 1 from profiles where id = p_user) then raise exception 'already_registered'; end if;
   insert into profiles (id, email, full_name, role, password_account, must_change_password)
   values (p_user, lower(v_user.email), btrim(p_full_name), p_role, true, true);
-  insert into password_handovers (user_id, temp_hash, issued_by)
+  insert into password_snapshots (user_id, hash, set_by)
   values (p_user, v_user.encrypted_password, auth.uid());
   perform _audit('user.create', 'user', p_user::text,
                  jsonb_build_object('email', lower(v_user.email), 'role', p_role, 'sign_in', 'password'));
@@ -98,35 +122,38 @@ begin
   if not found then raise exception 'not_password_account'; end if;
   select encrypted_password into v_hash from auth.users where id = p_user;
   update profiles set must_change_password = true, updated_at = now() where id = p_user;
-  insert into password_handovers (user_id, temp_hash, issued_by)
+  insert into password_snapshots (user_id, hash, set_by)
   values (p_user, v_hash, auth.uid())
   on conflict (user_id) do update
-     set temp_hash = excluded.temp_hash, issued_by = excluded.issued_by, issued_at = now();
+     set hash = excluded.hash, set_by = excluded.set_by, taken_at = now();
   -- Whoever holds a session for this account must sign in again with the new one-time password.
   delete from auth.sessions where user_id = p_user;
   perform _audit('user.password_reset', 'user', p_user::text, jsonb_build_object('email', v_email));
 end $$;
 
--- The person calls this after setting a new password (auth.updateUser). The "must change" flag clears
--- only if the password really changed, which the database sees as a different hash.
+-- The person calls this after setting a new password (auth.updateUser), forced or voluntary. It is
+-- recorded only if the password really changed, which the database sees as a different hash; a
+-- one-time password is replaced the same way.
 create function public.finish_password_change() returns void
 language plpgsql security definer set search_path = public as $$
 declare
   v_profile profiles%rowtype;
   v_hash    text;
-  v_temp    text;
+  v_last    text;
 begin
   select * into v_profile from profiles where id = auth.uid();
   if not found or not v_profile.password_account then raise exception 'not_password_account'; end if;
   if v_profile.status = 'suspended' then raise exception 'forbidden'; end if;
+  select encrypted_password into v_hash from auth.users where id = auth.uid();
+  select hash into v_last from password_snapshots where user_id = auth.uid();
+  if v_hash is not distinct from v_last then raise exception 'password_unchanged'; end if;
+  insert into password_snapshots (user_id, hash, set_by) values (auth.uid(), v_hash, auth.uid())
+  on conflict (user_id) do update set hash = excluded.hash, set_by = excluded.set_by, taken_at = now();
   if v_profile.must_change_password then
-    select encrypted_password into v_hash from auth.users where id = auth.uid();
-    select temp_hash into v_temp from password_handovers where user_id = auth.uid();
-    if v_hash is not distinct from v_temp then raise exception 'password_unchanged'; end if;
     update profiles set must_change_password = false, updated_at = now() where id = auth.uid();
-    delete from password_handovers where user_id = auth.uid();
   end if;
-  perform _audit('user.password_changed', 'user', auth.uid()::text, '{}');
+  perform _audit('user.password_changed', 'user', auth.uid()::text,
+                 jsonb_build_object('replaced_one_time_password', v_profile.must_change_password));
 end $$;
 
 grant execute on function
