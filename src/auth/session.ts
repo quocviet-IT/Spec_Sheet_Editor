@@ -42,7 +42,7 @@ async function ensure(need: Need, next: string): Promise<Profile> {
   const decision = decideAccess(profile, status, need);
   if (decision.kind === "allow") return decision.profile;
   if (decision.kind === "not_found") notFound();
-  if (decision.kind === "change_password") redirect("/account/password");
+  if (decision.kind === "change_password") redirect(`/account/password?${new URLSearchParams({ next }).toString()}`);
   const query = new URLSearchParams({ next });
   if (decision.error) query.set("error", decision.error);
   redirect(`/login?${query.toString()}`);

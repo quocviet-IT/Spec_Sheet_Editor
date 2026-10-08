@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { recordDenied } from "@/auth/denied";
 import { safeNext } from "@/auth/redirect";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 /**
@@ -31,17 +31,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (status !== "ok") {
-    const { error: logError } = await createSupabaseAdmin()
-      .from("audit_log")
-      .insert({
-        actor_email: data.user.email ?? null,
-        action: "auth.denied",
-        target_type: "user",
-        target_id: data.user.id,
-        detail: { reason: status },
-      });
-    // The person is still turned away; the missing audit row must not go unnoticed.
-    if (logError) console.error("auth.denied was not written to audit_log:", logError.message);
+    await recordDenied({ id: data.user.id, email: data.user.email ?? null }, status);
     await supabase.auth.signOut();
     return go(`/login?error=${status === "suspended" ? "suspended" : "not_permitted"}`);
   }
