@@ -482,6 +482,14 @@ git commit -m "feat(db): password accounts an Admin creates, with a one-time pas
 
 ---
 
+**Review amendments (2026-10-08), applied in the Task 1 fix round:** `password_handovers` became
+`password_snapshots (user_id, hash, set_by, taken_at)` — the hash last seen for every password account —
+so `finish_password_change()` records only a real change, forced or voluntary (`password_unchanged`
+otherwise; audit detail `replaced_one_time_password`). `touch_profile()` is re-created so a password
+account keeps the name its Admin entered and no name is replaced with nothing.
+
+---
+
 ### Task 2: Pure building blocks — passwords, error codes, access decision, flag, copy
 
 **Files:**
@@ -1868,7 +1876,7 @@ async function main(): Promise<number> {
         const [u] = await tx<{ encrypted_password: string }[]>`select encrypted_password from auth.users where id = ${id}`;
         await tx`insert into public.profiles (id, email, full_name, role, password_account, must_change_password)
                  values (${id}, ${email}, ${fullName}, 'admin', true, true)`;
-        await tx`insert into public.password_handovers (user_id, temp_hash) values (${id}, ${u.encrypted_password})`;
+        await tx`insert into public.password_snapshots (user_id, hash) values (${id}, ${u.encrypted_password})`;
         await tx`insert into public.audit_log (actor_email, action, target_type, target_id, detail)
                  values (null, 'user.create', 'user', ${id},
                          ${tx.json({ email, role: "admin", sign_in: "password", by: "setup script" })})`;
@@ -1961,8 +1969,8 @@ In `docs/design/spec-sheet-editor-design.md`:
 - Add F-30 under the Admin functions: `| F-30 | Password accounts | Create an account (name, email, role) with a one-time password shown once; issue a new one-time password, which signs the person out everywhere. | UC-13 | Must |`
 - UC-01: preconditions "The user has an account an Admin created (or, once switched on, a Google account permitted under BR-08)"; main flow: enter email and password → the system checks BR-08 → on a one-time password the system asks for a new password (at least 10 characters) before anything else → the profile is touched and the audit entry written.
 - UC-13: add steps "Add user (name, email, role) → the one-time password is shown once" and "Issue new password (password accounts only, not one's own) → the person is signed out on every device".
-- 6.2 data dictionary: `profiles.password_account`, `profiles.must_change_password`; table `password_handovers` (user_id, temp_hash, issued_by, issued_at — no client access).
-- 6.4 functions: revised `is_allowed_user()`, `my_access_status()` (adds `must_change_password`); new `admin_register_password_account`, `admin_mark_password_reset`, `finish_password_change`.
+- 6.2 data dictionary: `profiles.password_account`, `profiles.must_change_password`; table `password_snapshots` (user_id, hash, set_by, taken_at — the hash last seen for each password account; no client access).
+- 6.4 functions: revised `is_allowed_user()`, `my_access_status()` (adds `must_change_password`), `touch_profile()` (a password account keeps its Admin-entered name); new `admin_register_password_account`, `admin_mark_password_reset`, `finish_password_change` (records only a real change).
 
 - [ ] **Step 4: Design document (HTML)**
 
