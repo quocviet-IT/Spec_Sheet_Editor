@@ -44,7 +44,8 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
     function onPointer(e: PointerEvent) {
       const target = e.target instanceof Element ? e.target : null;
       if (!target || root.current?.contains(target)) return;
-      if (target.closest(`[data-detection="${CSS.escape(detection.id)}"]`)) return;
+      const own = CSS.escape(detection.id);
+      if (target.closest(`[data-detection="${own}"], [data-value-row="${own}"]`)) return;
       close.current(false);
     }
     document.addEventListener("pointerdown", onPointer);
@@ -99,7 +100,10 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
           ref={oldInput}
           id={`${id}-old`}
           value={oldRaw}
-          onChange={(e) => setOldRaw(e.target.value)}
+          onChange={(e) => {
+            setOldRaw(e.target.value);
+            setOldError(null);
+          }}
           inputMode="decimal"
           autoComplete="off"
           aria-invalid={oldError !== null}
@@ -107,7 +111,7 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
           className={field}
         />
         <p id={`${id}-old-hint`} className="text-xs text-ink-2">{p.oldHint}</p>
-        {oldError ? <p id={`${id}-old-error`} className="text-sm text-danger">{oldError}</p> : null}
+        {oldError ? <p id={`${id}-old-error`} role="alert" className="text-sm text-danger">{oldError}</p> : null}
       </div>
       <div className="space-y-1">
         <label htmlFor={`${id}-new`} className="block text-sm font-medium">{p.new}</label>
@@ -115,14 +119,17 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
           ref={newInput}
           id={`${id}-new`}
           value={newRaw}
-          onChange={(e) => setNewRaw(e.target.value)}
+          onChange={(e) => {
+            setNewRaw(e.target.value);
+            setNewError(null);
+          }}
           inputMode="decimal"
           autoComplete="off"
           aria-invalid={newError !== null}
           aria-describedby={newError ? `${id}-new-error` : undefined}
           className={field}
         />
-        {newError ? <p id={`${id}-new-error`} className="text-sm text-danger">{newError}</p> : null}
+        {newError ? <p id={`${id}-new-error`} role="alert" className="text-sm text-danger">{newError}</p> : null}
       </div>
       <div className="flex justify-end gap-2">
         {edit ? (

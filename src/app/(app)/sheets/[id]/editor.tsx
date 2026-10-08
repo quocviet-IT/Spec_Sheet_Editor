@@ -78,6 +78,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const [save, setSave] = useState<SaveState>({ state: "idle" });
   const [firstStore, setFirstStore] = useState(false);
   const [conflict, setConflict] = useState<{ byName: string | null; savedAt: string | null } | null>(null);
+  const [conflictLoad, setConflictLoad] = useState({ loading: false, failed: false });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [fitScale, setFitScale] = useState(0.25);
@@ -98,22 +99,23 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   }, []);
 
   const dirty = snapshot(detections, edits) !== savedSnapshot || firstStore;
+  const conflictOpen = conflict !== null;
   const scale = zoom === "fit" ? fitScale : zoom;
   const onFitScale = useCallback((s: number) => setFitScale(s), []);
 
   /** Take what the database holds (after a conflict, or when someone else stored the first detection). */
-  const reloadLatest = useCallback(async () => {
+  const reloadLatest = useCallback(async (): Promise<boolean> => {
     let state: Awaited<ReturnType<typeof loadEditorState>> | undefined;
     try {
       state = await loadEditorState(sheet.id);
     } catch {
       if (alive.current) setSave({ state: "offline" });
-      return;
+      return false;
     }
-    if (!alive.current) return;
+    if (!alive.current) return false;
     if (!state || "error" in state) {
       setSave({ state: "failed" });
-      return;
+      return false;
     }
     const saved = snapshot(state.detections, state.edits);
     latest.current = { detections: state.detections, edits: state.edits, version: state.version, saved, firstStore: false };
@@ -125,6 +127,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     setActiveId(null);
     setDetect(state.detections.length === 0 ? "none" : "idle");
     setSave({ state: state.deleted ? "trashed" : "idle" });
+    return true;
   }, [sheet.id]);
 
   /**
@@ -166,6 +169,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
           await reloadLatest(); // someone else stored the first detection; take theirs
           return;
         }
+        setConflictLoad({ loading: false, failed: false });
         setConflict({ byName: result.byName, savedAt: result.savedAt });
         setSave({ state: "idle" });
         return;
@@ -252,7 +256,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        void store();
+        if (!conflictOpen) void store();
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -266,7 +270,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [store, scale]);
+  }, [store, scale, conflictOpen]);
 
   useLeaveGuard(dirty, t.editor.leave);
 
@@ -313,6 +317,12 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       onClose={(refocus) => (refocus ? closePopover(active.id) : setActiveId(null))}
     />
   ) : null;
+
+  async function loadLatest() {
+    setConflictLoad({ loading: true, failed: false });
+    const ok = await reloadLatest();
+    if (alive.current && !ok) setConflictLoad({ loading: false, failed: true });
+  }
 
   function status() {
     if (save.state === "saving") return <span className="text-ink-2">{t.editor.saving}</span>;
@@ -389,7 +399,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         <span className="ml-auto">{t.editor.keys}</span>
       </footer>
       {conflict ? (
-        <ConflictDialog byName={conflict.byName} savedAt={conflict.savedAt} onLoad={() => void reloadLatest()} onStay={() => setConflict(null)} />
+        <ConflictDialog byName={conflict.byName} savedAt={conflict.savedAt} loading={conflictLoad.loading} failed={conflictLoad.failed} onLoad={() => void loadLatest()} onStay={() => setConflict(null)} />
       ) : null}
     </section>
   );

@@ -171,6 +171,7 @@ export const vi = {
       note: "Tải bản mới nhất sẽ bỏ các thay đổi chưa lưu của bạn.",
       load: "Tải bản mới nhất",
       stay: "Ở lại màn hình này",
+      loadFailed: "Chưa tải được bản mới nhất. Kiểm tra kết nối rồi thử lại.",
     },
     leave: "Có thay đổi chưa lưu. Rời trang này và bỏ các thay đổi?",
     zoom: { in: "Phóng to", out: "Thu nhỏ", fit: "Vừa khung", level: "Thu phóng {pct}%" },

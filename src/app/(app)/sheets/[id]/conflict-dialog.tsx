@@ -5,10 +5,17 @@ import { useLocale, useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 import { clockTime } from "@/sheets/format";
 
-type Props = { byName: string | null; savedAt: string | null; onLoad: () => void; onStay: () => void };
+type Props = {
+  byName: string | null;
+  savedAt: string | null;
+  loading: boolean;
+  failed: boolean;
+  onLoad: () => void;
+  onStay: () => void;
+};
 
 /** S6 (UC-08 extension 3a, BR-10): someone saved first; nothing is overwritten without a choice. */
-export function ConflictDialog({ byName, savedAt, onLoad, onStay }: Props) {
+export function ConflictDialog({ byName, savedAt, loading, failed, onLoad, onStay }: Props) {
   const t = useMessages();
   const locale = useLocale();
   const c = t.editor.conflict;
@@ -23,12 +30,22 @@ export function ConflictDialog({ byName, savedAt, onLoad, onStay }: Props) {
     };
   }, []);
 
-  function onKeyDown(e: KeyboardEvent<HTMLElement>) {
-    if (e.key === "Escape") {
+  // Esc means "Stay" wherever focus is.
+  const stayRef = useRef(onStay);
+  useEffect(() => {
+    stayRef.current = onStay;
+  });
+  useEffect(() => {
+    function onEscape(e: globalThis.KeyboardEvent) {
+      if (e.key !== "Escape") return;
       e.preventDefault();
-      onStay();
-      return;
+      stayRef.current();
     }
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
+  }, []);
+
+  function onKeyDown(e: KeyboardEvent<HTMLElement>) {
     if (e.key !== "Tab") return;
     const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
     const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
@@ -37,7 +54,12 @@ export function ConflictDialog({ byName, savedAt, onLoad, onStay }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) e.preventDefault(); // a press on the backdrop keeps focus in the dialog
+      }}
+    >
       <section
         role="alertdialog"
         aria-modal="true"
@@ -51,9 +73,10 @@ export function ConflictDialog({ byName, savedAt, onLoad, onStay }: Props) {
           <p>{fill(c.body, { name: byName ?? c.someone, time: savedAt ? clockTime(savedAt, locale) : "—" })}</p>
           <p className="text-ink-2">{c.note}</p>
         </div>
+        {failed ? <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{c.loadFailed}</p> : null}
         <div className="flex justify-end gap-2">
           <button ref={stay} type="button" onClick={onStay} className="rounded-md border border-line px-3 py-2 text-sm">{c.stay}</button>
-          <button type="button" onClick={onLoad} className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-ink">{c.load}</button>
+          <button type="button" onClick={onLoad} disabled={loading} aria-busy={loading} className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-ink disabled:opacity-50">{c.load}</button>
         </div>
       </section>
     </div>

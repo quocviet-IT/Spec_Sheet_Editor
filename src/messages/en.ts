@@ -173,6 +173,7 @@ export const en: Messages = {
       note: "Loading the latest version discards your unsaved changes.",
       load: "Load latest version",
       stay: "Stay on this screen",
+      loadFailed: "The latest version could not be loaded. Check your connection and try again.",
     },
     leave: "You have unsaved changes. Leave this page and discard them?",
     zoom: { in: "Zoom in", out: "Zoom out", fit: "Fit", level: "Zoom {pct}%" },
