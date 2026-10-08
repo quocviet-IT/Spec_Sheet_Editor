@@ -21,7 +21,8 @@ export function roundBox(box: Box): Box {
 }
 
 export function roundAngle(angle: number): number {
-  return round(normalizeAngle(angle), 2);
+  const r = round(normalizeAngle(angle), 2);
+  return r === -180 ? 180 : r; // the schema accepts (-180, 180]
 }
 
 /** Unit vectors: `u` along the reading direction, `v` across it (from the top of the digits to their foot). */

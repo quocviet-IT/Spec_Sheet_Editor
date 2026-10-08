@@ -129,7 +129,7 @@ export const vi = {
     failed: "Chưa lưu được. Thử lại.",
     tryAgain: "Thử lại",
     trashed: "Phiếu này đã bị chuyển vào Thùng rác. Hãy khôi phục rồi lưu lại.",
-    detecting: "Đang tìm các số trên bản vẽ… Việc này có thể mất đến một phút.",
+    detecting: "Đang tìm các số trên bản vẽ… Việc này có thể mất tối đa một phút.",
     noValues: "Không tự tìm thấy số nào.",
     ocrLoad: "Không tải được bộ đọc số. Kiểm tra kết nối rồi tải lại trang.",
     ocrScan: "Không đọc được các số trên phiếu này. Tải lại trang để thử lại.",

@@ -2,7 +2,7 @@
  * Bundles the OCR Worker (src/lib/ocr/worker.ts) into public/ocr/ocr-worker.js and copies the
  * onnxruntime-web runtime it loads into public/ocr/ort/. Turbopack copies `new Worker(new URL(...))`
  * targets without bundling them, so the Worker is built here instead; `predev` and `prebuild` run it.
- * It also copies the pdf.js worker into public/pdfjs/. It also copies the Arimo font and its licence into
+ * It also copies the pdf.js worker into public/pdfjs/ and the Arimo font with its licence into
  * public/fonts/arimo/.
  */
 import { build, type Plugin } from "esbuild";

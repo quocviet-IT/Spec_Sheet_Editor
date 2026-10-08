@@ -109,6 +109,13 @@ describe("detectValues", () => {
     expect(ocr.setPage).not.toHaveBeenCalled();
   });
 
+  it("reports a reader whose Worker cannot start", async () => {
+    const start = () => {
+      throw new Error("Worker blocked");
+    };
+    expect(await detectValues(loaded(), start, ids())).toEqual({ ok: false, reason: "ocr_load" });
+  });
+
   it("reports a scan that failed", async () => {
     const ocr = fakeOcr({ scan: vi.fn(async () => { throw new Error("worker stopped"); }) });
     expect(await detectValues(loaded(), () => ocr, ids())).toEqual({ ok: false, reason: "ocr_scan" });

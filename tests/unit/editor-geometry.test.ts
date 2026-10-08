@@ -59,6 +59,10 @@ describe("fractions and pixels", () => {
     expect(roundBox({ cx: 0.1234567, cy: 0.9876543, w: 0.0000049, h: 0.333333333 })).toEqual({ cx: 0.12346, cy: 0.98765, w: 0, h: 0.33333 });
     expect(roundAngle(-89.99999999)).toBe(-90);
     expect(roundAngle(57.996)).toBe(58);
+    expect(roundAngle(-179.996)).toBe(180);
+    expect(roundAngle(180.004)).toBe(180);
+    expect(Object.is(roundAngle(-0.001), 0)).toBe(true);
+    expect(Object.is(roundBox({ cx: -0.000001, cy: 0.5, w: 0.1, h: 0.1 }).cx, 0)).toBe(true);
   });
 });
 

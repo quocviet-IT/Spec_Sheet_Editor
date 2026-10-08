@@ -41,8 +41,9 @@ export function fromScan(scan: ScanResult, raster: Raster, newId: () => string):
 export async function detectValues(page: LoadedPage, startOcr: () => OcrLike, newId: () => string = () => crypto.randomUUID()): Promise<DetectResult> {
   const fromText = fromPdfText(page, newId);
   if (fromText.length > 0) return { ok: true, source: "pdf-text", detections: fromText };
-  const ocr = startOcr();
+  let ocr: OcrLike;
   try {
+    ocr = startOcr();
     await ocr.init({ det: DEFAULT_MODELS.det, rec: DEFAULT_MODELS.rec, keys: DEFAULT_MODELS.keys });
   } catch {
     return { ok: false, reason: "ocr_load" };

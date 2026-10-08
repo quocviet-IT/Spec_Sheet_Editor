@@ -16,6 +16,6 @@ export function defaultSheetName(fileName: string, fallback: string): string {
 /** "14:05" in the company's time zone (UC-08 step 4). */
 export function clockTime(iso: string, locale: Locale): string {
   return new Intl.DateTimeFormat(locale === "vi" ? "vi-VN" : "en-GB", {
-    hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TIME_ZONE,
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: TIME_ZONE,
   }).format(new Date(iso));
 }
