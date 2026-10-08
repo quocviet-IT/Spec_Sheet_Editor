@@ -10,6 +10,10 @@ export const INK_FLOOR = 0.02;
 export const INK_BAND = 0.25;
 /** Below this luminance difference between paper and ink the box holds no text. */
 export const MIN_CONTRAST = 40;
+/** Fewer pixels clearly darker than paper than this inside the box: no text, only specks. */
+export const MIN_INK_PIXELS = 8;
+/** The ink floor also lies within the darkest tenth of the inky pixels themselves. */
+export const INK_FLOOR_OF_INK = 0.1;
 
 export type BoxAnalysis = { tight: PxBox; textColor: string; bgColor: string };
 
@@ -72,7 +76,13 @@ export function analyseBox(raster: Raster, box: PxBox): BoxAnalysis | null {
   const paper = medianColour(byLum.slice(Math.floor(byLum.length / 2)));
   const innerByLum = [...inner].sort((a, b) => a.lum - b.lum);
   const paperLum = luminance(...paper);
-  const floorLum = innerByLum[Math.min(innerByLum.length - 1, Math.floor(innerByLum.length * INK_FLOOR))].lum;
+  // Pixels clearly darker than paper; the floor is taken among them, so ink that covers less than
+  // INK_FLOOR of a large drawn box still sets it (and a few specks alone are no text).
+  const inky = innerByLum.findIndex((p) => p.lum >= paperLum - MIN_CONTRAST);
+  const inkyCount = inky < 0 ? innerByLum.length : inky;
+  if (inkyCount < MIN_INK_PIXELS) return null;
+  const floorIndex = Math.min(Math.floor(innerByLum.length * INK_FLOOR), Math.floor(inkyCount * INK_FLOOR_OF_INK));
+  const floorLum = innerByLum[floorIndex].lum;
   const limit = floorLum + INK_BAND * (paperLum - floorLum);
   const ink = medianColour(innerByLum.filter((p) => p.lum <= limit));
   const inkLum = luminance(...ink);
