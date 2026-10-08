@@ -140,6 +140,7 @@ export const en: Messages = {
     dataBroken: "The saved values of this sheet could not be read. Contact an administrator.",
     desktopOnly: "The editor needs a desktop screen at least 1024 px wide. The sheet list works on smaller screens.",
     canvas: "Sheet {name}",
+    viewport: "Sheet view",
     values: {
       title: "Values on drawing",
       count: "{n} found",
@@ -149,7 +150,7 @@ export const en: Messages = {
     },
     marker: "Value {value}, {panel}, {state}",
     panels: { topLeft: "top-left panel", topRight: "top-right panel", bottomLeft: "bottom-left panel", bottomRight: "bottom-right panel" },
-    states: { detected: "detected", edited: "edited to {value}" },
+    states: { detected: "detected", edited: "edited to {value}", editing: "editing" },
     unread: "not read",
     popover: {
       title: "Edit dimension",

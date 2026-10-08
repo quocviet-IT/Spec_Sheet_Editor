@@ -138,6 +138,7 @@ export const vi = {
     dataBroken: "Không đọc được các số đã lưu của phiếu này. Liên hệ quản trị viên.",
     desktopOnly: "Trình sửa số cần màn hình máy tính rộng ít nhất 1024 px. Danh sách phiếu vẫn dùng được trên màn hình nhỏ hơn.",
     canvas: "Phiếu {name}",
+    viewport: "Vùng xem phiếu",
     values: {
       title: "Số trên bản vẽ",
       count: "Tìm thấy {n} số",
@@ -147,7 +148,7 @@ export const vi = {
     },
     marker: "Số {value}, {panel}, {state}",
     panels: { topLeft: "ô trên bên trái", topRight: "ô trên bên phải", bottomLeft: "ô dưới bên trái", bottomRight: "ô dưới bên phải" },
-    states: { detected: "máy đã nhận ra", edited: "đã sửa thành {value}" },
+    states: { detected: "máy đã nhận ra", edited: "đã sửa thành {value}", editing: "đang sửa" },
     unread: "chưa đọc được",
     popover: {
       title: "Sửa kích thước",

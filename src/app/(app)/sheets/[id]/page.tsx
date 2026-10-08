@@ -32,9 +32,5 @@ export default async function SheetPage({ params }: { params: Promise<{ id: stri
       </section>
     );
   }
-  return (
-    <div data-wide>
-      <Editor sheet={sheet} />
-    </div>
-  );
+  return <Editor sheet={sheet} />;
 }

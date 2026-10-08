@@ -60,6 +60,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const [savedSnapshot, setSavedSnapshot] = useState(() => snapshot(sheet.detections, sheet.edits));
   const [detect, setDetect] = useState<DetectState>(sheet.version === 1 ? "running" : sheet.detections.length === 0 ? "none" : "idle");
   const [save, setSave] = useState<SaveState>({ state: "idle" });
+  const [firstStore, setFirstStore] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [fitScale, setFitScale] = useState(0.25);
@@ -67,10 +68,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const inFlight = useRef(false);
   const alive = useRef(true);
   /** The latest lists and version, for saves started from listeners and after awaits. */
-  const latest = useRef({ detections: sheet.detections, edits: sheet.edits, version: sheet.version, saved: snapshot(sheet.detections, sheet.edits) });
+  const latest = useRef({ detections: sheet.detections, edits: sheet.edits, version: sheet.version, saved: snapshot(sheet.detections, sheet.edits), firstStore: false });
 
   useEffect(() => {
-    latest.current = { ...latest.current, detections, edits, saved: savedSnapshot };
+    latest.current = { ...latest.current, detections, edits, saved: savedSnapshot, firstStore };
   });
   useEffect(() => {
     alive.current = true;
@@ -79,7 +80,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     };
   }, []);
 
-  const dirty = snapshot(detections, edits) !== savedSnapshot;
+  const dirty = snapshot(detections, edits) !== savedSnapshot || firstStore;
   const scale = zoom === "fit" ? fitScale : zoom;
   const onFitScale = useCallback((s: number) => setFitScale(s), []);
 
@@ -98,7 +99,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       return;
     }
     const saved = snapshot(state.detections, state.edits);
-    latest.current = { detections: state.detections, edits: state.edits, version: state.version, saved };
+    latest.current = { detections: state.detections, edits: state.edits, version: state.version, saved, firstStore: false };
+    setFirstStore(false);
     setDetections(state.detections);
     setEdits(state.edits);
     setSavedSnapshot(saved);
@@ -109,12 +111,13 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
 
   /**
    * UC-08: save the lists with the version this screen holds. Nothing happens while a save is running
-   * or when nothing changed, unless `force` (the first detection is stored even when it found nothing,
-   * so the sheet is not scanned again).
+   * or when nothing changed, unless this is the first store of a detection (stored even when it found
+   * nothing, so the sheet is not scanned again; it stays pending until it succeeds).
    */
   const store = useCallback(
-    async (force = false) => {
+    async () => {
       const sent = latest.current;
+      const force = sent.firstStore;
       if (inFlight.current || (!force && snapshot(sent.detections, sent.edits) === sent.saved)) return;
       inFlight.current = true;
       setSave({ state: "saving" });
@@ -134,7 +137,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       }
       if ("ok" in result) {
         const saved = snapshot(sent.detections, sent.edits);
-        latest.current = { ...latest.current, version: result.version, saved };
+        latest.current = { ...latest.current, version: result.version, saved, firstStore: false };
+        setFirstStore(false);
         setSavedSnapshot(saved);
         setSave({ state: "saved", at: result.savedAt });
         return;
@@ -155,6 +159,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   // Load the page and the font; on the first open, detect and store the values (UC-04).
   useEffect(() => {
     let cancelled = false;
+    let base: HTMLCanvasElement | null = null;
     let client = null as OcrClient | null; // assigned inside the factory below; the cast stops TS narrowing it to never
     const controller = new AbortController();
     const font = loadArimo();
@@ -166,48 +171,60 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         rendered = await renderSource(await response.blob(), sheet.sourceType);
       } catch {
-        if (!cancelled) setLoadError("load");
+        if (!cancelled) {
+          setLoadError("load");
+          setDetect("idle");
+        }
         return;
       }
       let metrics: FontMetrics;
       try {
         metrics = await font;
       } catch {
-        if (!cancelled) setLoadError("font");
+        if (!cancelled) {
+          setLoadError("font");
+          setDetect("idle");
+        }
         return;
       }
       if (cancelled) return;
       const trimmed = trimPage(rendered);
       if (!sameSize(trimmed.raster.width, trimmed.raster.height, sheet.pageW, sheet.pageH)) {
         setLoadError("size");
+        setDetect("idle");
         return;
       }
-      const base = document.createElement("canvas");
-      drawRaster(base, trimmed.raster);
+      const canvas = document.createElement("canvas");
+      base = canvas;
+      drawRaster(canvas, trimmed.raster);
       const page: LoadedPage = { raster: trimmed.raster, text: rendered.text, offsetX: trimmed.offsetX, offsetY: trimmed.offsetY };
-      setLoaded({ page, base, metrics });
+      setLoaded({ page, base: canvas, metrics });
       if (sheet.version !== 1) return;
       const result = await detectValues(page, () => (client ??= new OcrClient()));
       if (cancelled) return;
       if (!result.ok) {
-        if (result.reason === "ocr_load") {
-          client?.dispose(); // onnxruntime cannot initialise twice in one Worker
-          client = null;
-        }
+        client?.dispose(); // onnxruntime cannot initialise twice in one Worker
+        client = null;
+        ocr.current = null;
         setDetect(result.reason);
         return;
       }
       ocr.current = client;
-      latest.current = { ...latest.current, detections: result.detections };
+      latest.current = { ...latest.current, detections: result.detections, firstStore: true };
       setDetections(result.detections);
+      setFirstStore(true);
       setDetect(result.detections.length === 0 ? "none" : "idle");
-      await store(true);
+      await store();
     })();
     return () => {
       cancelled = true;
       controller.abort();
       client?.dispose();
       if (ocr.current === client) ocr.current = null;
+      if (base) {
+        base.width = 0;
+        base.height = 0;
+      }
     };
   }, [sheet, store]);
 
@@ -254,7 +271,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const errorText = loadError === "font" ? t.editor.fontFailed : loadError === "size" ? t.editor.sizeMismatch : t.sheet.loadError;
 
   return (
-    <section aria-label={sheet.name} className="flex h-[calc(100vh-7rem)] min-h-[32rem] flex-col gap-3">
+    <section aria-label={sheet.name} data-wide className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col gap-3">
       <header className="flex flex-wrap items-center gap-3">
         <Link href="/sheets" className="text-sm text-ink-2 hover:text-ink">← {t.sheet.back}</Link>
         <h1 className="text-lg font-bold">{sheet.name}</h1>
@@ -271,10 +288,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       </header>
       <div className="flex min-h-0 flex-1 gap-3">
         <div className="min-w-0 flex-1 overflow-hidden rounded-lg border border-line">
+          <div role="status" aria-live="polite" className="sr-only">{!loadError && !loaded ? t.sheet.loading : ""}</div>
           {loadError ? (
             <p role="alert" className="m-4 rounded-md bg-danger-soft px-3 py-2 text-sm">{errorText}</p>
           ) : !loaded ? (
-            <p role="status" className="m-4 text-sm text-ink-2">{t.sheet.loading}</p>
+            <p aria-hidden className="m-4 text-sm text-ink-2">{t.sheet.loading}</p>
           ) : (
             <SheetCanvas
               base={loaded.base}

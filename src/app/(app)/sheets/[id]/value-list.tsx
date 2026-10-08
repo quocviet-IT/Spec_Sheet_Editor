@@ -26,9 +26,9 @@ export function ValueList({ detections, edits, activeId, detect, onOpen }: Props
         <h2 id="values-title" className="text-sm font-bold">{v.title}</h2>
         {detections.length > 0 && <p className="text-xs text-ink-2">{fill(v.count, { n: detections.length })}</p>}
       </div>
-      <div role="status" aria-live="polite" className="px-3 text-sm empty:hidden">
-        {detect === "running" ? <p className="py-2 text-ink-2">{t.editor.detecting}</p> : null}
-        {detect === "none" ? <p className="py-2">{t.editor.noValues}</p> : null}
+      <div role="status" aria-live="polite" className="text-sm">
+        {detect === "running" ? <p className="px-3 py-2 text-ink-2">{t.editor.detecting}</p> : null}
+        {detect === "none" ? <p className="px-3 py-2">{t.editor.noValues}</p> : null}
       </div>
       {detect === "ocr_load" || detect === "ocr_scan" ? (
         <p role="alert" className="mx-3 my-2 rounded-md bg-danger-soft px-3 py-2 text-sm">

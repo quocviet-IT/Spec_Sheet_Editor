@@ -39,7 +39,7 @@ export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edi
   useEffect(() => {
     const el = viewport.current;
     if (!el) return;
-    const measure = () => onFitScale(Math.max(0.05, Math.min((el.clientWidth - 32) / pageW, (el.clientHeight - 32) / pageH)));
+    const measure = () => onFitScale(Math.max(0.05, Math.min((Math.floor(el.clientWidth) - 33) / pageW, (Math.floor(el.clientHeight) - 33) / pageH)));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
@@ -56,11 +56,22 @@ export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edi
     paintSheet(ctx, base, edits, pageW, pageH, metrics);
   }, [base, edits, pageW, pageH, metrics]);
 
+  // Release the canvas memory when the screen closes.
+  useEffect(() => {
+    const c = canvas.current;
+    return () => {
+      if (c) {
+        c.width = 0;
+        c.height = 0;
+      }
+    };
+  }, []);
+
   const byId = new Map(edits.map((e) => [e.detectionId, e]));
   const a = DRAWING_AREA;
   const band = { top: `${a.y0 * 100}%`, height: `${(a.y1 - a.y0) * 100}%` };
   return (
-    <div ref={viewport} className="h-full overflow-auto bg-sunk p-4">
+    <div ref={viewport} tabIndex={0} role="region" aria-label={t.editor.viewport} className="h-full overflow-auto bg-sunk p-4">
       <div className="relative mx-auto bg-white shadow" style={{ width: pageW * scale, height: pageH * scale }}>
         <canvas ref={canvas} role="img" aria-label={fill(t.editor.canvas, { name })} className="absolute inset-0 h-full w-full" />
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0" style={{ height: `${a.y0 * 100}%`, backgroundImage: HATCH }} />
@@ -74,7 +85,7 @@ export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edi
           const pad = MARK_PAD * px.h;
           const w = Math.max(MIN_TARGET, (px.w + 2 * pad) * scale);
           const h = Math.max(MIN_TARGET, (px.h + 2 * pad) * scale);
-          const state = edit ? fill(t.editor.states.edited, { value: edit.newValue }) : t.editor.states.detected;
+          const state = edit ? fill(t.editor.states.edited, { value: edit.newValue }) : active ? t.editor.states.editing : t.editor.states.detected;
           const label = fill(t.editor.marker, {
             value: edit?.oldValue ?? d.readValue ?? t.editor.unread,
             panel: t.editor.panels[panelOf(d.box)],
