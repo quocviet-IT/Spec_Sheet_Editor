@@ -4,8 +4,10 @@ import type { PxBox } from "./types";
 
 /** How far beyond the box to look, as a share of its height (at least 2 px). */
 export const GROW = 0.25;
-/** The ink colour is the per-channel median of the darkest share of the pixels inside the box. */
-export const DARK_SHARE = 0.1;
+/** The ink floor is the luminance at this share of the box's pixels, sorted dark to light, so a few dark specks do not count. */
+export const INK_FLOOR = 0.02;
+/** The ink is the per-channel median of the pixels no lighter than this share of the way from the floor to the paper. */
+export const INK_BAND = 0.25;
 /** Below this luminance difference between paper and ink the box holds no text. */
 export const MIN_CONTRAST = 40;
 
@@ -69,8 +71,10 @@ export function analyseBox(raster: Raster, box: PxBox): BoxAnalysis | null {
   const byLum = [...region].sort((a, b) => a.lum - b.lum);
   const paper = medianColour(byLum.slice(Math.floor(byLum.length / 2)));
   const innerByLum = [...inner].sort((a, b) => a.lum - b.lum);
-  const ink = medianColour(innerByLum.slice(0, Math.max(1, Math.ceil(inner.length * DARK_SHARE))));
   const paperLum = luminance(...paper);
+  const floorLum = innerByLum[Math.min(innerByLum.length - 1, Math.floor(innerByLum.length * INK_FLOOR))].lum;
+  const limit = floorLum + INK_BAND * (paperLum - floorLum);
+  const ink = medianColour(innerByLum.filter((p) => p.lum <= limit));
   const inkLum = luminance(...ink);
   if (paperLum - inkLum < MIN_CONTRAST) return null;
   const threshold = (paperLum + inkLum) / 2;

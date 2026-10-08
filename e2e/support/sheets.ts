@@ -45,7 +45,10 @@ export async function auditCount(id: string, action: string): Promise<number> {
 }
 
 export async function waitForVersion(id: string, version: number, timeout = 30_000): Promise<void> {
-  await expect.poll(async () => (await storedSheet(id)).version, { timeout, intervals: [500, 1000] }).toBe(version);
+  // Wait for the version to reach the expected one, then require it to be exactly that: a skipped
+  // version fails with a clear message instead of a timeout.
+  await expect.poll(async () => (await storedSheet(id)).version >= version, { timeout, intervals: [500, 1000] }).toBe(true);
+  expect((await storedSheet(id)).version, `sheet ${id} should be at version ${version}`).toBe(version);
 }
 
 /** Every value marker on the sheet (their labels start with "Số " / "Value "). */

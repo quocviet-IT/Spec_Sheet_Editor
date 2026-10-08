@@ -21,6 +21,9 @@ export function ConflictDialog({ byName, savedAt, loading, failed, onLoad, onSta
   const c = t.editor.conflict;
   const id = useId();
   const stay = useRef<HTMLButtonElement | null>(null);
+  const load = useRef<HTMLButtonElement | null>(null);
+  const section = useRef<HTMLElement | null>(null);
+  const wasLoading = useRef(false);
 
   useEffect(() => {
     const opener = document.activeElement;
@@ -29,6 +32,13 @@ export function ConflictDialog({ byName, savedAt, loading, failed, onLoad, onSta
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
     };
   }, []);
+
+  // Focus never drops to the page behind while both buttons are disabled; a failed load hands it back.
+  useEffect(() => {
+    if (loading) section.current?.focus();
+    else if (wasLoading.current && failed) load.current?.focus();
+    wasLoading.current = loading;
+  }, [loading, failed]);
 
   // Esc means "Stay" wherever focus is.
   const stayRef = useRef(onStay);
@@ -64,12 +74,14 @@ export function ConflictDialog({ byName, savedAt, loading, failed, onLoad, onSta
       }}
     >
       <section
+        ref={section}
+        tabIndex={-1}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={`${id}-title`}
         aria-describedby={`${id}-body`}
         onKeyDown={onKeyDown}
-        className="w-full max-w-md space-y-4 rounded-lg bg-surface p-6 text-ink shadow-xl"
+        className="w-full max-w-md space-y-4 rounded-lg bg-surface p-6 outline-none text-ink shadow-xl"
       >
         <h2 id={`${id}-title`} className="text-lg font-bold">{c.title}</h2>
         <div id={`${id}-body`} className="space-y-2 text-sm">
@@ -79,7 +91,7 @@ export function ConflictDialog({ byName, savedAt, loading, failed, onLoad, onSta
         {failed ? <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{c.loadFailed}</p> : null}
         <div className="flex justify-end gap-2">
           <button ref={stay} type="button" onClick={onStay} disabled={loading} className="rounded-md border border-line px-3 py-2 text-sm disabled:opacity-50">{c.stay}</button>
-          <button type="button" onClick={onLoad} disabled={loading} aria-busy={loading} className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-ink disabled:opacity-50">{c.load}</button>
+          <button ref={load} type="button" onClick={onLoad} disabled={loading} aria-busy={loading} className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-ink disabled:opacity-50">{c.load}</button>
         </div>
       </section>
     </div>

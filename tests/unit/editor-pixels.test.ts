@@ -67,4 +67,15 @@ describe("analyseBox", () => {
   it("copes with a box that runs off the page", () => {
     expect(() => analyseBox(scene(), { cx: 5, cy: 5, w: 60, h: 30, angle: 30 })).not.toThrow();
   });
+
+  it("keeps the ink colour of thin digits that cover little of the box", () => {
+    const r = createRaster(300, 150);
+    // four 1-pixel strokes, 20 px tall (about 3 % of the box), each with anti-aliased grey on both sides
+    for (const x of [104, 118, 138, 152]) {
+      fill(r, x - 1, 50, x - 1, 69, [0xb0, 0xb0, 0xb6]);
+      fill(r, x + 1, 50, x + 1, 69, [0xb0, 0xb0, 0xb6]);
+      fill(r, x, 50, x, 69, INK);
+    }
+    expect(analyseBox(r, { cx: 129, cy: 64, w: 80, h: 30, angle: 0 })?.textColor).toBe("#676672");
+  });
 });

@@ -25,6 +25,7 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
   const oldInput = useRef<HTMLInputElement | null>(null);
   const newInput = useRef<HTMLInputElement | null>(null);
   const close = useRef(onClose);
+  const hasReading = Boolean(edit?.oldValue ?? detection.readValue);
   const [oldRaw, setOldRaw] = useState(edit?.oldValue ?? detection.readValue ?? "");
   const [newRaw, setNewRaw] = useState(edit?.newValue ?? "");
   const [oldError, setOldError] = useState<string | null>(null);
@@ -35,8 +36,23 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
   });
 
   useEffect(() => {
-    newInput.current?.focus();
-    newInput.current?.select();
+    // A hand-drawn value has no machine reading: the person confirms the old value first.
+    const first = hasReading ? newInput.current : oldInput.current;
+    first?.focus();
+    first?.select();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on opening
+  }, []);
+
+  // Escape closes the popover wherever focus is, also after the person tabbed out of it.
+  useEffect(() => {
+    function onEscape(e: KeyboardEvent) {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (document.querySelector("[aria-modal='true']")) return; // a modal dialog owns Escape
+      e.preventDefault();
+      close.current(true);
+    }
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
   }, []);
 
   // A press outside closes the popover; a press on its own marker leaves it open.
@@ -80,13 +96,6 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
       role="dialog"
       aria-labelledby={`${id}-title`}
       onSubmit={submit}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          onClose(true);
-        }
-      }}
       className="absolute z-20 w-80 space-y-3 rounded-lg border border-line bg-surface p-4 text-ink shadow-lg"
       style={style}
     >

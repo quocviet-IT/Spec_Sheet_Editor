@@ -51,7 +51,10 @@ test("an image sheet is read with OCR: values inside the drawing only, sheet.det
   const scanMs = Date.now() - scanStart;
   const { detections } = await storedSheet(id);
   const missed = unmatchedValues(PDF_VALUES, detections, { position: 0.01, angle: 1 });
-  console.log(`OCR figures: ${detections.length} stored values, ${PDF_VALUES.length - missed.length} of ${PDF_VALUES.length} expected found, scan ${(scanMs / 1000).toFixed(1)} s from upload page`);
+  test.info().annotations.push({
+    type: "ocr",
+    description: `${detections.length} stored values, ${PDF_VALUES.length - missed.length} of ${PDF_VALUES.length} expected found, scan ${(scanMs / 1000).toFixed(1)} s from upload page`,
+  });
   expect(detections.every((d) => d.source === "ocr" && typeof d.confidence === "number")).toBe(true);
   expect(detections.map((d) => d.readValue)).not.toContain("5.75");
   expect(detections.map((d) => d.readValue)).not.toContain("3.39");
