@@ -165,6 +165,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       const force = sent.firstStore;
       if (inFlight.current || (!force && snapshot(sent.name, sent.detections, sent.edits) === sent.saved)) return;
       inFlight.current = true;
+      setMatch(null);
       setSave({ state: "saving" });
       let result: SaveResult | undefined;
       try {
@@ -289,7 +290,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       const target = e.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
       if (e.key === "k" || e.key === "K") {
-        if (e.repeat || !loadedReady || detectRunning || conflictOpen || drawnOpen || popoverOpen || target?.closest("[role='dialog']")) return;
+        if (e.repeat || !loadedReady || detectRunning || conflictOpen || drawnOpen || popoverOpen || match !== null || target?.closest("[role='dialog']")) return;
         if (drawing) endDraw();
         else setDrawing(true);
       } else if (e.key === "Escape" && drawing) {
@@ -302,7 +303,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [store, scale, conflictOpen, drawing, drawnOpen, popoverOpen, loadedReady, detectRunning, endDraw]);
+  }, [store, scale, conflictOpen, drawing, drawnOpen, popoverOpen, match, loadedReady, detectRunning, endDraw]);
 
   useLeaveGuard(dirty, t.editor.leave);
 
@@ -330,6 +331,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
 
   function apply(detection: Detection, oldValue: string, newValue: string) {
     if (!loaded) return;
+    setMatch(null);
     const edit = makeEdit(loaded.page.raster, detection, oldValue, newValue);
     const next = [...latest.current.edits.filter((e) => e.detectionId !== detection.id), edit];
     const others = matchingValues(latest.current.detections, next, oldValue, detection.id);
@@ -342,9 +344,12 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
 
   function applyMatches() {
     if (!loaded || !match) return;
-    const targets = latest.current.detections.filter((d) => match.ids.includes(d.id));
+    // Only values still unedited now; every existing edit stays.
+    const targets = latest.current.detections.filter(
+      (d) => match.ids.includes(d.id) && !latest.current.edits.some((e) => e.detectionId === d.id),
+    );
     const added = targets.map((d) => makeEdit(loaded.page.raster, d, match.oldValue, match.newValue));
-    const next = [...latest.current.edits.filter((e) => !match.ids.includes(e.detectionId)), ...added];
+    const next = [...latest.current.edits, ...added];
     latest.current = { ...latest.current, edits: next };
     setEdits(next);
     const from = match.from;
@@ -353,11 +358,13 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   }
 
   function revert(id: string) {
+    setMatch(null);
     setEdits((list) => list.filter((e) => e.detectionId !== id));
     closePopover(id);
   }
 
   function open(id: string) {
+    setMatch(null);
     setNotice(null);
     setActiveId(id);
     requestAnimationFrame(() =>
@@ -386,6 +393,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
 
   function onAngle(angle: number) {
     if (!loaded || !drawn) return;
+    setMatch(null);
     const px = boxForDrawnRect(drawn, angle);
     setDrawn(null);
     if (!analyseBox(loaded.page.raster, px)) {

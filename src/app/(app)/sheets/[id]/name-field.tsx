@@ -12,30 +12,37 @@ export function NameField({ name, onRename }: { name: string; onRename: (name: s
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement | null>(null);
   const button = useRef<HTMLButtonElement | null>(null);
+  // Set once an edit has ended, so the blur fired as the input unmounts cannot act on a stale draft.
+  const done = useRef(false);
 
   useEffect(() => {
     if (editing) input.current?.select();
   }, [editing]);
 
-  function finish(keep: boolean) {
+  /** `key`: ended by Enter or Escape (focus returns to the button); a blur leaves focus where the person put it. */
+  function finish(keep: boolean, key: boolean) {
+    if (done.current) return;
     if (keep) {
       const next = draft.trim();
       if (!next) {
-        setError(r.empty);
-        return;
-      }
-      if (next !== name) onRename(next);
+        if (key) {
+          setError(r.empty);
+          return;
+        }
+        // Blur with an empty name: silently keep the old one.
+      } else if (next !== name) onRename(next);
     }
+    done.current = true;
     setError(null);
     setEditing(false);
-    requestAnimationFrame(() => button.current?.focus());
+    if (key) requestAnimationFrame(() => button.current?.focus());
   }
 
   if (!editing) {
     return (
       <div className="flex min-w-0 items-center gap-2">
         <h1 className="truncate text-lg font-bold">{name}</h1>
-        <button ref={button} type="button" onClick={() => { setDraft(name); setEditing(true); }} className="rounded border border-line px-2 py-0.5 text-xs text-ink-2 hover:text-ink">
+        <button ref={button} type="button" onClick={() => { setDraft(name); done.current = false; setEditing(true); }} className="rounded border border-line px-2 py-0.5 text-xs text-ink-2 hover:text-ink">
           {r.button}
         </button>
       </div>
@@ -51,10 +58,10 @@ export function NameField({ name, onRename }: { name: string; onRename: (name: s
           maxLength={200}
           onChange={(e) => { setDraft(e.target.value); setError(null); }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); finish(true); }
-            if (e.key === "Escape") { e.preventDefault(); finish(false); }
+            if (e.key === "Enter") { e.preventDefault(); finish(true, true); }
+            if (e.key === "Escape") { e.preventDefault(); finish(false, true); }
           }}
-          onBlur={() => finish(true)}
+          onBlur={() => finish(true, false)}
           aria-invalid={error !== null}
           className="w-80 rounded-md border border-line bg-surface px-2 py-1 text-lg font-bold"
         />
