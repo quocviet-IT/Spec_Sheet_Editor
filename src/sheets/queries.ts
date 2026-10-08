@@ -76,29 +76,6 @@ export async function fetchCounts(): Promise<{ live: number; trash: number }> {
   return { live: Number(row?.live ?? 0), trash: Number(row?.trash ?? 0) };
 }
 
-export type SheetDetail = {
-  id: string; name: string; sourceType: SourceType; pageW: number; pageH: number; editCount: number;
-  deleted: boolean; sourceUrl: string | null;
-};
-
-/** One sheet with a short-lived link to its original, or null when it does not exist (or RLS hides it). */
-export async function fetchSheet(id: string): Promise<SheetDetail | null> {
-  const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
-    .from("sheet_list")
-    .select("id, name, source_type, page_px_w, page_px_h, edit_count, deleted_at")
-    .eq("id", id)
-    .maybeSingle<{ id: string; name: string; source_type: SourceType; page_px_w: number; page_px_h: number; edit_count: number; deleted_at: string | null }>();
-  if (error) throw error;
-  if (!data) return null;
-  const ttl = (await settings()).signed_url_ttl_min * 60;
-  const { data: signed } = await supabase.storage.from("spec-sheets").createSignedUrl(`${id}/source.${data.source_type}`, ttl);
-  return {
-    id: data.id, name: data.name, sourceType: data.source_type, pageW: data.page_px_w, pageH: data.page_px_h,
-    editCount: data.edit_count, deleted: data.deleted_at !== null, sourceUrl: signed?.signedUrl ?? null,
-  };
-}
-
 type EditorRow = {
   id: string; name: string; source_type: SourceType; page_px_w: number; page_px_h: number; version: number;
   detections: unknown; edits: unknown; deleted_at: string | null;

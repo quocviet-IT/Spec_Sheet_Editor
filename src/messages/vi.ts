@@ -115,7 +115,6 @@ export const vi = {
   },
   sheet: {
     back: "Phiếu",
-    viewOnly: "Chế độ xem. Trình sửa số sẽ có ở bản cập nhật tới.",
     loading: "Đang đọc phiếu…",
     loadError: "Không mở được phiếu này. Tải lại trang để thử lại.",
     inTrash: "Phiếu này đang ở Thùng rác.",

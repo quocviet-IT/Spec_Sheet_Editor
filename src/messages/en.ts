@@ -117,7 +117,6 @@ export const en: Messages = {
   },
   sheet: {
     back: "Sheets",
-    viewOnly: "View only. Editing values arrives in the next update.",
     loading: "Reading the sheet…",
     loadError: "This sheet could not be opened. Reload the page to try again.",
     inTrash: "This sheet is in the Trash.",

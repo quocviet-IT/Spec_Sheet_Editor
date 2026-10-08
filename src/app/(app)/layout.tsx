@@ -10,7 +10,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <>
       <AppHeader me={me} t={t} />
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 py-6 has-[[data-wide]]:max-w-none">{children}</main>
     </>
   );
 }
