@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { decideAccess, type Profile } from "@/auth/access";
 
-const staff: Profile = { id: "u1", email: "a@ctyhp.vn", fullName: "A", avatarUrl: null, role: "user", status: "active" };
+const staff: Profile = { id: "u1", email: "a@ctyhp.vn", fullName: "A", avatarUrl: null, role: "user", status: "active", passwordAccount: true };
 const admin: Profile = { ...staff, id: "u2", role: "admin" };
 
 describe("decideAccess", () => {
   it("sends signed-out visitors to sign in without an error", () => {
     expect(decideAccess(null, "signed_out", "user")).toEqual({ kind: "login" });
+  });
+
+  it("sends someone still on a one-time password to set their own, before anything else", () => {
+    expect(decideAccess(null, "must_change_password", "user")).toEqual({ kind: "change_password" });
+    expect(decideAccess(null, "must_change_password", "admin")).toEqual({ kind: "change_password" });
   });
 
   it("explains suspended and not-permitted accounts", () => {

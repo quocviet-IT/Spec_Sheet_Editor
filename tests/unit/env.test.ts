@@ -8,8 +8,13 @@ const good = {
 };
 
 describe("parseEnv", () => {
-  it("accepts a complete environment", () => {
-    expect(parseEnv(good)).toEqual(good);
+  it("accepts a complete environment; Google sign-in is off unless switched on", () => {
+    expect(parseEnv(good)).toEqual({ ...good, GOOGLE_SIGN_IN: "off" });
+    expect(parseEnv({ ...good, GOOGLE_SIGN_IN: "on" }).GOOGLE_SIGN_IN).toBe("on");
+  });
+
+  it("rejects an unknown GOOGLE_SIGN_IN value", () => {
+    expect(() => parseEnv({ ...good, GOOGLE_SIGN_IN: "yes" })).toThrow(/GOOGLE_SIGN_IN/);
   });
 
   it("names every missing key", () => {

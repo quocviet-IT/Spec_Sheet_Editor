@@ -1,6 +1,6 @@
 export type Role = "user" | "admin";
 export type Status = "active" | "suspended";
-export type AccessStatus = "ok" | "signed_out" | "not_permitted" | "suspended";
+export type AccessStatus = "ok" | "signed_out" | "not_permitted" | "suspended" | "must_change_password";
 
 export type Profile = {
   id: string;
@@ -9,6 +9,8 @@ export type Profile = {
   avatarUrl: string | null;
   role: Role;
   status: Status;
+  /** Created by an Admin with a password (as opposed to a Google account). */
+  passwordAccount: boolean;
 };
 
 export type Need = "user" | "admin";
@@ -16,6 +18,7 @@ export type Need = "user" | "admin";
 export type Decision =
   | { kind: "allow"; profile: Profile }
   | { kind: "login"; error?: "not_permitted" | "suspended" }
+  | { kind: "change_password" }
   | { kind: "not_found" };
 
 /**
@@ -24,6 +27,7 @@ export type Decision =
  */
 export function decideAccess(profile: Profile | null, status: AccessStatus, need: Need): Decision {
   if (status === "signed_out") return { kind: "login" };
+  if (status === "must_change_password") return { kind: "change_password" };
   if (status === "suspended") return { kind: "login", error: "suspended" };
   if (status === "not_permitted") return { kind: "login", error: "not_permitted" };
   if (profile === null) return { kind: "login" };

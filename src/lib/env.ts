@@ -4,6 +4,8 @@ const schema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.url(),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
   SUPABASE_SECRET_KEY: z.string().min(1),
+  /** "on" shows the Google button on the sign-in screen (2026-10-08: off until Google is set up). */
+  GOOGLE_SIGN_IN: z.enum(["on", "off"]).default("off"),
 });
 
 export type Env = z.infer<typeof schema>;
