@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { paintSheet, type FontMetrics } from "@/editor/canvas";
-import { panelOf, readingOrder, toPx } from "@/editor/geometry";
+import { panelOf, readingOrder, rectFromDrag, toPx } from "@/editor/geometry";
 import type { Detection, Edit } from "@/editor/types";
 import { DRAWING_AREA } from "@/lib/form/template";
-import type { Point } from "@/lib/ocr/geometry";
+import type { Point, Rect } from "@/lib/ocr/geometry";
 import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 
@@ -29,10 +29,12 @@ type Props = {
   onFitScale: (scale: number) => void;
   onOpen: (id: string) => void;
   onPageClick?: (p: Point) => void;
+  drawing: boolean;
+  onDrawn: (rect: Rect) => void;
   children?: ReactNode;
 };
 
-export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edits, activeId, scale, onFitScale, onOpen, onPageClick, children }: Props) {
+export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edits, activeId, scale, onFitScale, onOpen, onPageClick, drawing, onDrawn, children }: Props) {
   const t = useMessages();
   const viewport = useRef<HTMLDivElement | null>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
@@ -126,8 +128,46 @@ export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edi
             </button>
           );
         })}
+        {drawing ? <DrawLayer pageW={pageW} pageH={pageH} scale={scale} onDrawn={onDrawn} /> : null}
         {children}
       </div>
+    </div>
+  );
+}
+
+/** Draw mode (UC-07 step 1): a crosshair layer over the page; a drag gives a rectangle in page pixels. */
+function DrawLayer({ pageW, pageH, scale, onDrawn }: { pageW: number; pageH: number; scale: number; onDrawn: (rect: Rect) => void }) {
+  const [drag, setDrag] = useState<{ a: Point; b: Point } | null>(null);
+  const toPage = (e: React.PointerEvent<HTMLDivElement>): Point => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return { x: ((e.clientX - r.left) / r.width) * pageW, y: ((e.clientY - r.top) / r.height) * pageH };
+  };
+  const shown = drag ? rectFromDrag(drag.a, drag.b) : null;
+  return (
+    <div
+      aria-hidden
+      className="absolute inset-0 z-10 cursor-crosshair"
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        const p = toPage(e);
+        setDrag({ a: p, b: p });
+      }}
+      onPointerMove={(e) => {
+        if (drag) setDrag({ a: drag.a, b: toPage(e) });
+      }}
+      onPointerUp={(e) => {
+        if (!drag) return;
+        const rect = rectFromDrag(drag.a, toPage(e));
+        setDrag(null);
+        onDrawn(rect);
+      }}
+    >
+      {shown ? (
+        <div
+          className="absolute border-2 border-dashed border-mark bg-mark/10"
+          style={{ left: shown.x * scale, top: shown.y * scale, width: shown.w * scale, height: shown.h * scale }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -4,17 +4,19 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { loadArimo, type FontMetrics } from "@/editor/canvas";
 import { detectValues, makeEdit, ocrFailureReason, toDetection, type LoadedPage } from "@/editor/detections";
-import { boxFromQuad, detectionAt, pointInDrawingArea, sameSize, toPx } from "@/editor/geometry";
+import { boxForDrawnRect, boxFromQuad, detectionAt, MIN_DRAWN_PX, pointInDrawingArea, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
+import { analyseBox } from "@/editor/pixels";
 import type { Detection, Edit } from "@/editor/types";
 import { zoomIn, zoomOut, type Zoom } from "@/editor/zoom";
 import type { OcrClient } from "@/lib/ocr/client";
-import type { Point } from "@/lib/ocr/geometry";
+import type { Point, Rect } from "@/lib/ocr/geometry";
 import { drawRaster, renderSource, trimPage, type RenderedPage } from "@/lib/page/render";
 import { useLocale, useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 import { loadEditorState, saveSheet } from "@/sheets/actions";
 import { clockTime } from "@/sheets/format";
 import type { EditorSheet, SaveResult } from "@/sheets/types";
+import { AngleDialog } from "./angle-dialog";
 import { ConflictDialog } from "./conflict-dialog";
 import { EditPopover } from "./edit-popover";
 import { SheetCanvas } from "./sheet-canvas";
@@ -50,17 +52,13 @@ type Loaded = { page: LoadedPage; base: HTMLCanvasElement; metrics: FontMetrics 
 type LoadError = "load" | "font" | "size";
 type SaveState = { state: "idle" | "saving" | "offline" | "failed" | "trashed" } | { state: "saved"; at: string };
 
-const POPOVER_W = 320;
-const POPOVER_GAP = 12;
-
-/** Beside the marker, on the right when it fits inside the page, otherwise on the left. */
-function popoverPlace(d: Detection, pageW: number, pageH: number, scale: number): CSSProperties {
-  const px = toPx(d.box, d.angle, pageW, pageH);
-  const reach = (Math.hypot(px.w, px.h) / 2) * scale + POPOVER_GAP;
-  const x = px.cx * scale;
-  const y = px.cy * scale;
-  const left = x + reach + POPOVER_W <= pageW * scale ? x + reach : Math.max(0, x - reach - POPOVER_W);
-  return { left, top: Math.max(0, y - 24) };
+/** Beside a point, on the right when it fits inside the page, otherwise on the left; never below the page. */
+function besideStyle(cx: number, cy: number, reach: number, pageW: number, pageH: number, scale: number, width: number, height: number): CSSProperties {
+  const x = cx * scale;
+  const y = cy * scale;
+  const left = x + reach + width <= pageW * scale ? x + reach : Math.max(0, x - reach - width);
+  const top = Math.max(0, Math.min(y - 24, pageH * scale - height));
+  return { left, top };
 }
 
 /** Edits compared by value, not by the order they were applied in. */
@@ -87,6 +85,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const reader = useValueReader();
   const ensureReader = useRef(reader.ensure);
   const [notice, setNotice] = useState<{ kind: "status" | "alert"; text: string } | null>(null);
+  const [drawing, setDrawing] = useState(false);
+  const [drawn, setDrawn] = useState<Rect | null>(null);
   const readingNow = useRef(false);
   const inFlight = useRef(false);
   const alive = useRef(true);
@@ -106,6 +106,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
 
   const dirty = snapshot(detections, edits) !== savedSnapshot || firstStore;
   const conflictOpen = conflict !== null;
+  const drawnOpen = drawn !== null;
+  const popoverOpen = activeId !== null;
   const scale = zoom === "fit" ? fitScale : zoom;
   const onFitScale = useCallback((s: number) => setFitScale(s), []);
 
@@ -270,7 +272,14 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
-      if (e.key === "+" || e.key === "=") setZoom(zoomIn(scale));
+      if (e.key === "k" || e.key === "K") {
+        if (conflictOpen || drawnOpen || popoverOpen || target?.closest("[role='dialog']")) return;
+        setDrawing((d) => !d);
+        setDrawn(null);
+      } else if (e.key === "Escape" && drawing) {
+        setDrawing(false);
+        setDrawn(null);
+      } else if (e.key === "+" || e.key === "=") setZoom(zoomIn(scale));
       else if (e.key === "-") setZoom(zoomOut(scale));
       else if (e.key === "0") setZoom("fit");
       else return;
@@ -278,7 +287,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [store, scale, conflictOpen]);
+  }, [store, scale, conflictOpen, drawing, drawnOpen, popoverOpen]);
 
   useLeaveGuard(dirty, t.editor.leave);
 
@@ -324,8 +333,33 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     );
   }
 
+  function onDrawn(rect: Rect) {
+    if (rect.w < MIN_DRAWN_PX || rect.h < MIN_DRAWN_PX) return;
+    if (!rectInDrawingArea(rect, W, H)) {
+      setNotice({ kind: "alert", text: t.editor.drawOutside });
+      return;
+    }
+    setNotice(null);
+    setDrawn(rect);
+  }
+
+  function onAngle(angle: number) {
+    if (!loaded || !drawn) return;
+    const px = boxForDrawnRect(drawn, angle);
+    setDrawn(null);
+    if (!analyseBox(loaded.page.raster, px)) {
+      setNotice({ kind: "alert", text: t.editor.drawEmpty });
+      return;
+    }
+    const added = toDetection(loaded.page.raster, px, { readValue: null, confidence: null, source: "manual" }, () => crypto.randomUUID());
+    latest.current = { ...latest.current, detections: [...latest.current.detections, added] };
+    setDetections((list) => [...list, added]);
+    setDrawing(false);
+    open(added.id);
+  }
+
   async function readAt(p: Point) {
-    if (!loaded || readingNow.current || !pointInDrawingArea(p, W, H)) return;
+    if (drawing || !loaded || readingNow.current || !pointInDrawingArea(p, W, H)) return;
     if (detect === "running") {
       setNotice({ kind: "status", text: t.editor.waitDetect });
       return;
@@ -365,15 +399,24 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   }
 
   const active = loaded && activeId ? detections.find((d) => d.id === activeId) ?? null : null;
-  const popover = active ? (
+  const popoverPx = active ? toPx(active.box, active.angle, W, H) : null;
+  const popover = active && popoverPx ? (
     <EditPopover
       key={active.id}
       detection={active}
       edit={edits.find((e) => e.detectionId === active.id) ?? null}
-      style={popoverPlace(active, W, H, scale)}
+      style={besideStyle(popoverPx.cx, popoverPx.cy, (Math.hypot(popoverPx.w, popoverPx.h) / 2) * scale + 12, W, H, scale, 320, 340)}
       onApply={(oldValue, newValue) => apply(active, oldValue, newValue)}
       onRevert={() => revert(active.id)}
       onClose={(refocus) => (refocus ? closePopover(active.id) : setActiveId(null))}
+    />
+  ) : null;
+
+  const angleDialog = drawn ? (
+    <AngleDialog
+      style={besideStyle(drawn.x + drawn.w / 2, drawn.y + drawn.h / 2, (Math.hypot(drawn.w, drawn.h) / 2) * scale + 12, W, H, scale, 288, 360)}
+      onChoose={onAngle}
+      onCancel={() => setDrawn(null)}
     />
   ) : null;
 
@@ -399,6 +442,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     return null;
   }
 
+  const shownNotice: { kind: "status" | "alert"; text: string } | null =
+    notice?.kind === "alert" ? notice : drawing ? { kind: "status", text: t.editor.drawHint } : notice;
   const errorText = loadError === "font" ? t.editor.fontFailed : loadError === "size" ? t.editor.sizeMismatch : t.sheet.loadError;
 
   return (
@@ -409,10 +454,20 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         <div role="status" aria-live="polite" className="text-sm">{status()}</div>
         <button
           type="button"
+          onClick={() => { setDrawing((d) => !d); setDrawn(null); }}
+          aria-pressed={drawing}
+          aria-keyshortcuts="K"
+          disabled={!loaded}
+          className={"ml-auto rounded-md border px-3 py-2 text-sm " + (drawing ? "border-mark bg-mark/10 text-ink" : "border-line")}
+        >
+          {t.editor.drawBox} <kbd aria-hidden className="ml-1 font-sans text-xs opacity-75">K</kbd>
+        </button>
+        <button
+          type="button"
           onClick={() => void store()}
           disabled={!loaded || !dirty || save.state === "saving"}
           aria-keyshortcuts="Control+S"
-          className="ml-auto rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
         >
           {t.editor.save} <kbd aria-hidden className="ml-1 font-sans text-xs opacity-75">Ctrl S</kbd>
         </button>
@@ -420,10 +475,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       <div className="flex min-h-0 flex-1 gap-3">
         <div className="flex min-w-0 flex-1 flex-col">
           <div role="status" aria-live="polite" className="sr-only">{!loadError && !loaded ? t.sheet.loading : ""}</div>
-          <div role="status" aria-live="polite" className="sr-only">{notice?.kind === "status" ? notice.text : ""}</div>
-          {notice ? (
-            <p role={notice.kind === "alert" ? "alert" : undefined} className={"mb-2 rounded-md px-3 py-1.5 text-sm " + (notice.kind === "alert" ? "bg-danger-soft" : "bg-sunk text-ink-2")}>
-              {notice.text}
+          <div role="status" aria-live="polite" className="sr-only">{shownNotice?.kind === "status" ? shownNotice.text : ""}</div>
+          {shownNotice ? (
+            <p role={shownNotice.kind === "alert" ? "alert" : undefined} className={"mb-2 rounded-md px-3 py-1.5 text-sm " + (shownNotice.kind === "alert" ? "bg-danger-soft" : "bg-sunk text-ink-2")}>
+              {shownNotice.text}
             </p>
           ) : null}
           <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-line">
@@ -445,8 +500,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
               onFitScale={onFitScale}
               onOpen={open}
               onPageClick={(p) => void readAt(p)}
+              drawing={drawing && !drawn}
+              onDrawn={onDrawn}
             >
               {popover}
+              {angleDialog}
             </SheetCanvas>
           )}
           </div>
