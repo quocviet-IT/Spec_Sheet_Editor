@@ -132,7 +132,7 @@ export const vi = {
     detecting: "Đang tìm các số trên bản vẽ… Việc này có thể mất tối đa một phút.",
     noValues: "Không tự tìm thấy số nào.",
     ocrLoad: "Không tải được bộ đọc số. Kiểm tra kết nối rồi tải lại trang.",
-    ocrUnsupported: "Trình duyệt này không chạy được bộ đọc số. Dùng Chrome hoặc Edge bản mới; vẫn có thể dùng Vẽ khung.",
+    ocrUnsupported: "Bộ đọc số không khởi động được trên trình duyệt này. Tải lại trang khi mạng ổn định; nếu vẫn lỗi, dùng Chrome hoặc Edge bản mới. Vẫn có thể dùng Vẽ khung.",
     ocrScan: "Không đọc được các số trên phiếu này. Tải lại trang để thử lại.",
     fontFailed: "Không tải được phông chữ cho số mới. Tải lại trang.",
     sizeMismatch: "Phiếu này hiển thị khác với lúc tải lên nên không đặt được số. Hãy tải tệp lên lại.",
