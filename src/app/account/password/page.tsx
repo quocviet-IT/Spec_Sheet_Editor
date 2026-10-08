@@ -31,7 +31,7 @@ export default async function PasswordPage({ searchParams }: { searchParams: Pro
           </div>
           <LanguageSwitch />
         </div>
-        <ChangePasswordForm next={next} />
+        <ChangePasswordForm next={next} showCurrent={!forced} />
         {!forced && (
           <Link href={next} className="block text-center text-sm text-ink-2 hover:text-ink">
             {m.back}

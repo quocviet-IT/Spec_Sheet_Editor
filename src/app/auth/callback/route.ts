@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { recordDenied } from "@/auth/denied";
 import { safeNext } from "@/auth/redirect";
+import { getEnv } from "@/lib/env";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 /**
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest) {
     response.headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate, max-age=0");
     return response;
   };
+  if (getEnv().GOOGLE_SIGN_IN !== "on") return go("/login?error=google");
   const code = url.searchParams.get("code");
   const next = safeNext(url.searchParams.get("next"));
   if (!code) return go("/login?error=google");

@@ -2,11 +2,13 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { getEnv } from "@/lib/env";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { recordDenied } from "./denied";
 import { passwordUpdateErrorCode, signInErrorCode, type PasswordUpdateError, type SignInError } from "./errors";
 import { checkNewPassword, type NewPasswordError } from "./password";
 import { afterPassword, safeNext } from "./redirect";
+import { passwordIsCurrent } from "./verify-password";
 
 export type SignInState = { error: SignInError | "suspended" | "not_permitted" | null; email: string };
 
@@ -49,6 +51,8 @@ export async function signInWithPassword(_prev: SignInState, form: FormData): Pr
 /** Starts Google OAuth (PKCE). The code verifier cookie is written here, read by /auth/callback. */
 export async function signInWithGoogle(form: FormData): Promise<void> {
   const next = safeNext(String(form.get("next") ?? ""));
+  // The flag is enforced here, not only by hiding the button.
+  if (getEnv().GOOGLE_SIGN_IN !== "on") redirect("/login?error=google");
   const h = await headers();
   const origin = h.get("origin") ?? `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
   const supabase = await createSupabaseServer();
@@ -69,7 +73,7 @@ export async function signOut(): Promise<void> {
   redirect("/login");
 }
 
-export type ChangePasswordState = { error: NewPasswordError | PasswordUpdateError | null };
+export type ChangePasswordState = { error: NewPasswordError | PasswordUpdateError | "current_wrong" | null };
 
 /**
  * Sets a new password for the signed-in password account. After a one-time password this also lets
@@ -92,12 +96,19 @@ export async function changePassword(_prev: ChangePasswordState, form: FormData)
   }
   if (before === "ok") {
     // Google accounts have no password here (the page hides the form; the action refuses too).
-    const { data: me } = await supabase
+    const { data: me, error: meError } = await supabase
       .from("profiles")
       .select("password_account")
       .eq("id", auth.user.id)
       .maybeSingle<{ password_account: boolean }>();
+    if (meError) console.error("profiles read failed in changePassword:", meError.message);
     if (!me?.password_account) return { error: "unknown" };
+    // A voluntary change proves knowledge of the current password first (not after a one-time password).
+    const current = String(form.get("current") ?? "");
+    if (!current || !auth.user.email) return { error: "current_wrong" };
+    const checked = await passwordIsCurrent(auth.user.email, current);
+    if (checked === "wrong") return { error: "current_wrong" };
+    if (checked === "unavailable") return { error: "unknown" };
   }
 
   const { error } = await supabase.auth.updateUser({ password });

@@ -8,7 +8,7 @@ import { useMessages } from "@/messages/client";
 const initial: ChangePasswordState = { error: null };
 const field = "w-full rounded-md border border-line bg-surface px-3 py-2";
 
-export function ChangePasswordForm({ next }: { next: string }) {
+export function ChangePasswordForm({ next, showCurrent }: { next: string; showCurrent: boolean }) {
   const t = useMessages();
   const m = t.account.password;
   const [state, action, pending] = useActionState(changePassword, initial);
@@ -16,6 +16,7 @@ export function ChangePasswordForm({ next }: { next: string }) {
     too_short: m.errors.tooShort,
     mismatch: m.errors.mismatch,
     same: m.errors.same,
+    current_wrong: m.errors.currentWrong,
     weak: m.errors.weak,
     reauth: m.errors.reauth,
     unknown: m.errors.unknown,
@@ -28,6 +29,16 @@ export function ChangePasswordForm({ next }: { next: string }) {
         <p id="password-error" role="alert" className="rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm">
           {message}
         </p>
+      )}
+      {showCurrent && (
+        <div className="space-y-1.5">
+          <label htmlFor="current" className="block text-sm font-medium">{m.current}</label>
+          <input
+            id="current" name="current" type="password" autoComplete="current-password" required className={field}
+            aria-invalid={message ? true : undefined}
+            aria-describedby={message ? "password-error" : undefined}
+          />
+        </div>
       )}
       <div className="space-y-1.5">
         <label htmlFor="password" className="block text-sm font-medium">{m.newPassword}</label>
