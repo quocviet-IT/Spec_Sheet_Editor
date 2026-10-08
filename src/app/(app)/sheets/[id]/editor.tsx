@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { loadArimo, type FontMetrics } from "@/editor/canvas";
-import { detectValues, type LoadedPage } from "@/editor/detections";
-import { sameSize } from "@/editor/geometry";
+import { detectValues, makeEdit, type LoadedPage } from "@/editor/detections";
+import { sameSize, toPx } from "@/editor/geometry";
 import type { Detection, Edit } from "@/editor/types";
 import { zoomIn, zoomOut, type Zoom } from "@/editor/zoom";
 import { OcrClient } from "@/lib/ocr/client";
@@ -14,7 +14,10 @@ import { fill } from "@/messages/format";
 import { loadEditorState, saveSheet } from "@/sheets/actions";
 import { clockTime } from "@/sheets/format";
 import type { EditorSheet, SaveResult } from "@/sheets/types";
+import { ConflictDialog } from "./conflict-dialog";
+import { EditPopover } from "./edit-popover";
 import { SheetCanvas } from "./sheet-canvas";
+import { useLeaveGuard } from "./use-leave-guard";
 import { ValueList, type DetectState } from "./value-list";
 
 const WIDE = "(min-width: 1024px)";
@@ -45,6 +48,19 @@ type Loaded = { page: LoadedPage; base: HTMLCanvasElement; metrics: FontMetrics 
 type LoadError = "load" | "font" | "size";
 type SaveState = { state: "idle" | "saving" | "offline" | "failed" | "trashed" } | { state: "saved"; at: string };
 
+const POPOVER_W = 320;
+const POPOVER_GAP = 12;
+
+/** Beside the marker, on the right when it fits inside the page, otherwise on the left. */
+function popoverPlace(d: Detection, pageW: number, pageH: number, scale: number): CSSProperties {
+  const px = toPx(d.box, d.angle, pageW, pageH);
+  const reach = (Math.hypot(px.w, px.h) / 2) * scale + POPOVER_GAP;
+  const x = px.cx * scale;
+  const y = px.cy * scale;
+  const left = x + reach + POPOVER_W <= pageW * scale ? x + reach : Math.max(0, x - reach - POPOVER_W);
+  return { left, top: Math.max(0, y - 24) };
+}
+
 /** Edits compared by value, not by the order they were applied in. */
 function snapshot(detections: readonly Detection[], edits: readonly Edit[]): string {
   return JSON.stringify({ detections, edits: [...edits].sort((a, b) => (a.detectionId < b.detectionId ? -1 : 1)) });
@@ -61,6 +77,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const [detect, setDetect] = useState<DetectState>(sheet.version === 1 ? "running" : sheet.detections.length === 0 ? "none" : "idle");
   const [save, setSave] = useState<SaveState>({ state: "idle" });
   const [firstStore, setFirstStore] = useState(false);
+  const [conflict, setConflict] = useState<{ byName: string | null; savedAt: string | null } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [fitScale, setFitScale] = useState(0.25);
@@ -101,6 +118,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     const saved = snapshot(state.detections, state.edits);
     latest.current = { detections: state.detections, edits: state.edits, version: state.version, saved, firstStore: false };
     setFirstStore(false);
+    setConflict(null);
     setDetections(state.detections);
     setEdits(state.edits);
     setSavedSnapshot(saved);
@@ -148,7 +166,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
           await reloadLatest(); // someone else stored the first detection; take theirs
           return;
         }
-        setSave({ state: "idle" }); // Task 9 shows the conflict dialog here
+        setConflict({ byName: result.byName, savedAt: result.savedAt });
+        setSave({ state: "idle" });
         return;
       }
       setSave({ state: result.error === "trashed" ? "trashed" : "failed" });
@@ -249,8 +268,51 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [store, scale]);
 
+  useLeaveGuard(dirty, t.editor.leave);
+
   const W = loaded?.page.raster.width ?? sheet.pageW;
   const H = loaded?.page.raster.height ?? sheet.pageH;
+
+  function focusMarker(id: string) {
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-detection="${CSS.escape(id)}"]`)?.focus());
+  }
+
+  function closePopover(id: string) {
+    setActiveId(null);
+    focusMarker(id);
+  }
+
+  function apply(detection: Detection, oldValue: string, newValue: string) {
+    if (!loaded) return;
+    const edit = makeEdit(loaded.page.raster, detection, oldValue, newValue);
+    setEdits((list) => [...list.filter((e) => e.detectionId !== detection.id), edit]);
+    closePopover(detection.id);
+  }
+
+  function revert(id: string) {
+    setEdits((list) => list.filter((e) => e.detectionId !== id));
+    closePopover(id);
+  }
+
+  function open(id: string) {
+    setActiveId(id);
+    requestAnimationFrame(() =>
+      document.querySelector(`[data-detection="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" }),
+    );
+  }
+
+  const active = loaded && activeId ? detections.find((d) => d.id === activeId) ?? null : null;
+  const popover = active ? (
+    <EditPopover
+      key={active.id}
+      detection={active}
+      edit={edits.find((e) => e.detectionId === active.id) ?? null}
+      style={popoverPlace(active, W, H, scale)}
+      onApply={(oldValue, newValue) => apply(active, oldValue, newValue)}
+      onRevert={() => revert(active.id)}
+      onClose={(refocus) => (refocus ? closePopover(active.id) : setActiveId(null))}
+    />
+  ) : null;
 
   function status() {
     if (save.state === "saving") return <span className="text-ink-2">{t.editor.saving}</span>;
@@ -305,12 +367,14 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
               activeId={activeId}
               scale={scale}
               onFitScale={onFitScale}
-              onOpen={setActiveId}
-            />
+              onOpen={open}
+            >
+              {popover}
+            </SheetCanvas>
           )}
         </div>
         <div className="w-72 shrink-0">
-          <ValueList detections={detections} edits={edits} activeId={activeId} detect={detect} onOpen={setActiveId} />
+          <ValueList detections={detections} edits={edits} activeId={activeId} detect={detect} onOpen={open} />
         </div>
       </div>
       <footer className="flex flex-wrap items-center gap-4 text-xs text-ink-2">
@@ -324,6 +388,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         {sheet.lowRes ? <span className="rounded bg-warn-soft px-2 py-0.5 text-ink">{t.editor.lowRes}</span> : null}
         <span className="ml-auto">{t.editor.keys}</span>
       </footer>
+      {conflict ? (
+        <ConflictDialog byName={conflict.byName} savedAt={conflict.savedAt} onLoad={() => void reloadLatest()} onStay={() => setConflict(null)} />
+      ) : null}
     </section>
   );
 }
