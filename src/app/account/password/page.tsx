@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { safeNext } from "@/auth/redirect";
+import { afterPassword, safeNext } from "@/auth/redirect";
 import { loadAccess } from "@/auth/session";
 import { getMessages } from "@/messages/server";
 import { LanguageSwitch } from "@/ui/language-switch";
@@ -12,7 +12,7 @@ import { ChangePasswordForm } from "./form";
  */
 export default async function PasswordPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const params = await searchParams;
-  const next = safeNext(params.next);
+  const next = afterPassword(safeNext(params.next));
   const { profile, status } = await loadAccess();
   if (status === "signed_out") redirect(`/login?next=${encodeURIComponent("/account/password")}`);
   if (status === "suspended" || status === "not_permitted") redirect(`/login?error=${status}`);

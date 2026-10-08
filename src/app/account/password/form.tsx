@@ -25,7 +25,7 @@ export function ChangePasswordForm({ next }: { next: string }) {
     <form action={action} className="space-y-4">
       <input type="hidden" name="next" value={next} />
       {message && (
-        <p role="alert" className="rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm">
+        <p id="password-error" role="alert" className="rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm">
           {message}
         </p>
       )}
@@ -33,13 +33,19 @@ export function ChangePasswordForm({ next }: { next: string }) {
         <label htmlFor="password" className="block text-sm font-medium">{m.newPassword}</label>
         <input
           id="password" name="password" type="password" autoComplete="new-password" required
-          minLength={MIN_PASSWORD_LENGTH} aria-describedby="password-rule" className={field}
+          minLength={MIN_PASSWORD_LENGTH} className={field}
+          aria-invalid={message ? true : undefined}
+          aria-describedby={message ? "password-rule password-error" : "password-rule"}
         />
         <p id="password-rule" className="text-xs text-ink-2">{m.rule}</p>
       </div>
       <div className="space-y-1.5">
         <label htmlFor="confirm" className="block text-sm font-medium">{m.confirm}</label>
-        <input id="confirm" name="confirm" type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} className={field} />
+        <input
+          id="confirm" name="confirm" type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} className={field}
+          aria-invalid={message ? true : undefined}
+          aria-describedby={message ? "password-error" : undefined}
+        />
       </div>
       <button
         type="submit"

@@ -6,7 +6,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { recordDenied } from "./denied";
 import { passwordUpdateErrorCode, signInErrorCode, type PasswordUpdateError, type SignInError } from "./errors";
 import { checkNewPassword, type NewPasswordError } from "./password";
-import { safeNext } from "./redirect";
+import { afterPassword, safeNext } from "./redirect";
 
 export type SignInState = { error: SignInError | "suspended" | "not_permitted" | null; email: string };
 
@@ -79,25 +79,39 @@ export type ChangePasswordState = { error: NewPasswordError | PasswordUpdateErro
 export async function changePassword(_prev: ChangePasswordState, form: FormData): Promise<ChangePasswordState> {
   const password = String(form.get("password") ?? "");
   const confirm = String(form.get("confirm") ?? "");
-  const next = safeNext(String(form.get("next") ?? ""));
+  const next = afterPassword(safeNext(String(form.get("next") ?? "")));
   const invalid = checkNewPassword(password, confirm);
   if (invalid) return { error: invalid };
 
   const supabase = await createSupabaseServer();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) redirect(`/login?next=${encodeURIComponent("/account/password")}`);
-  const { data: before } = await supabase.rpc("my_access_status");
-  if (before === "suspended" || before === "not_permitted") redirect(`/login?error=${before}`);
+  const { data: before, error: beforeError } = await supabase.rpc("my_access_status");
+  if (beforeError || (before !== "ok" && before !== "must_change_password")) {
+    redirect(before === "suspended" || before === "not_permitted" ? `/login?error=${before}` : "/login");
+  }
+  if (before === "ok") {
+    // Google accounts have no password here (the page hides the form; the action refuses too).
+    const { data: me } = await supabase
+      .from("profiles")
+      .select("password_account")
+      .eq("id", auth.user.id)
+      .maybeSingle<{ password_account: boolean }>();
+    if (!me?.password_account) return { error: "unknown" };
+  }
 
   const { error } = await supabase.auth.updateUser({ password });
   const failed = passwordUpdateErrorCode(error);
-  if (failed) return { error: failed };
+  if (failed && failed !== "same") return { error: failed };
 
+  // On "same" the password may already have changed in an earlier attempt that was never recorded:
+  // the database compares hashes and decides.
   const { error: finishError } = await supabase.rpc("finish_password_change");
-  if (finishError) return { error: "unknown" };
+  if (finishError) return { error: finishError.message.includes("password_unchanged") ? "same" : "unknown" };
   if (before === "must_change_password") {
     const { error: touchError } = await supabase.rpc("touch_profile");
-    if (touchError) return { error: "unknown" };
+    // Access is already granted at this point; a missed last-seen update must not trap the person here.
+    if (touchError) console.error("touch_profile failed after a password change:", touchError.message);
   }
   redirect(next);
 }
