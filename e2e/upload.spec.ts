@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { templatePdf, framedPng } from "./support/files";
-import { db } from "./support/db";
+import { db, deleteSheetsOf } from "./support/db";
 import { staffId } from "./support/account";
 
 async function openUpload(page: Page) {
@@ -65,8 +65,8 @@ test("TC-15 other file types are refused", async ({ page }) => {
 test("TC-16 a 21 MB file is refused with its size and the limit", async ({ page }) => {
   const dialog = await openUpload(page);
   await choose(page, "big.pdf", "application/pdf", Buffer.alloc(21 * 1024 * 1024, 0x20));
-  await expect(dialog.getByRole("alert")).toContainText("21");
-  await expect(dialog.getByRole("alert")).toContainText("20");
+  await expect(dialog.getByRole("alert")).toContainText(/21\s*MB/);
+  await expect(dialog.getByRole("alert")).toContainText(/20\s*MB/);
 });
 
 test("TC-18 a 3-page PDF uses page 1 and says so", async ({ page }) => {
@@ -87,4 +87,9 @@ test("TC-19 an upload cut off by the network leaves no half-finished sheet, and 
   await dialog.getByRole("button", { name: /Thử lại|Try again/ }).click();
   await page.waitForURL(/\/sheets\/[0-9a-f-]{36}$/);
   expect((await rowsNamed("tc19-offline")).length).toBe(1);
+});
+
+// Leave the account empty so the other specs start clean.
+test.afterEach(async () => {
+  await deleteSheetsOf(await staffId());
 });

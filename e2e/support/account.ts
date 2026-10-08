@@ -4,7 +4,7 @@ import { admin, db } from "./db";
 export const STAFF_EMAIL = "e2e-staff@ctyhp.vn";
 
 /**
- * The test Staff account: created once, then its password is replaced by a fresh random one at every
+ * The test Staff account (e2e-staff@ctyhp.vn is reserved for tests; its password is reset at every run): created once, then its password is replaced by a fresh random one at every
  * run (kept in memory only). It is a password account without a one-time password.
  */
 export async function ensureStaff(): Promise<{ id: string; email: string; password: string }> {

@@ -3,7 +3,7 @@ import postgres from "postgres";
 import { need } from "./env";
 
 export function db() {
-  return postgres(need("DATABASE_URL"), { max: 1, prepare: false, onnotice: () => {} });
+  return postgres(need("DATABASE_URL"), { max: 1, prepare: false, connect_timeout: 15, onnotice: () => {} });
 }
 
 export function admin() {
@@ -19,8 +19,10 @@ export async function deleteSheetsOf(userId: string): Promise<void> {
     const rows = await sql<{ id: string; source_path: string; thumb_path: string }[]>`
       select id, source_path, thumb_path from public.spec_sheets where created_by = ${userId}`;
     const paths = rows.flatMap((r) => [r.source_path, r.thumb_path]);
+    const bucket = admin().storage.from("spec-sheets");
     for (let i = 0; i < paths.length; i += 500) {
-      await admin().storage.from("spec-sheets").remove(paths.slice(i, i + 500));
+      const { error } = await bucket.remove(paths.slice(i, i + 500));
+      if (error) throw new Error(`test files not removed (rows kept so nothing is orphaned): ${error.message}`); // before the rows go
     }
     await sql`delete from public.spec_sheets where created_by = ${userId}`;
   } finally {

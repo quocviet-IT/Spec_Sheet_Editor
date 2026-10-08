@@ -27,22 +27,49 @@ describe.skipIf(!hasDb)("sheet list (UC-02, UC-11)", () => {
     });
   });
 
+  // A cursor must carry both time and id. The app always sends both (zod), and list_sheets returns no
+  // rows for a half cursor (the row comparison with a null id is never true).
   it("pages by (time, id) without gaps or repeats, even when times are equal", async () => {
     await rollback(async (tx) => {
       const staff = await makeUser(tx, staffEmail());
+      const tag = `pg${randomUUID().slice(0, 8)}`;
       const same = new Date("2026-10-03T08:00:00Z");
       const ids = [
-        await insertSheetAsOwner(tx, staff, { name: "P1", updatedAt: same }),
-        await insertSheetAsOwner(tx, staff, { name: "P2", updatedAt: same }),
-        await insertSheetAsOwner(tx, staff, { name: "P3", updatedAt: same }),
+        await insertSheetAsOwner(tx, staff, { name: `${tag} 1`, updatedAt: same }),
+        await insertSheetAsOwner(tx, staff, { name: `${tag} 2`, updatedAt: same }),
+        await insertSheetAsOwner(tx, staff, { name: `${tag} 3`, updatedAt: same }),
       ];
       await actAs(tx, staff);
-      const all = (await page(tx, false, "P", null, 50)).map((r) => r.id);
-      expect(all.sort()).toEqual([...ids].sort());
-      const first = await page(tx, false, "P", null, 2);
+      const all = (await page(tx, false, tag, null, 50)).map((r) => r.id);
+      expect([...all].sort()).toEqual([...ids].sort());
+      const first = await page(tx, false, tag, null, 2);
       const [last] = await tx<{ updated_at: string }[]>`select updated_at::text from public.spec_sheets where id = ${first[1].id}`;
-      const second = await page(tx, false, "P", { time: last.updated_at, id: first[1].id }, 2);
-      expect([...first, ...second].map((r) => r.id)).toEqual((await page(tx, false, "P", null, 50)).map((r) => r.id));
+      const second = await page(tx, false, tag, { time: last.updated_at, id: first[1].id }, 2);
+      expect([...first, ...second].map((r) => r.id)).toEqual(all);
+      expect(second.length).toBe(1);
+    });
+  });
+
+  it("pages the Trash by (deleted_at, id) without gaps or repeats", async () => {
+    await rollback(async (tx) => {
+      const staff = await makeUser(tx, staffEmail());
+      const tag = `tr${randomUUID().slice(0, 8)}`;
+      // inserted already trashed, as the table owner: the update trigger would stamp deleted_at with now()
+      const times = ["2026-10-01T08:00:00Z", "2026-10-02T08:00:00Z", "2026-10-03T08:00:00Z"];
+      const ids: string[] = [];
+      for (let i = 0; i < times.length; i++) {
+        const id = randomUUID();
+        ids.push(id);
+        await tx`insert into public.spec_sheets (id, name, source_type, source_path, thumb_path, page_px_w, page_px_h, created_by, updated_by, deleted_at, deleted_by)
+                 values (${id}, ${`${tag} ${i}`}, 'png', ${`${id}/source.png`}, ${`${id}/thumb.jpg`}, 1135, 877, ${staff.id}, ${staff.id}, ${times[i]}, ${staff.id})`;
+      }
+      await actAs(tx, staff);
+      const all = await page(tx, true, tag, null, 50);
+      expect(all.map((r) => r.id)).toEqual([ids[2], ids[1], ids[0]]); // newest deletion first
+      const first = await page(tx, true, tag, null, 2);
+      const [last] = await tx<{ deleted_at: string }[]>`select deleted_at::text from public.spec_sheets where id = ${first[1].id}`;
+      const second = await page(tx, true, tag, { time: last.deleted_at, id: first[1].id }, 2);
+      expect([...first, ...second].map((r) => r.id)).toEqual(all.map((r) => r.id));
       expect(second.length).toBe(1);
     });
   });
@@ -102,6 +129,18 @@ describe.skipIf(!hasDb)("sheet list (UC-02, UC-11)", () => {
       await insertSheetAsOwner(tx, staff, { name: "Only" });
       await actAs(tx, staff);
       expect((await page(tx, false, null, null, 0)).length).toBe(1);
+    });
+  });
+
+  it("a page never holds more than 200 rows, however many are asked for", async () => {
+    await rollback(async (tx) => {
+      const staff = await makeUser(tx, staffEmail());
+      const tag = `cap${randomUUID().slice(0, 8)}`;
+      await tx`insert into public.spec_sheets (id, name, source_type, source_path, thumb_path, page_px_w, page_px_h, created_by, updated_by)
+               select g.id, ${tag} || ' ' || n, 'png', g.id || '/source.png', g.id || '/thumb.jpg', 1135, 877, ${staff.id}, ${staff.id}
+                 from (select gen_random_uuid() as id, n from generate_series(1, 205) n) g`;
+      await actAs(tx, staff);
+      expect((await page(tx, false, tag, null, 500)).length).toBe(200);
     });
   });
 

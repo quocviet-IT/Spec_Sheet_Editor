@@ -30,7 +30,7 @@ test("TC-48 Staff trash a sheet and restore it; two audit entries", async ({ pag
   await page.getByRole("menuitem", { name: /Đưa vào Thùng rác|Move to Trash/ }).click();
   await expect(page.getByRole("status")).toBeVisible();
   await page.getByRole("tab", { name: /Thùng rác|Trash/ }).click();
-  await page.getByRole("button", { name: /Khôi phục|Restore/ }).first().click();
+  await page.locator("li", { hasText: `tc48-${tag}` }).getByRole("button", { name: /Khôi phục|Restore/ }).click();
   await expect(page.getByRole("status")).toContainText(/khôi phục|restored/i);
   const sql = db();
   try {
@@ -51,10 +51,12 @@ test("TC-52 more than 1,000 sheets: all 1,120 are reachable by scrolling", async
   await expect(rows.first()).toBeVisible();
   const deadline = Date.now() + 180_000;
   while ((await rows.count()) < 1120 && Date.now() < deadline) {
+    const before = await rows.count();
     await page.mouse.wheel(0, 20_000);
     const more = page.getByRole("button", { name: /Tải thêm|Load more/ });
     await more.click({ timeout: 1_000 }).catch(() => {}); // the scroll usually loads the page first and the button is gone
-    await page.waitForTimeout(300);
+    // wait for the list to grow, then scroll again; a page that does not arrive within 5 s is retried until the deadline
+    await expect.poll(() => rows.count(), { timeout: Math.min(5_000, Math.max(1_000, deadline - Date.now())) }).toBeGreaterThan(before).catch(() => {});
   }
   await expect(rows).toHaveCount(1120);
 });
