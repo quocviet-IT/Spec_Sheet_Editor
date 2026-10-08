@@ -60,5 +60,6 @@ describe("saveInputSchema", () => {
     expect(saveInputSchema.safeParse({ id: "not-a-uuid", version: 1, data }).success).toBe(false);
     expect(saveInputSchema.safeParse({ id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 0, data }).success).toBe(false);
     expect(saveInputSchema.safeParse({ id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 1.5, data }).success).toBe(false);
+    expect(saveInputSchema.safeParse({ id: "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10", version: 2147483648, data }).success).toBe(false);
   });
 });

@@ -118,7 +118,11 @@ export async function fetchEditorSheet(id: string): Promise<EditorSheet | null> 
   if (error) throw error;
   if (!data) return null;
   const parsed = sheetDataSchema.safeParse({ detections: data.detections, edits: data.edits });
-  if (!parsed.success) console.error(`Sheet ${id}: stored detections or edits do not match the schema`);
+  if (!parsed.success) {
+    // Paths only, never values: enough to find the damaged field.
+    const paths = parsed.error.issues.map((issue) => issue.path.join(".") || "(root)").slice(0, 10);
+    console.error(`Sheet ${id}: stored detections or edits do not match the schema at ${paths.join(", ")}`);
+  }
   const { data: signed } = await supabase.storage
     .from("spec-sheets")
     .createSignedUrl(`${id}/source.${data.source_type}`, cfg.signed_url_ttl_min * 60);

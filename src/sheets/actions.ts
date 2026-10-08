@@ -116,7 +116,9 @@ export async function saveSheet(input: { id: string; version: number; detections
   }
   const row = (Array.isArray(rows) ? rows[0] : rows) as SaveRow | undefined;
   if (!row) return { error: "unknown" }; // the sheet is gone or hidden
-  if (row.saved && row.new_version !== null && row.saved_at) return { ok: true, version: row.new_version, savedAt: row.saved_at };
+  if (row.saved) {
+    return row.new_version !== null && row.saved_at ? { ok: true, version: row.new_version, savedAt: row.saved_at } : { error: "unknown" };
+  }
   if (row.is_deleted) return { error: "trashed" };
   return { error: "conflict", byName: row.by_name, savedAt: row.saved_at };
 }
