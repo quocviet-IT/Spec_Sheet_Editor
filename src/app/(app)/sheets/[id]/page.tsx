@@ -28,7 +28,7 @@ export default async function SheetPage({ params }: { params: Promise<{ id: stri
       ) : (
         <>
           <p className="text-sm text-ink-2">{t.sheet.viewOnly}</p>
-          {sheet.sourceUrl ? <SheetPreview sourceUrl={sheet.sourceUrl} sourceType={sheet.sourceType} /> : <p role="alert">{t.sheet.loadError}</p>}
+          {sheet.sourceUrl ? <SheetPreview sourceUrl={sheet.sourceUrl} sourceType={sheet.sourceType} name={sheet.name} /> : <p role="alert">{t.sheet.loadError}</p>}
         </>
       )}
     </section>
