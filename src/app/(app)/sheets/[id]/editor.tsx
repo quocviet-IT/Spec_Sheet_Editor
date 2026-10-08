@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { loadArimo, type FontMetrics } from "@/editor/canvas";
+import { matchingValues } from "@/editor/matching";
 import { detectValues, makeEdit, ocrFailureReason, toDetection, type LoadedPage } from "@/editor/detections";
 import { boxForDrawnRect, boxFromQuad, detectionAt, MIN_DRAWN_PX, pointInDrawingArea, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
 import { analyseBox } from "@/editor/pixels";
@@ -19,6 +20,8 @@ import type { EditorSheet, SaveResult } from "@/sheets/types";
 import { AngleDialog } from "./angle-dialog";
 import { ConflictDialog } from "./conflict-dialog";
 import { EditPopover } from "./edit-popover";
+import { MatchPrompt } from "./match-prompt";
+import { NameField } from "./name-field";
 import { SheetCanvas } from "./sheet-canvas";
 import { useLeaveGuard } from "./use-leave-guard";
 import { useValueReader } from "./use-value-reader";
@@ -62,8 +65,8 @@ function besideStyle(cx: number, cy: number, reach: number, pageW: number, pageH
 }
 
 /** Edits compared by value, not by the order they were applied in. */
-function snapshot(detections: readonly Detection[], edits: readonly Edit[]): string {
-  return JSON.stringify({ detections, edits: [...edits].sort((a, b) => (a.detectionId < b.detectionId ? -1 : 1)) });
+function snapshot(name: string, detections: readonly Detection[], edits: readonly Edit[]): string {
+  return JSON.stringify({ name, detections, edits: [...edits].sort((a, b) => (a.detectionId < b.detectionId ? -1 : 1)) });
 }
 
 function EditorBody({ sheet }: { sheet: EditorSheet }) {
@@ -73,7 +76,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const [loadError, setLoadError] = useState<LoadError | null>(null);
   const [detections, setDetections] = useState<Detection[]>(sheet.detections);
   const [edits, setEdits] = useState<Edit[]>(sheet.edits);
-  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshot(sheet.detections, sheet.edits));
+  const [name, setName] = useState(sheet.name);
+  const [match, setMatch] = useState<{ from: string; oldValue: string; newValue: string; ids: string[] } | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshot(sheet.name, sheet.detections, sheet.edits));
   const [detect, setDetect] = useState<DetectState>(sheet.version === 1 ? "running" : sheet.detections.length === 0 ? "none" : "idle");
   const [save, setSave] = useState<SaveState>({ state: "idle" });
   const [firstStore, setFirstStore] = useState(false);
@@ -91,10 +96,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const inFlight = useRef(false);
   const alive = useRef(true);
   /** The latest lists and version, for saves started from listeners and after awaits. */
-  const latest = useRef({ detections: sheet.detections, edits: sheet.edits, version: sheet.version, name: sheet.name, saved: snapshot(sheet.detections, sheet.edits), firstStore: false });
+  const latest = useRef({ detections: sheet.detections, edits: sheet.edits, version: sheet.version, name: sheet.name, saved: snapshot(sheet.name, sheet.detections, sheet.edits), firstStore: false });
 
   useEffect(() => {
-    latest.current = { ...latest.current, detections, edits, saved: savedSnapshot, firstStore };
+    latest.current = { ...latest.current, detections, edits, name, saved: savedSnapshot, firstStore };
     ensureReader.current = reader.ensure;
   });
   useEffect(() => {
@@ -104,7 +109,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     };
   }, []);
 
-  const dirty = snapshot(detections, edits) !== savedSnapshot || firstStore;
+  const dirty = snapshot(name, detections, edits) !== savedSnapshot || firstStore;
   const conflictOpen = conflict !== null;
   const drawnOpen = drawn !== null;
   const popoverOpen = activeId !== null;
@@ -125,12 +130,14 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       setSave({ state: "failed" });
       return false;
     }
-    const saved = snapshot(state.detections, state.edits);
+    const saved = snapshot(state.name, state.detections, state.edits);
     latest.current = { detections: state.detections, edits: state.edits, version: state.version, name: state.name, saved, firstStore: false };
     setFirstStore(false);
     setConflict(null);
     setDetections(state.detections);
     setEdits(state.edits);
+    setName(state.name);
+    setMatch(null);
     setSavedSnapshot(saved);
     setActiveId(null);
     setDetect(state.detections.length === 0 ? "none" : "idle");
@@ -147,7 +154,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     async () => {
       const sent = latest.current;
       const force = sent.firstStore;
-      if (inFlight.current || (!force && snapshot(sent.detections, sent.edits) === sent.saved)) return;
+      if (inFlight.current || (!force && snapshot(sent.name, sent.detections, sent.edits) === sent.saved)) return;
       inFlight.current = true;
       setSave({ state: "saving" });
       let result: SaveResult | undefined;
@@ -165,7 +172,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         return;
       }
       if ("ok" in result) {
-        const saved = snapshot(sent.detections, sent.edits);
+        const saved = snapshot(sent.name, sent.detections, sent.edits);
         latest.current = { ...latest.current, version: result.version, saved, firstStore: false };
         setFirstStore(false);
         setSavedSnapshot(saved);
@@ -316,8 +323,25 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   function apply(detection: Detection, oldValue: string, newValue: string) {
     if (!loaded) return;
     const edit = makeEdit(loaded.page.raster, detection, oldValue, newValue);
-    setEdits((list) => [...list.filter((e) => e.detectionId !== detection.id), edit]);
-    closePopover(detection.id);
+    const next = [...latest.current.edits.filter((e) => e.detectionId !== detection.id), edit];
+    const others = matchingValues(latest.current.detections, next, oldValue, detection.id);
+    setEdits(next);
+    latest.current = { ...latest.current, edits: next };
+    setActiveId(null);
+    if (others.length > 0) setMatch({ from: detection.id, oldValue, newValue, ids: others.map((d) => d.id) });
+    else focusMarker(detection.id);
+  }
+
+  function applyMatches() {
+    if (!loaded || !match) return;
+    const targets = latest.current.detections.filter((d) => match.ids.includes(d.id));
+    const added = targets.map((d) => makeEdit(loaded.page.raster, d, match.oldValue, match.newValue));
+    const next = [...latest.current.edits.filter((e) => !match.ids.includes(e.detectionId)), ...added];
+    latest.current = { ...latest.current, edits: next };
+    setEdits(next);
+    const from = match.from;
+    setMatch(null);
+    focusMarker(from);
   }
 
   function revert(id: string) {
@@ -447,10 +471,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const errorText = loadError === "font" ? t.editor.fontFailed : loadError === "size" ? t.editor.sizeMismatch : t.sheet.loadError;
 
   return (
-    <section aria-label={sheet.name} data-wide data-reader-state={reader.state} className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col gap-3">
+    <section aria-label={name} data-wide data-reader-state={reader.state} className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col gap-3">
       <header className="flex flex-wrap items-center gap-3">
         <Link href="/sheets" className="text-sm text-ink-2 hover:text-ink">← {t.sheet.back}</Link>
-        <h1 className="text-lg font-bold">{sheet.name}</h1>
+        <NameField name={name} onRename={setName} />
         <div role="status" aria-live="polite" className="text-sm">{status()}</div>
         <button
           type="button"
@@ -473,13 +497,16 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         </button>
       </header>
       <div className="flex min-h-0 flex-1 gap-3">
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="relative flex min-w-0 flex-1 flex-col">
           <div role="status" aria-live="polite" className="sr-only">{!loadError && !loaded ? t.sheet.loading : ""}</div>
           <div role="status" aria-live="polite" className="sr-only">{shownNotice?.kind === "status" ? shownNotice.text : ""}</div>
           {shownNotice ? (
             <p role={shownNotice.kind === "alert" ? "alert" : undefined} className={"mb-2 rounded-md px-3 py-1.5 text-sm " + (shownNotice.kind === "alert" ? "bg-danger-soft" : "bg-sunk text-ink-2")}>
               {shownNotice.text}
             </p>
+          ) : null}
+          {match ? (
+            <MatchPrompt oldValue={match.oldValue} count={match.ids.length} onApply={applyMatches} onSkip={() => { const from = match.from; setMatch(null); focusMarker(from); }} />
           ) : null}
           <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-line">
           {loadError ? (
@@ -492,7 +519,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
               pageW={W}
               pageH={H}
               metrics={loaded.metrics}
-              name={sheet.name}
+              name={name}
               detections={detections}
               edits={edits}
               activeId={activeId}
