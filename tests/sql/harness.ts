@@ -95,6 +95,21 @@ export async function insertSheet(tx: Tx, owner: TestUser): Promise<string> {
   return id;
 }
 
+/** Inserts a sheet as the table owner (bypassing RLS), with a chosen name, time and number of edits. */
+export async function insertSheetAsOwner(
+  tx: Tx,
+  owner: TestUser,
+  opts: { name?: string; updatedAt?: Date; edits?: number } = {},
+): Promise<string> {
+  const id = randomUUID();
+  const edits = Array.from({ length: opts.edits ?? 0 }, (_, i) => ({ id: `e${i}` }));
+  await tx`insert into public.spec_sheets (id, name, source_type, source_path, thumb_path, page_px_w, page_px_h,
+                                           edits, created_by, updated_by, updated_at)
+           values (${id}, ${opts.name ?? "Test sheet"}, 'png', ${`${id}/source.png`}, ${`${id}/thumb.jpg`}, 1135, 877,
+                   ${tx.json(edits)}, ${owner.id}, ${owner.id}, ${opts.updatedAt ?? new Date()})`;
+  return id;
+}
+
 /** A fresh address on the default permitted domain. */
 export function staffEmail(): string {
   return `t-${randomUUID().slice(0, 8)}@ctyhp.vn`;
