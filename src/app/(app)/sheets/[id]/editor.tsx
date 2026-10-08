@@ -124,7 +124,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       return false;
     }
     const saved = snapshot(state.detections, state.edits);
-    latest.current = { detections: state.detections, edits: state.edits, version: state.version, name: sheet.name, saved, firstStore: false };
+    latest.current = { detections: state.detections, edits: state.edits, version: state.version, name: state.name, saved, firstStore: false };
     setFirstStore(false);
     setConflict(null);
     setDetections(state.detections);
@@ -134,7 +134,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     setDetect(state.detections.length === 0 ? "none" : "idle");
     setSave({ state: state.deleted ? "trashed" : "idle" });
     return true;
-  }, [sheet.id, sheet.name]);
+  }, [sheet.id]);
 
   /**
    * UC-08: save the lists with the version this screen holds. Nothing happens while a save is running
