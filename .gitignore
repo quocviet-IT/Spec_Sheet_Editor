@@ -29,3 +29,6 @@ public/ocr/
 public/pdfjs/
 
 research/ocr-parity/.venv/
+
+# Playwright session file of the end-to-end test account
+e2e/.auth/
