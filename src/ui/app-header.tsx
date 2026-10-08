@@ -22,6 +22,11 @@ export function AppHeader({ me, t }: { me: Profile; t: Messages }) {
           <span className="hidden text-sm text-ink-2 sm:inline" title={me.email}>
             {me.fullName ?? me.email}
           </span>
+          {me.passwordAccount && (
+            <Link href="/account/password" className="text-sm text-ink-2 hover:text-ink">
+              {t.common.changePassword}
+            </Link>
+          )}
           <form action={signOut}>
             <button type="submit" className="rounded border border-line px-3 py-1 text-sm hover:bg-sunk">
               {t.common.signOut}

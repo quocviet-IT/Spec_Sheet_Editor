@@ -58,3 +58,35 @@ python metrics.py results_v4_mobile.json results_v5_mobile.json results_v6_small
 Test machine: Intel Core i3-1315U, 7.7 GB RAM, with only about 0.4 GB free during the runs, so
 timings vary from run to run. All three small models read 2.50 as "2.59" when scanning. When
 clicking, v6 returned no number for one of the two 2.50s instead of a wrong one.
+
+## Round 3: in the browser (2026-10-07)
+
+Milestone M2 runs the same PP-OCRv4 small models in a Web Worker on onnxruntime-web 1.30
+(WebAssembly, 4 threads on a cross-origin isolated page), with RapidOCR 3.9.2's pre- and
+post-processing ported to TypeScript (`src/lib/ocr/`). Measured with the bench page `/dev/ocr-bench`
+in Chromium on the same office PC.
+
+| | Scan (0° and 90° clockwise) | Click (5-second budget) |
+|---|---|---|
+| First run: bilinear enlargement, angles 0°, ±60°, ±90° | located 8/11, read 6/11, 13.5 s | 7/11 read, slowest 5.7 s |
+| After tuning: bicubic, whole-number × 3, angles 0°, -90°, 90°, 60°, -60° | located 9/11, read 7/11, 17.0–17.8 s | 8/11 read, slowest 4.2 s |
+| Python, round 2, for comparison | located 9/11, read 7/11, 24 s | 8/11 read (no time limit) |
+
+Models load in 1.7–3.5 s from the browser cache (4.7 + 10.9 MB) and warm up in 0.3–0.5 s.
+
+What the tuning found:
+
+- The enlargement filter matters. RapidOCR in Python also finds only 8/11 after bilinear enlargement,
+  and 9/11 after Pillow's bicubic or Lanczos. The browser now enlarges with a Pillow-compatible
+  bicubic.
+- The scale matters. At 708 px × 3 (2124 px) the detector boxes the whole "1.50"; at 708 → 2100 px it
+  cuts the box to ".50". The scan enlarges by the whole-number factor nearest 2100 px.
+- Each click angle takes about 1.1 s. Trying the vertical turns right after the upright reading, and
+  not starting an angle that cannot finish, keeps the slowest click at 4.2 s.
+- The misses are the same as in Python: 1.20 (diagonal; the scan misses it, a click reads it at 90°),
+  1.70 (read as "-1.7p" in every variant) and both 2.50s, read as "2.59" — the reason every machine
+  reading is confirmed by the user.
+
+**Decision:** keep PP-OCRv4 small. On the office PC it meets TC-20 (9/11 located in about 17 s against
+60 s) and TC-24 (slowest click 4.2 s against 5 s) and matches the Python results, so v6 small was not
+needed.

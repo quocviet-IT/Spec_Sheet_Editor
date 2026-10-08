@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeNext } from "@/auth/redirect";
+import { afterPassword, safeNext } from "@/auth/redirect";
 
 describe("safeNext", () => {
   it("keeps same-site paths", () => {
@@ -24,5 +24,16 @@ describe("safeNext", () => {
 
   it("uses the given fallback", () => {
     expect(safeNext(null, "/admin")).toBe("/admin");
+  });
+});
+
+describe("afterPassword", () => {
+  it("never points back at the password page", () => {
+    expect(afterPassword("/account/password")).toBe("/sheets");
+    expect(afterPassword("/account/password?next=/x")).toBe("/sheets");
+  });
+
+  it("keeps other paths", () => {
+    expect(afterPassword("/sheets/123")).toBe("/sheets/123");
   });
 });

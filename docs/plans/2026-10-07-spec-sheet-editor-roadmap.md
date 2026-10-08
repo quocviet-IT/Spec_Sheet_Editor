@@ -39,14 +39,15 @@ PaddleOCR PP-OCRv4 small (ONNX), pdf-lib, Vitest 4, Playwright 1.6x, pixelmatch.
 
 ## Prerequisites (owner: project owner, before M1 Task 6)
 
-These touch accounts and billing, so the project owner does them; the agent does not.
+These touch accounts and billing, so only the project owner does them.
 
 1. **Supabase:** create a new project in region **Southeast Asia (Singapore)**. Then:
-   - *Authentication → Providers → Google:* enable, paste the Google OAuth client id/secret (step 2).
-   - *Authentication → URL configuration:* Site URL `http://localhost:3000`; add redirect URLs
-     `http://localhost:3000/auth/callback` and (later) `https://<vercel-domain>/auth/callback`.
-   - *Authentication → Sign In / Providers:* turn **off** "Allow new users to sign up" for Email,
-     leave Email provider **on** (used only by admin-created test users in E2E, M3+).
+   - *Authentication → Sign In / Providers:* keep **Email** enabled and turn **off** "Allow new users to
+     sign up": accounts are created only by an Admin (the admin API ignores this switch). Turn off
+     Phone and Anonymous sign-ins.
+   - *Authentication → URL configuration:* list only exact callback URLs
+     (`http://localhost:3000/auth/callback`, later the production one) — needed once Google is
+     switched on (Google sign-in is optional and off by default, `GOOGLE_SIGN_IN=off`).
    - *Project Settings → API Keys:* copy the **publishable** key and a **secret** key.
    - *Connect → Session pooler:* copy the connection string (port 5432) with the DB password.
 2. **Google Cloud Console:** OAuth client (Web application) with authorised redirect URI
@@ -62,19 +63,81 @@ These touch accounts and billing, so the project owner does them; the agent does
 
 | # | Milestone | Delivers | Exit criteria (design test cases) | Depends on |
 |---|---|---|---|---|
-| M1 | Foundation | Next.js app, design tokens, bilingual shell, migration `0001_init.sql` (all tables, functions, triggers, RLS, bucket), migration runner, SQL test harness, Google sign-in, access guard, sign-out, CI | Unit tests green; `next build` green; SQL tests TC-03, 04, 05, 49, 50, 56, 57, 59, 61, 65, 69, 70, 71, 73 green against the dev project; manual sign-in with a `ctyhp.vn` account and rejection of a gmail account | Prerequisites 1–3 for the SQL tests and sign-in check |
-| M2 | Browser OCR | `lib/ocr`: PP-OCRv4 small on onnxruntime-web in a Web Worker (pre/post-processing ported from RapidOCR: DB box decoding, CTC decoding), scan of the drawing area at 0° and 90° CW, read-on-click, box tightening; `/dev/ocr-bench` page that scores the 11-value sample | TC-20 ≥ 9/11 located in ≤ 60 s and TC-24 ≤ 5 s **in Chrome on an office PC**; decision recorded: keep v4 small or switch to v6 small | M1 (app shell only); can start in parallel with M1 Tasks 4–7 |
+| M1 | Foundation | Next.js app, design tokens, bilingual shell, migration `0001_init.sql` (all tables, functions, triggers, RLS, bucket), migration runner, SQL test harness, Google sign-in, access guard, sign-out, CI | Unit tests green; `next build` green; SQL tests TC-03, 04, 05, 49, 50, 56, 57, 59, 61, 65, 69, 70, 71, 73 green against the dev project; manual sign-in with the first Admin's one-time password, forced password change, a second account created in Admin → Users, and a wrong password refused | Prerequisites 1–3 for the SQL tests and sign-in check |
+| M2 | Browser OCR | `lib/ocr`: PP-OCRv4 small on onnxruntime-web in a Web Worker (pre/post-processing ported from RapidOCR: DB box decoding, CTC decoding), scan of the drawing area at 0° and 90° CW, read-on-click; `/dev/ocr-bench` page that scores the 11-value sample | TC-20 ≥ 9/11 located in ≤ 60 s and TC-24 ≤ 5 s **in Chrome on an office PC**; decision recorded: keep v4 small or switch to v6 small | M1 (app shell only); can start in parallel with M1 Tasks 4–7 |
 | M3 | Sheets pipeline | `lib/form` (ratio, editable zone, trim), `lib/raster` (pdf.js 300 DPI + text layer, EXIF, alpha → white, thumbnail), upload dialog (S3), Storage upload, `createSheet`, sheet list with search + paging + Trash/restore (S2), E2E test-user login helper | TC-08 – TC-19, TC-48, TC-52 | M1 |
-| M4 | Editor | Detection on upload (PDF text layer or M2 OCR) stored in `detections`; editor S4: zoom/pan, markers, popover (old value confirm, new value), Draw box (K), read-on-click, revert, matching-value suggestion; `lib/numbers`; `lib/compose` (mask with sampled background + Arimo text at angle); `save_sheet` with conflict dialog S6; unsaved-changes guard | TC-21 – TC-41 | M2, M3 |
+| M4a | Editor core | Detection on the first open of a sheet in the editor (PDF text layer or M2 OCR) stored in `detections`; editor S4: zoom/pan, markers, popover (old value confirm, new value), revert, box tightening to the digits (UC-04 step 5, moved from M2), `lib/compose` (mask with sampled background + Arimo text at angle), save with conflict dialog S6, offline retry, unsaved-changes guard | TC-21, 23, 25 (load half), 26 – 29, 31 (revert as data), 33, 37 – 41 | M2, M3 |
+| M4b | Editor tools | Read on click, Draw box (K), matching-value suggestion, rename, typed Worker errors, visual tests | TC-24, 30 – 32, 34 – 36 | M4a |
 | M5 | Export | Pre-export check S5, PNG at source resolution, single-page PDF via pdf-lib (no text layer), file naming, `log_client_event` | TC-42 – TC-47 | M4 |
 | M6 | Admin area | `/admin` layout guard; S7 users (role, suspend), S8 access + settings, S9 audit log with filters + CSV (UTF-8 BOM), S10 Trash + permanent delete (typed confirm, service-role file delete) + orphan clean-up | TC-54 – TC-77 (TC-60 concurrency via two connections) | M1, M3 |
 | M7 | Hardening and release | Full E2E run, visual regression on Windows + macOS (TC-47), WCAG AA pass, dark mode check, Vercel production deploy, user guide (VI/EN), first Admin assigned | All 77 test cases green or explicitly waived by the owner; production sign-in works | M1–M6, Prerequisite 4 |
+
+**Change 2026-10-08:** password sign-in for accounts an Admin creates (plan `2026-10-08-password-sign-in.md`); Google sign-in moves to a later milestone and will run side by side. Part of UC-13 (create accounts, issue passwords) moves forward from M6.
+
+### M2 result (2026-10-07)
+
+Measured in Chromium on the office PC with the bench page: scan located 9/11 (read 7/11) in about 17 s,
+slowest click 4.2 s, clicks read 8/11 — TC-20 and TC-24 pass, matching the Python benchmark. Decision:
+keep PP-OCRv4 small. Details: `research/ocr-bakeoff/README.md`, round 3.
+
+### M3 result (2026-10-08)
+
+Built: the sheet list (`/sheets`: 50 rows per load with infinite scroll and a "Load more" button,
+search 300 ms after typing, Trash tab, Move to Trash with Undo, Restore, keyboard tabs and menu);
+upload in the browser (checks type and size, renders PDF page 1 at 300 DPI with pdf.js 6.4.299 or an
+image with EXIF orientation, flattens transparency on white, trims near-white borders, checks the
+1.294 ratio, makes a 480-px JPEG thumbnail, uploads the original and thumbnail to Supabase Storage,
+then the server checks both files and creates the row); and a read-only sheet page `/sheets/<id>`
+that repeats the same render and trim. Migration `0003_sheet_list.sql` adds the `sheet_list` view
+(security invoker), `list_sheets()` and `sheet_counts()`.
+
+Tests: SQL 49 (7 new), unit 142, end-to-end 9 (TC-08, 09, 12, 15, 16, 18, 19, 48, 52; Playwright
+1.63.0). TC-10, 11, 13, 14 and 17 are unit tests; TC-17 because the generator cannot encrypt PDFs.
+
+Carried into M4: detection on upload (OCR or PDF text layer) stored in `detections`; the editor on
+`/sheets/<id>`; rename through save; list paging takes about 2 s per 50 rows against the development
+project from the office, so profile and parallelise the server reads. The M3 final fixes already
+removed the redundant page refresh after list actions and made the list reads run in parallel; the
+timing above was measured before them and has not been re-measured.
+
+### M4a result (2026-10-08)
+
+Commits `f18fa9b..11cde25` on branch `feat/m4a-editor`: the editor on
+`/sheets/<id>` with detection on first open (version 1 to 2, also when nothing is found), markers,
+locked zones, zoom, the edit popover, revert, composing the new value over the masked old one, save
+with the conflict dialog, offline retry and the leave guard.
+
+Measured: unit tests 34 files, 196 tests passing; SQL tests 6 files, 51 tests passing (`npm test` total 40 files, 247 tests); end-to-end 23 tests passing (full run 4.7 minutes on
+the office PC). OCR on the synthetic 300-DPI image sheet found 11 of 11 values, 12–65 s from upload
+to the stored detection on the office PC; the text-layer PDF finds all 11 without OCR. The 3-second
+reopen (NFR-01) is to be confirmed on a production build in M7; the development server measured
+3.1–4.4 s for a cold reopen.
+
+### Carried into M4b and later from M4a
+
+- Box and colour sampling: the ink colour is the median of the darkest 10% of pixels, which drifts toward anti-aliased tones when ink is sparse; use the pixels darker than the paper by the minimum contrast. Prefer the run nearest the centre when two run counts are within 2x; do not let a single-pixel speck extend a run. State the half-pixel convention in the doc comment.
+- Detection: create the OCR client inside the `try` so a Worker constructor that throws is reported as an OCR load error; clamp confidence to 0–100; handle a dimension split over several text-layer runs.
+- Saving and loading: a stored value that fails the schema loads as unknown rather than broken; a refused save under a future RLS deny would read as a conflict; add tests for the schema bounds (confidence, angle, cx, string and array input, long ids) and for the save-result mapping.
+- Editor screen: the load effect resets the base state whenever it re-runs, so tie it to unmount or to the sheet id; Stay or `Esc` pressed in the conflict dialog while "Load latest" runs should be ignored or the load cancelled; the popover closes on `Esc` only from its form, and has no vertical clamp; focus returns to the marker, not the list row; the leave guard misses Back/Forward and server-action posts.
+- Copy: Vietnamese "detecting" text should say "up to a minute" naturally; review the wording of the "detected" state; the "no values" message needs its fix step (M4b).
+- Code: share the trim/replace of the dimension helpers; use `hourCycle: "h23"` in the clock helper; derive the baseline from the box height; the font check cannot tell Arimo from a same-metric fallback.
+- Tests: add cases for negative-zero guards, a 180° run, a 30° text line, a box off the page, a run pushed out by the trim offset, tightening to ink in the text layer, a vertical edit and OCR with no detections; compare floats with a tolerance; make the end-to-end version wait tolerate a skipped version; move the value that sits in the drawn frame (3.39) out of the frame.
+- M7: confirm the 3-second reopen on a production build.
+
+### Carried into M3 and later from the M2 review
+
+- M3 (sheet decode): composite transparency onto white before OCR; the Raster sent to the Worker is always opaque.
+- M3: merge scan readings by box overlap instead of centre distance; clamp boxes to the page before converting them to the design's fractional boxes.
+- M3/M4: Worker errors carry a typed code (model download, runtime download, init failed) mapped to dictionary strings (TC-25); time clicks on the main thread for TC-24; do not send clicks while a scan runs (or stop the scan by disposing the client).
+- M4: tighten boxes to the digits before masking (UC-04 step 5); draw at the reading's `angle` along its `quad`.
+- M4: `quad` keeps the detector's corner order, not the text's (for a tall or upside-down read its first edge is the text's height); derive the design's `{cx, cy, w, h}` from `quad` and `angle` with one tested helper. Cancelling a scan means disposing the client and starting a new one (models reload in about 2 s from cache).
+- M7: the nonce-based CSP must allow the Blob-URL runtime (`worker-src 'self' blob:`, `script-src blob:`, `'wasm-unsafe-eval'`); serve the runtime from a versioned folder with an immutable cache; ship the Apache-2.0 licence text with the models; gate `/dev/*` with `requireAdmin()` if ENABLE_DEV_PAGES is ever set in production; note that Safari (no COEP credentialless) runs OCR on one thread.
 
 ### Prerequisites carried into M2
 
 - Before M2 relies on the database: the development Supabase project exists, migration 0001 is applied, the full SQL suite passes against it, and the repository secret DATABASE_URL is set; then make CI fail (not warn) when the SQL tests are skipped on push to main.
 
-### Rough effort (one developer with an AI pair, focused days)
+### Rough effort (one developer, focused days)
 
 M1 3–4 · M2 3–5 · M3 3–4 · M4 5–7 · M5 2 · M6 4–5 · M7 2–3 → about 22–30 days. M2 and M4
 carry the most uncertainty; the estimate is a planning aid, not a commitment.

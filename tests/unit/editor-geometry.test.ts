@@ -1,0 +1,102 @@
+import { describe, expect, it } from "vitest";
+import type { Quad } from "@/lib/ocr/geometry";
+import {
+  axes, boxCorners, boxFromQuad, centreInDrawingArea, drawingAreaPx, panelOf, readingOrder, roundAngle, roundBox,
+  sameSize, toBox, toPx,
+} from "@/editor/geometry";
+
+const close = (a: number, b: number, eps = 1e-9) => expect(Math.abs(a - b)).toBeLessThanOrEqual(eps);
+
+describe("reading axes", () => {
+  it("0° reads left to right; -90° reads bottom-up; 90° reads top-down", () => {
+    const h = axes(0);
+    close(h.u.x, 1); close(h.u.y, 0); close(h.v.x, 0); close(h.v.y, 1);
+    const up = axes(-90);
+    close(up.u.x, 0); close(up.u.y, -1); close(up.v.x, 1); close(up.v.y, 0);
+    const down = axes(90);
+    close(down.u.x, 0); close(down.u.y, 1); close(down.v.x, -1); close(down.v.y, 0);
+  });
+});
+
+describe("boxFromQuad", () => {
+  it("measures a horizontal reading along and across the text", () => {
+    const quad: Quad = [{ x: 100, y: 50 }, { x: 160, y: 50 }, { x: 160, y: 70 }, { x: 100, y: 70 }];
+    expect(boxFromQuad(quad, 0)).toEqual({ cx: 130, cy: 60, w: 60, h: 20, angle: 0 });
+  });
+
+  it("does not depend on the corner order (the detector's order is not the text's)", () => {
+    const quad: Quad = [{ x: 160, y: 70 }, { x: 100, y: 70 }, { x: 100, y: 50 }, { x: 160, y: 50 }];
+    expect(boxFromQuad(quad, 0)).toEqual({ cx: 130, cy: 60, w: 60, h: 20, angle: 0 });
+  });
+
+  it("puts the long side of a vertical reading along the text", () => {
+    const quad: Quad = [{ x: 100, y: 200 }, { x: 120, y: 200 }, { x: 120, y: 260 }, { x: 100, y: 260 }];
+    const box = boxFromQuad(quad, -90);
+    close(box.cx, 110); close(box.cy, 230); close(box.w, 60); close(box.h, 20);
+    expect(box.angle).toBe(-90);
+  });
+
+  it("recovers a box at any angle from its own corners", () => {
+    const original = { cx: 400, cy: 300, w: 80, h: 24, angle: 58 };
+    const back = boxFromQuad(boxCorners(original), 58);
+    close(back.cx, 400, 1e-6); close(back.cy, 300, 1e-6); close(back.w, 80, 1e-6); close(back.h, 24, 1e-6);
+  });
+
+  it("normalises the angle to (-180, 180]", () => {
+    const quad: Quad = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }, { x: 0, y: 5 }];
+    expect(boxFromQuad(quad, 270).angle).toBe(-90);
+  });
+});
+
+describe("fractions and pixels", () => {
+  it("measures both sizes against the page width", () => {
+    const box = toBox({ cx: 1650, cy: 1275, w: 66, h: 33, angle: -90 }, 3300, 2550);
+    expect(box).toEqual({ cx: 0.5, cy: 0.5, w: 0.02, h: 0.01 });
+    expect(toPx(box, -90, 3300, 2550)).toEqual({ cx: 1650, cy: 1275, w: 66, h: 33, angle: -90 });
+  });
+
+  it("rounds stored numbers", () => {
+    expect(roundBox({ cx: 0.1234567, cy: 0.9876543, w: 0.0000049, h: 0.333333333 })).toEqual({ cx: 0.12346, cy: 0.98765, w: 0, h: 0.33333 });
+    expect(roundAngle(-89.99999999)).toBe(-90);
+    expect(roundAngle(57.996)).toBe(58);
+    expect(roundAngle(-179.996)).toBe(180);
+    expect(roundAngle(180.004)).toBe(180);
+    expect(Object.is(roundAngle(-0.001), 0)).toBe(true);
+    expect(Object.is(roundBox({ cx: -0.000001, cy: 0.5, w: 0.1, h: 0.1 }).cx, 0)).toBe(true);
+  });
+});
+
+describe("drawing area and panels", () => {
+  it("gives the drawing area in pixels of a 300-DPI page", () => {
+    expect(drawingAreaPx(3300, 2550)).toEqual({ x: 152, y: 339, w: 2059, h: 1563 });
+  });
+
+  it("keeps values whose centre lies inside the four panels (BR-02)", () => {
+    expect(centreInDrawingArea({ cx: 0.2, cy: 0.3, w: 0.01, h: 0.005 })).toBe(true);
+    expect(centreInDrawingArea({ cx: 0.8, cy: 0.3, w: 0.01, h: 0.005 })).toBe(false); // right-hand table
+    expect(centreInDrawingArea({ cx: 0.2, cy: 0.85, w: 0.01, h: 0.005 })).toBe(false); // bottom boxes
+    expect(centreInDrawingArea({ cx: 0.2, cy: 0.05, w: 0.01, h: 0.005 })).toBe(false); // header
+  });
+
+  it("names the panel holding a value", () => {
+    expect(panelOf({ cx: 0.1, cy: 0.2, w: 0, h: 0 })).toBe("topLeft");
+    expect(panelOf({ cx: 0.6, cy: 0.2, w: 0, h: 0 })).toBe("topRight");
+    expect(panelOf({ cx: 0.1, cy: 0.7, w: 0, h: 0 })).toBe("bottomLeft");
+    expect(panelOf({ cx: 0.6, cy: 0.7, w: 0, h: 0 })).toBe("bottomRight");
+  });
+
+  it("orders values panel by panel, then top to bottom, then left to right", () => {
+    const at = (id: string, cx: number, cy: number) => ({ id, box: { cx, cy, w: 0.01, h: 0.005 } });
+    const order = readingOrder([at("br", 0.6, 0.7), at("tl2", 0.1, 0.3), at("tr", 0.6, 0.2), at("tl1", 0.2, 0.2), at("bl", 0.1, 0.7)]);
+    expect(order.map((o) => o.id)).toEqual(["tl1", "tl2", "tr", "bl", "br"]);
+  });
+});
+
+describe("sameSize", () => {
+  it("accepts the stored size give or take two pixels", () => {
+    expect(sameSize(3300, 2550, 3300, 2550)).toBe(true);
+    expect(sameSize(3302, 2549, 3300, 2550)).toBe(true);
+    expect(sameSize(3303, 2550, 3300, 2550)).toBe(false);
+    expect(sameSize(3300, 2547, 3300, 2550)).toBe(false);
+  });
+});

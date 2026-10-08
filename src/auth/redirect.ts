@@ -15,3 +15,8 @@ export function safeNext(raw: string | null | undefined, fallback = "/sheets"): 
   if (path === "/login" || path.startsWith("/login/") || path === "/auth" || path.startsWith("/auth/")) return fallback;
   return raw;
 }
+
+/** Where to go after setting a password: anywhere safe except the password page itself. */
+export function afterPassword(next: string): string {
+  return next === "/account/password" || next.startsWith("/account/password?") ? "/sheets" : next;
+}

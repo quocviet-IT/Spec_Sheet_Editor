@@ -32,9 +32,38 @@ export async function makeUser(tx: Tx, email: string, role: "user" | "admin" = "
   return { id, email };
 }
 
-/** Switches the transaction to the `authenticated` role with this user's Google-session JWT claims. */
-export async function actAs(tx: Tx, user: { id: string; email: string }): Promise<void> {
-  const claims = { sub: user.id, email: user.email, role: "authenticated", app_metadata: { provider: "google", providers: ["google"] } };
+/** A Supabase Auth account only (no profile), as auth.admin.createUser leaves it. */
+export async function makeSignInAccount(
+  tx: Tx,
+  email: string,
+  opts: { provider?: "email" | "google"; hash?: string; createdAt?: Date } = {},
+): Promise<TestUser & { hash: string }> {
+  const id = randomUUID();
+  const provider = opts.provider ?? "email";
+  const hash = opts.hash ?? `test-hash-${id}`;
+  await tx`insert into auth.users (id, email, aud, role, encrypted_password, raw_app_meta_data, created_at)
+           values (${id}, ${email}, 'authenticated', 'authenticated', ${hash},
+                   ${tx.json({ provider, providers: [provider] })}, ${opts.createdAt ?? new Date()})`;
+  return { id, email, hash };
+}
+
+/** A password account an Admin created; `mustChange` means the one-time password is still in use. */
+export async function makePasswordUser(
+  tx: Tx,
+  email: string,
+  opts: { role?: "user" | "admin"; mustChange?: boolean } = {},
+): Promise<TestUser & { hash: string }> {
+  const account = await makeSignInAccount(tx, email);
+  await tx`insert into public.profiles (id, email, full_name, role, password_account, must_change_password)
+           values (${account.id}, ${email}, ${email.split("@")[0]}, ${opts.role ?? "user"}, true, ${opts.mustChange ?? false})`;
+  // every real password account has a snapshot from the moment it is registered
+  await tx`insert into public.password_snapshots (user_id, hash) values (${account.id}, ${account.hash})`;
+  return account;
+}
+
+/** Switches the transaction to the `authenticated` role with this user's session JWT claims. */
+export async function actAs(tx: Tx, user: { id: string; email: string }, provider: "google" | "email" = "google"): Promise<void> {
+  const claims = { sub: user.id, email: user.email, role: "authenticated", app_metadata: { provider, providers: [provider] } };
   await tx`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`;
   await tx`set local role authenticated`;
 }
@@ -63,6 +92,21 @@ export async function insertSheet(tx: Tx, owner: TestUser): Promise<string> {
   const id = randomUUID();
   await tx`insert into public.spec_sheets (id, name, source_type, source_path, thumb_path, page_px_w, page_px_h, created_by, updated_by)
            values (${id}, 'Test sheet', 'png', ${`${id}/source.png`}, ${`${id}/thumb.jpg`}, 1135, 877, ${owner.id}, ${owner.id})`;
+  return id;
+}
+
+/** Inserts a sheet as the table owner (bypassing RLS), with a chosen name, time and number of edits. */
+export async function insertSheetAsOwner(
+  tx: Tx,
+  owner: TestUser,
+  opts: { name?: string; updatedAt?: Date; edits?: number } = {},
+): Promise<string> {
+  const id = randomUUID();
+  const edits = Array.from({ length: opts.edits ?? 0 }, (_, i) => ({ id: `e${i}` }));
+  await tx`insert into public.spec_sheets (id, name, source_type, source_path, thumb_path, page_px_w, page_px_h,
+                                           edits, created_by, updated_by, updated_at)
+           values (${id}, ${opts.name ?? "Test sheet"}, 'png', ${`${id}/source.png`}, ${`${id}/thumb.jpg`}, 1135, 877,
+                   ${tx.json(edits)}, ${owner.id}, ${owner.id}, ${opts.updatedAt ?? new Date()})`;
   return id;
 }
 
