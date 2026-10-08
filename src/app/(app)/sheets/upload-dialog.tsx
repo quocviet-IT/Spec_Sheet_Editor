@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { checkFile, mimeOf, ratioMatches, type SourceType } from "@/lib/form/template";
 import { encodeThumbnail, PageError, renderSource, trimPage } from "@/lib/page/render";
 import { supabaseBrowser } from "@/lib/supabase/browser";
@@ -15,12 +15,14 @@ type Prepared = { id: string; file: File; sourceType: SourceType; thumb: Blob; w
 type ErrorCode = "wrongType" | "tooLarge" | "pdfLocked" | "pdfDamaged" | "imageUnreadable" | "wrongTemplate" | "uploadFailed" | "createFailed";
 type Stage = "pick" | "reading" | "ready" | "uploading" | "error";
 
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
+
 const STEP_ORDER = ["check", "read", "template", "store", "record"] as const;
 
 /** Storage answers 409 / "already exists" when a retry finds the file stored the first time. */
 function alreadyStored(error: { message?: string; status?: number; statusCode?: string; code?: string } | null): boolean {
   if (!error) return false;
-  return error.status === 409 || error.statusCode === "409" || error.code === "ResourceAlreadyExists" || /exist/i.test(error.message ?? "");
+  return error.status === 409 || error.statusCode === "409" || error.code === "ResourceAlreadyExists" || /already exists/i.test(error.message ?? "");
 }
 
 export function UploadDialog({ settings, onClose }: { settings: UploadSettings; onClose: () => void }) {
@@ -34,8 +36,62 @@ export function UploadDialog({ settings, onClose }: { settings: UploadSettings; 
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [name, setName] = useState("");
   const [dragging, setDragging] = useState(false);
+  const mounted = useRef(true);
+  const dialog = useRef<HTMLElement | null>(null);
+  const heading = useRef<HTMLHeadingElement | null>(null);
+
+  useEffect(() => {
+    mounted.current = true;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    heading.current?.focus();
+    const stop = (e: Event) => e.preventDefault();
+    window.addEventListener("dragover", stop);
+    window.addEventListener("drop", stop);
+    return () => {
+      mounted.current = false;
+      window.removeEventListener("dragover", stop);
+      window.removeEventListener("drop", stop);
+      if (opener && document.contains(opener)) opener.focus();
+    };
+  }, []);
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Escape") {
+      if (stage !== "uploading") {
+        e.stopPropagation();
+        onClose();
+      }
+      return;
+    }
+    if (e.key !== "Tab" || !dialog.current) return;
+    const items = Array.from(dialog.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+    if (items.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || !dialog.current.contains(active) || active === heading.current)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (active === last || !dialog.current.contains(active) || active === heading.current)) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   async function prepare(file: File) {
+    try {
+      await prepareInner(file);
+    } catch {
+      if (!mounted.current) return;
+      setError({ code: "imageUnreadable" });
+      setStage("error");
+    }
+  }
+
+  async function prepareInner(file: File) {
     setError(null);
     setStage("reading");
     setStep(0);
@@ -48,6 +104,7 @@ export function UploadDialog({ settings, onClose }: { settings: UploadSettings; 
     setStep(1);
     try {
       const page = await renderSource(file, checked.sourceType);
+      if (!mounted.current) return;
       setStep(2);
       const trimmed = trimPage(page);
       if (!ratioMatches(trimmed.width, trimmed.height, settings.aspectTolerancePct)) {
@@ -56,11 +113,13 @@ export function UploadDialog({ settings, onClose }: { settings: UploadSettings; 
         return;
       }
       const thumb = await encodeThumbnail(trimmed);
+      if (!mounted.current) return;
       setPrepared({ id: crypto.randomUUID(), file, sourceType: checked.sourceType, thumb, width: trimmed.width, height: trimmed.height, pageCount: page.pageCount });
       setName(defaultSheetName(file.name, u.defaultName));
       setStep(3);
       setStage("ready");
     } catch (e) {
+      if (!mounted.current) return;
       const code = e instanceof PageError ? e.code : "image_unreadable";
       setError({ code: code === "pdf_locked" ? "pdfLocked" : code === "pdf_damaged" ? "pdfDamaged" : "imageUnreadable" });
       setStage("error");
@@ -72,18 +131,27 @@ export function UploadDialog({ settings, onClose }: { settings: UploadSettings; 
     setError(null);
     setStage("uploading");
     setStep(3);
-    const bucket = supabaseBrowser().storage.from("spec-sheets");
-    const source = await bucket.upload(`${prepared.id}/source.${prepared.sourceType}`, prepared.file, { contentType: mimeOf(prepared.sourceType), upsert: false });
-    if (source.error && !alreadyStored(source.error)) return fail("uploadFailed");
-    const thumb = await bucket.upload(`${prepared.id}/thumb.jpg`, prepared.thumb, { contentType: "image/jpeg", upsert: false });
-    if (thumb.error && !alreadyStored(thumb.error)) return fail("uploadFailed");
-    setStep(4);
-    const created = await createSheet({ id: prepared.id, name: name.trim() || u.defaultName, sourceType: prepared.sourceType, pageW: prepared.width, pageH: prepared.height });
-    if ("error" in created) return fail(created.error === "files_missing" ? "uploadFailed" : "createFailed");
-    router.push(`/sheets/${created.id}`);
+    let stored = false;
+    try {
+      const bucket = supabaseBrowser().storage.from("spec-sheets");
+      const source = await bucket.upload(`${prepared.id}/source.${prepared.sourceType}`, prepared.file, { contentType: mimeOf(prepared.sourceType), upsert: false });
+      if (source.error && !alreadyStored(source.error)) return fail("uploadFailed");
+      const thumb = await bucket.upload(`${prepared.id}/thumb.jpg`, prepared.thumb, { contentType: "image/jpeg", upsert: false });
+      if (thumb.error && !alreadyStored(thumb.error)) return fail("uploadFailed");
+      stored = true;
+      if (!mounted.current) return;
+      setStep(4);
+      const created = await createSheet({ id: prepared.id, name: name.trim() || u.defaultName, sourceType: prepared.sourceType, pageW: prepared.width, pageH: prepared.height });
+      if ("error" in created) return fail(created.error === "files_missing" ? "uploadFailed" : "createFailed");
+      if (!mounted.current) return;
+      router.push(`/sheets/${created.id}`);
+    } catch {
+      fail(stored ? "createFailed" : "uploadFailed");
+    }
   }
 
   function fail(code: ErrorCode) {
+    if (!mounted.current) return;
     setError({ code });
     setStage("ready");
   }
@@ -100,9 +168,9 @@ export function UploadDialog({ settings, onClose }: { settings: UploadSettings; 
 
   return (
     <div className="fixed inset-0 z-30 flex overflow-y-auto bg-ink/50 px-4 py-6">
-      <section role="dialog" aria-modal="true" aria-labelledby="upload-title" className="m-auto w-full max-w-xl space-y-4 rounded-xl bg-surface p-6 shadow-xl">
+      <section ref={dialog} onKeyDown={onKeyDown} role="dialog" aria-modal="true" aria-labelledby="upload-title" className="m-auto w-full max-w-xl space-y-4 rounded-xl bg-surface p-6 shadow-xl">
         <div className="flex items-center justify-between gap-3">
-          <h2 id="upload-title" className="text-xl font-bold">{u.title}</h2>
+          <h2 id="upload-title" ref={heading} tabIndex={-1} className="text-xl font-bold">{u.title}</h2>
           <button type="button" onClick={onClose} aria-label={u.close} className="rounded px-2 py-1 text-xl leading-none hover:bg-sunk">×</button>
         </div>
 
