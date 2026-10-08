@@ -41,8 +41,12 @@ test("TC-27 a vertical 2.50 becomes 2.60 in place, still vertical, in the same c
   await expect(marker(page, "2.50", TOP_LEFT)).toHaveAccessibleName(/(đã sửa thành|edited to) 2\.60/);
   await page.keyboard.press("Control+s");
   await waitForVersion(id, 3);
-  const { edits } = await storedSheet(id);
+  const { edits, detections } = await storedSheet(id);
   expect(edits).toHaveLength(1);
+  const detection = detections.find((d) => d.id === edits[0].detectionId);
+  expect(detection).toBeDefined();
+  expect(Math.abs(edits[0].box.cx - detection!.box.cx)).toBeLessThan(0.002); // in place
+  expect(Math.abs(edits[0].box.cy - detection!.box.cy)).toBeLessThan(0.002);
   expect(edits[0]).toMatchObject({ oldValue: "2.50", newValue: "2.60", angle: -90, bgColor: "#ffffff" });
   expect(channelsNear(edits[0].textColor, "#676672", 40)).toBe(true);
   expect(edits[0].box.h).toBeGreaterThan(0);
@@ -68,18 +72,30 @@ test("TC-29 an invalid new value is refused with a message and nothing changes",
   await expect(popover).toBeHidden();
   await expect(marker(page, "6.90", TOP_LEFT)).toBeFocused();
   await expect(page.getByRole("button", { name: /(đã sửa thành|edited to) / })).toHaveCount(0);
+  await expect(page.getByText(/● (Chưa lưu|Unsaved)/)).toHaveCount(0);
 });
 
 test("TC-33 locked zones do nothing when clicked", async ({ page }) => {
   await openValuesSheet(page, "tc33");
   const canvas = page.getByRole("img", { name: /^(Phiếu|Sheet) / });
+  await canvas.scrollIntoViewIfNeeded();
   const box = (await canvas.boundingBox())!;
-  // Stone chart, bottom boxes, header, and the right-hand table's 5.75.
-  for (const [fx, fy] of [[0.8, 0.55], [0.3, 0.86], [0.3, 0.05], [0.8, 0.3]] as const) {
+  const spots = [[0.8, 0.55], [0.3, 0.86], [0.3, 0.05], [0.8, 0.3]] as const; // stone chart, bottom boxes, header, the right-hand table's 5.75
+  const viewportH = page.viewportSize()!.height;
+  expect(box.y + Math.max(...spots.map(([, fy]) => fy)) * box.height).toBeLessThan(viewportH);
+  // Positive control: a real marker does open its popover.
+  await marker(page, "6.90", TOP_LEFT).click();
+  const popover = page.getByRole("dialog", { name: /Sửa kích thước|Edit dimension/ });
+  await expect(popover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(popover).toBeHidden();
+  for (const [fx, fy] of spots) {
     await page.mouse.click(box.x + fx * box.width, box.y + fy * box.height);
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.waitForTimeout(500); // the assertion is that nothing happens
+    expect(await page.getByRole("dialog").count()).toBe(0);
   }
   await expect(markers(page)).toHaveCount(11);
+  await expect(page.getByText(/● (Chưa lưu|Unsaved)/)).toHaveCount(0);
 });
 
 test("TC-37 two saved edits are still there after a reload; version +1 and sheet.save logged", async ({ page }) => {
@@ -103,6 +119,11 @@ test("TC-31 reverting an edit removes it from the saved sheet", async ({ page })
   await page.getByRole("button", { name: /Trả về số gốc|Revert to original/ }).click();
   await expect(page.getByRole("button", { name: /(đã sửa thành|edited to) / })).toHaveCount(0);
   await expect(page.getByText(/● (Chưa lưu|Unsaved)/)).toHaveCount(0); // back to what is saved
+  await page.keyboard.press("Control+s");
+  await page.waitForTimeout(1000); // the assertion is that nothing is stored
+  const stored = await storedSheet(id);
+  expect(stored.version).toBe(2);
+  expect(stored.edits).toEqual([]);
 });
 
 test("TC-38 the second of two people to save sees who saved first; the first person's work stays", async ({ page, browser }) => {
