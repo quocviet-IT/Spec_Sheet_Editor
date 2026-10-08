@@ -32,13 +32,16 @@ export function ConflictDialog({ byName, savedAt, loading, failed, onLoad, onSta
 
   // Esc means "Stay" wherever focus is.
   const stayRef = useRef(onStay);
+  const loadingRef = useRef(loading);
   useEffect(() => {
     stayRef.current = onStay;
+    loadingRef.current = loading;
   });
   useEffect(() => {
     function onEscape(e: globalThis.KeyboardEvent) {
       if (e.key !== "Escape") return;
       e.preventDefault();
+      if (loadingRef.current) return; // the latest version is on its way; staying now could not stop it
       stayRef.current();
     }
     document.addEventListener("keydown", onEscape);
@@ -47,7 +50,7 @@ export function ConflictDialog({ byName, savedAt, loading, failed, onLoad, onSta
 
   function onKeyDown(e: KeyboardEvent<HTMLElement>) {
     if (e.key !== "Tab") return;
-    const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
+    const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
     const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
     e.preventDefault();
     buttons[(i + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
@@ -75,7 +78,7 @@ export function ConflictDialog({ byName, savedAt, loading, failed, onLoad, onSta
         </div>
         {failed ? <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{c.loadFailed}</p> : null}
         <div className="flex justify-end gap-2">
-          <button ref={stay} type="button" onClick={onStay} className="rounded-md border border-line px-3 py-2 text-sm">{c.stay}</button>
+          <button ref={stay} type="button" onClick={onStay} disabled={loading} className="rounded-md border border-line px-3 py-2 text-sm disabled:opacity-50">{c.stay}</button>
           <button type="button" onClick={onLoad} disabled={loading} aria-busy={loading} className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-ink disabled:opacity-50">{c.load}</button>
         </div>
       </section>

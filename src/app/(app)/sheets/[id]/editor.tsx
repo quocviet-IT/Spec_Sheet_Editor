@@ -182,7 +182,6 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   // Load the page and the font; on the first open, detect and store the values (UC-04).
   useEffect(() => {
     let cancelled = false;
-    let base: HTMLCanvasElement | null = null;
     let client = null as OcrClient | null; // assigned inside the factory below; the cast stops TS narrowing it to never
     const controller = new AbortController();
     const font = loadArimo();
@@ -218,11 +217,13 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         return;
       }
       const canvas = document.createElement("canvas");
-      base = canvas;
       drawRaster(canvas, trimmed.raster);
       const page: LoadedPage = { raster: trimmed.raster, text: rendered.text, offsetX: trimmed.offsetX, offsetY: trimmed.offsetY };
       setLoaded({ page, base: canvas, metrics });
-      if (sheet.version !== 1) return;
+      // Only a sheet that has never stored anything is scanned, and never twice: whatever is held now
+      // (stored or pending) stays, because the edits point at its ids.
+      const held = latest.current;
+      if (held.version !== 1 || held.detections.length > 0 || held.firstStore) return;
       const result = await detectValues(page, () => (client ??= new OcrClient()));
       if (cancelled) return;
       if (!result.ok) {
@@ -244,12 +245,20 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       controller.abort();
       client?.dispose();
       if (ocr.current === client) ocr.current = null;
-      if (base) {
-        base.width = 0;
-        base.height = 0;
-      }
     };
-  }, [sheet, store]);
+  }, [sheet.id, sheet.sourceUrl, sheet.sourceType, sheet.pageW, sheet.pageH, store]);
+
+  // Release the previous base canvas once a new one replaces it, and the last one on unmount, so the
+  // canvas being painted is never zeroed while it is still in use.
+  useEffect(
+    () => () => {
+      if (loaded) {
+        loaded.base.width = 0;
+        loaded.base.height = 0;
+      }
+    },
+    [loaded],
+  );
 
   // Ctrl+S saves (UC-08); + / − / 0 zoom (section 8.4) unless typing in a field.
   useEffect(() => {
