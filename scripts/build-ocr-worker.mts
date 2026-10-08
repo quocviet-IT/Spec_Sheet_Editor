@@ -2,6 +2,7 @@
  * Bundles the OCR Worker (src/lib/ocr/worker.ts) into public/ocr/ocr-worker.js and copies the
  * onnxruntime-web runtime it loads into public/ocr/ort/. Turbopack copies `new Worker(new URL(...))`
  * targets without bundling them, so the Worker is built here instead; `predev` and `prebuild` run it.
+ * It also copies the pdf.js worker into public/pdfjs/.
  */
 import { build, type Plugin } from "esbuild";
 import { copyFile, mkdir, rm } from "node:fs/promises";
@@ -42,3 +43,13 @@ await build({
 for (const file of RUNTIME) await copyFile(path.join(dist, file), path.join(out, "ort", file));
 
 console.log(`OCR worker built: public/ocr/ocr-worker.js, runtime ${RUNTIME.join(", ")}`);
+
+// pdf.js renders PDFs in the browser (UC-03); its worker must be a plain file next to the app.
+const pdfjsOut = path.join(root, "public", "pdfjs");
+await rm(pdfjsOut, { recursive: true, force: true });
+await mkdir(pdfjsOut, { recursive: true });
+await copyFile(
+  path.join(root, "node_modules", "pdfjs-dist", "build", "pdf.worker.min.mjs"),
+  path.join(pdfjsOut, "pdf.worker.min.mjs"),
+);
+console.log("pdf.js worker copied: public/pdfjs/pdf.worker.min.mjs");
