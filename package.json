@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "tsx scripts/migrate.mts",
+    "admin:create": "tsx scripts/create-admin.mts",
     "ocr:build": "tsx scripts/build-ocr-worker.mts",
     "predev": "npm run ocr:build",
     "prebuild": "npm run ocr:build"
