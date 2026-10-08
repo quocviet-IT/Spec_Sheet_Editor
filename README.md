@@ -58,11 +58,13 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 ## End-to-end tests
 
 `npm run e2e` runs the Playwright tests against the development project. It needs the dev server
-running and `.env.local` filled in. The first run creates the account `e2e-staff@ctyhp.vn` and later
+running and `.env.local` filled in; when no dev server answers on port 3000, Playwright starts one.
+`.env.local` must also set `E2E_DEV_PROJECT_REF` to the project ref of the development project; the
+tests refuse to run unless the Supabase URL and the database user both name that ref. The first run creates the account `e2e-staff@ctyhp.vn` and later
 runs reuse it; every run resets that account's password to a random value held only in memory. The
-run deletes only that account's sheets, before the tests, between the list tests and after the run.
-TC-17 (password-protected PDF) is covered by a unit test, because the test-file generator cannot
-encrypt PDFs.
+run deletes only that account's sheets: before the run, after each test and after the run.
+TC-17 (password-protected PDF): the error mapping is unit-tested; the full upload path for a locked
+PDF is not, because the test-file generator cannot encrypt PDFs.
 
 ## Database migrations
 

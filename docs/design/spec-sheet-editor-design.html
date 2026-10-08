@@ -950,8 +950,8 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
           <dt>Actors</dt><dd>Staff</dd>
           <dt>Postconditions</dt><dd>Trash: the sheet has <span class="mono">deleted_at</span>; restore: <span class="mono">deleted_at</span> is cleared; files in storage are untouched; the audit log has <span class="mono">sheet.trash</span> or <span class="mono">sheet.restore</span>.</dd>
           <dt>Main flow</dt><dd><ol>
-            <li>The user chooses "Move to Trash" in a sheet's menu and confirms on the page.</li>
-            <li>The system sets <span class="mono">deleted_at</span> and <span class="mono">deleted_by</span>; the sheet leaves the list.</li>
+            <li>The user chooses "Move to Trash" in a sheet's menu (no confirmation step); a notice follows with an Undo button.</li>
+            <li>The system sets <span class="mono">deleted_at</span> and <span class="mono">deleted_by</span>; the sheet leaves the list. Undo from the notice restores it.</li>
             <li>To restore, the user opens the "Trash" tab and clicks "Restore".</li>
           </ol></dd>
           <dt>Exceptions</dt><dd>2a. Someone else has the sheet open: their next save follows UC-08 extension 3b.</dd>

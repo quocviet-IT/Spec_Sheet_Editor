@@ -537,8 +537,8 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Main flow:**
 
-1. The user chooses "Move to Trash" in a sheet's menu and confirms on the page.
-2. The system sets `deleted_at` and `deleted_by`; the sheet leaves the list.
+1. The user chooses "Move to Trash" in a sheet's menu (no confirmation step); a notice follows with an Undo button.
+2. The system sets `deleted_at` and `deleted_by`; the sheet leaves the list. Undo from the notice restores it.
 3. To restore, the user opens the "Trash" tab and clicks "Restore".
 
 **Exceptions:** 2a. Someone else has the sheet open: their next save follows UC-08 extension 3b.

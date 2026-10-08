@@ -95,7 +95,9 @@ Tests: SQL 49 (7 new), unit 142, end-to-end 9 (TC-08, 09, 12, 15, 16, 18, 19, 48
 
 Carried into M4: detection on upload (OCR or PDF text layer) stored in `detections`; the editor on
 `/sheets/<id>`; rename through save; list paging takes about 2 s per 50 rows against the development
-project from the office, so profile and parallelise the server reads.
+project from the office, so profile and parallelise the server reads. The M3 final fixes already
+removed the redundant page refresh after list actions and made the list reads run in parallel; the
+timing above was measured before them and has not been re-measured.
 
 ### Carried into M3 and later from the M2 review
 
