@@ -51,7 +51,7 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
 | `npm test` | Unit tests; SQL tests too when `DATABASE_URL` is set (always rolled back) |
 | `npm run build` | Production build |
-| `npm run e2e` | End-to-end tests (Playwright) against the development project; needs the dev server and `.env.local`; creates and cleans up the accounts `e2e-staff@ctyhp.vn` and `e2e-staff-b@ctyhp.vn` and their sheets |
+| `npm run e2e` | End-to-end tests (Playwright) against the development project; needs the dev server and `.env.local`; creates and cleans up the accounts `e2e-staff@ctyhp.vn`, `e2e-staff-b@ctyhp.vn` and `e2e-admin@ctyhp.vn` and their sheets |
 | `npm run db:migrate` | Apply pending migrations |
 | `npm run admin:create` | Create the first Admin (once) |
 
@@ -62,12 +62,18 @@ running and `.env.local` filled in; when no dev server answers on port 3000, Pla
 `.env.local` must also set `E2E_DEV_PROJECT_REF` to the project ref of the development project; the
 tests refuse to run unless the Supabase URL names that ref (and, when `DATABASE_URL` is set, its user does too).
 The end-to-end tests need only HTTPS to Supabase, so they work from networks that block the Postgres
-ports; the SQL unit tests still need `DATABASE_URL` and the pooler port. There are two reserved test accounts: `e2e-staff@ctyhp.vn` and `e2e-staff-b@ctyhp.vn` (the second
-only for the two-person conflict test). The first run creates them and later runs reuse them; every
-run resets both passwords to random values held only in memory. The run deletes only these accounts'
-sheets: before the run, during it (after each test) and after it. The specs are `upload`, `list`, `detect`, `editor`, `tools`, `pixels` and `export`; a full run takes about
-10 to 15 minutes on the office PC (the OCR tests take one to three minutes each), so
+ports; the SQL unit tests still need `DATABASE_URL` and the pooler port. There are three reserved test accounts: `e2e-staff@ctyhp.vn`, `e2e-staff-b@ctyhp.vn` (the second
+only for the two-person conflict test and the Admin tests that change another person) and
+`e2e-admin@ctyhp.vn` (an Admin, used by the Admin tests). The first run creates them and later runs
+reuse them; every run resets all three passwords to random values held only in memory. The run deletes only these accounts'
+sheets: before the run, during it (after each test) and after it. The specs are `upload`, `list`, `detect`, `editor`, `tools`, `pixels`, `export` and `admin`; a full run takes about
+10 to 20 minutes on the office PC (the OCR tests take one to three minutes each), so
 `playwright.config.ts` allows 25 minutes for the whole run.
+The Admin tests change shared state and put it back: the four system settings (restored to their
+previous values after the settings tests), the permitted domain and email lists (the test entries are
+added and removed again), and the role and status of `e2e-staff-b@ctyhp.vn` (restored to an active
+Staff account). They also write audit-log entries, which stay, because the log is append-only. Do not run
+them against a project where someone is using those settings.
 TC-17 (password-protected PDF): the error mapping is unit-tested; the full upload path for a locked
 PDF is not, because the test-file generator cannot encrypt PDFs.
 

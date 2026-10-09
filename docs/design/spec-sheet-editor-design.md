@@ -572,10 +572,10 @@ All use cases below share these preconditions: signed in, role Admin, account ac
 
 **Main flow:**
 
-1. The Admin opens Admin › Users; the system lists every account that has signed in, with role, status, last activity and sheets created.
-2. The Admin searches by name or email.
-3. The Admin switches a role between Staff and Admin and confirms; the system calls `set_user_role`.
-4. The Admin clicks "Suspend" and confirms; the system calls `set_user_status`. The suspended user loses access on their next request.
+1. The Admin opens Admin › Users; the system lists every account that has signed in, with role, status, last activity and the number of sheets the person created.
+2. The Admin searches by name or email; accents are ignored.
+3. The Admin switches a role between Staff and Admin; a confirmation dialog names the person and the new role, and only then does the system call `set_user_role`.
+4. The Admin clicks "Suspend"; a confirmation dialog follows, and only then does the system call `set_user_status`. The suspended user loses access on their next request.
 5. The Admin clicks "Add user" (name, email, role); the system creates the account and the one-time password is shown once.
 6. The Admin clicks "Issue new password" (password accounts only, not one's own); the person is signed out on every device.
 
@@ -595,11 +595,13 @@ All use cases below share these preconditions: signed in, role Admin, account ac
 
 **Main flow:**
 
-1. The Admin opens Admin › Access & settings; the system shows both lists (domains, individual emails) with the number of accounts using each entry.
+1. The Admin opens Admin › Access & settings; the system shows both lists (domains, individual emails) with the number of Google accounts using each entry.
 2. The Admin adds a domain or an email; the system lower-cases it and validates the format.
-3. The Admin removes an entry; the system first warns "{n} accounts will lose access" and waits for confirmation.
+3. The Admin removes an entry; the system first warns "{n} account(s) will lose access" and waits for confirmation. The number counts the Google accounts that this entry admits and no other entry does.
 
 **Exceptions:** 2a. Already listed: "This entry is already on the list."<br>2b. Invalid format: message under the field.<br>3a. The removal would lock out the acting Admin: "This change would lock you out of the system"; nothing changes (BR-17).
+
+**Note:** The two lists gate only Google sign-ins. A password account that an Admin created is always admitted, whatever the lists say, so the counts and the warning never include password accounts.
 
 #### UC-15 · System settings
 
@@ -625,9 +627,9 @@ All use cases below share these preconditions: signed in, role Admin, account ac
 **Main flow:**
 
 1. The Admin opens Admin › Audit log; the system shows the latest 100 entries from the past 7 days.
-2. The Admin filters by time range, person, action group or sheet id.
+2. The Admin filters by time range, person, action group or sheet id. The filter is kept in the page address, so a filtered view can be bookmarked or shared.
 3. The Admin clicks an entry to see its details.
-4. The Admin clicks "Download CSV"; the system exports exactly the current filter as UTF-8 with a BOM so Excel shows Vietnamese characters correctly.
+4. The Admin clicks "Download CSV"; the system exports exactly the current filter as UTF-8 with a BOM so Excel shows Vietnamese characters correctly. The file is a snapshot: it holds the rows up to the newest entry at the moment the export starts, so entries written while it is built do not appear twice or shift the rest. Cells that could be read as a formula by a spreadsheet are written as plain text.
 
 **Exceptions:** 4a. More than 50,000 rows: "Too many results. Narrow the time range and try again."
 
@@ -639,16 +641,16 @@ All use cases below share these preconditions: signed in, role Admin, account ac
 
 **Preconditions:** The sheet is in the Trash.
 
-**Postconditions:** The original, the thumbnail and the sheet record are gone; the audit log has `sheet.purge` with the sheet name, file path and creator.
+**Postconditions:** The sheet record is gone, and so are the original and the thumbnail unless the system reports otherwise (exception 3b); the audit log has `sheet.purge` with the sheet name, file path and creator.
 
 **Main flow:**
 
 1. The Admin opens the Trash (every deleted sheet, who deleted it and when) and clicks "Delete permanently".
 2. The system shows a confirmation dialog: thumbnail, sheet name, a warning that this cannot be undone, and a field to retype the sheet name. The delete button is enabled only when the name matches.
-3. The server checks the Admin role, deletes both files from storage with the service role, then calls `purge_sheet` with the Admin's session to delete the record.
+3. The server checks the Admin role and calls `purge_sheet` with the Admin's session. In one statement, `purge_sheet` checks that the sheet is still in the Trash and deletes the record. Only then does the server delete the original and the thumbnail from storage with the service role, making two attempts.
 4. The system shows "'…' was permanently deleted."
 
-**Exceptions:** 3a. Someone restored the sheet meanwhile: "This sheet is no longer in the Trash."<br>3b. File deletion fails: the record stays; "Deletion did not finish. Try again." A retry deletes whatever remains.
+**Exceptions:** 3a. Someone restored the sheet at the same moment: either the restore wins and the deletion stops with "This sheet is no longer in the Trash.", or the deletion wins and the restore is refused. The record is never half-deleted.<br>3b. The record is deleted but a file cannot be deleted after two attempts: the system reports that some of the sheet's files remain and that the orphan clean-up will remove them. The folder now has no record, so UC-18 finds it after 24 hours.
 
 #### UC-18 · Clean up orphan files
 
@@ -660,7 +662,7 @@ All use cases below share these preconditions: signed in, role Admin, account ac
 
 1. The Admin opens Admin › Trash & clean-up and clicks "Check for orphan files".
 2. The server (service role) lists storage folders with no matching record that are older than 24 hours; the system shows the folder count and total size.
-3. The Admin clicks "Clean up {n} folders" and confirms; the server deletes them and logs `maintenance.orphan_cleanup`.
+3. The Admin clicks "Clean up {n} folders" and confirms; the server recomputes the list, so a folder that gained a record or became younger than 24 hours since step 2 is skipped, deletes the folders that are still orphans and logs `maintenance.orphan_cleanup`.
 
 **Extensions:** 2a. None found: "No orphan files."
 
@@ -1296,7 +1298,7 @@ Priority: High blocks go-live; Med medium; Low.
 | **Admin: permanent deletion and clean-up** |  |  |  |  |  |  |
 | TC-73 | UC-17 | Purge a sheet not in the Trash | Call `purge_sheet` on an active sheet | `not_in_trash` error; no button in the UI | SQL | High |
 | TC-74 | UC-17 | Typed confirmation | Type a wrong name, then the right one | Wrong: button disabled. Right: files and record gone; `sheet.purge` keeps name and path | E2E | High |
-| TC-75 | UC-17 | File deletion fails midway | Block Storage during deletion; retry | Record kept, retry offered; second attempt completes | E2E | Med |
+| TC-75 | UC-17 | File deletion fails midway | Storage refuses to delete a file | The record is deleted, the remaining files are reported and later removed by the orphan clean-up | Unit | Med |
 | TC-76 | UC-18 | Orphan clean-up | One orphan folder 30 hours old, one 2 hours old | Only the 30-hour folder is listed and removed; logged | E2E | Med |
 | TC-77 | — | Service-role key not exposed | Search the built browser bundle for the key name and value | Not found | Unit | High |
 

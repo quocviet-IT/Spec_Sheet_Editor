@@ -982,10 +982,12 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
           <dt>Actors</dt><dd>Admin</dd>
           <dt>Postconditions</dt><dd>The account's role or status has changed; the audit log has <span class="mono">user.role_change</span>, <span class="mono">user.suspend</span> or <span class="mono">user.unsuspend</span>.</dd>
           <dt>Main flow</dt><dd><ol>
-            <li>The Admin opens Admin › Users; the system lists every account that has signed in, with role, status, last activity and sheets created.</li>
-            <li>The Admin searches by name or email.</li>
-            <li>The Admin switches a role between Staff and Admin and confirms; the system calls <span class="mono">set_user_role</span>.</li>
-            <li>The Admin clicks "Suspend" and confirms; the system calls <span class="mono">set_user_status</span>. The suspended user loses access on their next request.</li>
+            <li>The Admin opens Admin › Users; the system lists every account that has signed in, with role, status, last activity and the number of sheets the person created.</li>
+            <li>The Admin searches by name or email; accents are ignored.</li>
+            <li>The Admin switches a role between Staff and Admin; a confirmation dialog names the person and the new role, and only then does the system call <span class="mono">set_user_role</span>.</li>
+            <li>The Admin clicks "Suspend"; a confirmation dialog follows, and only then does the system call <span class="mono">set_user_status</span>. The suspended user loses access on their next request.</li>
+            <li>The Admin clicks "Add user" (name, email, role); the system creates the account and the one-time password is shown once.</li>
+            <li>The Admin clicks "Issue new password" (password accounts only, not one's own); the person is signed out on every device.</li>
           </ol></dd>
           <dt>Extensions</dt><dd>4a. "Reinstate": the account works again from its next sign-in.</dd>
           <dt>Exceptions</dt><dd>3a/4b. The change would leave no active Admin: "At least one active admin must remain."<br>4c. Self-suspension: "You cannot suspend your own account."</dd>
@@ -998,11 +1000,12 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
           <dt>Actors</dt><dd>Admin</dd>
           <dt>Postconditions</dt><dd>The permitted domain or email list has changed; the audit log has <span class="mono">access.add</span> or <span class="mono">access.remove</span>.</dd>
           <dt>Main flow</dt><dd><ol>
-            <li>The Admin opens Admin › Access &amp; settings; the system shows both lists (domains, individual emails) with the number of accounts using each entry.</li>
+            <li>The Admin opens Admin › Access &amp; settings; the system shows both lists (domains, individual emails) with the number of Google accounts using each entry.</li>
             <li>The Admin adds a domain or an email; the system lower-cases it and validates the format.</li>
-            <li>The Admin removes an entry; the system first warns "{n} accounts will lose access" and waits for confirmation.</li>
+            <li>The Admin removes an entry; the system first warns "{n} account(s) will lose access" and waits for confirmation. The number counts the Google accounts that this entry admits and no other entry does.</li>
           </ol></dd>
           <dt>Exceptions</dt><dd>2a. Already listed: "This entry is already on the list."<br>2b. Invalid format: message under the field.<br>3a. The removal would lock out the acting Admin: "This change would lock you out of the system"; nothing changes (BR-17).</dd>
+          <dt>Note</dt><dd>The two lists gate only Google sign-ins. A password account that an Admin created is always admitted, whatever the lists say, so the counts and the warning never include password accounts.</dd>
         </dl>
       </article>
       <article class="uc">
@@ -1023,9 +1026,9 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
           <dt>Actors</dt><dd>Admin</dd>
           <dt>Main flow</dt><dd><ol>
             <li>The Admin opens Admin › Audit log; the system shows the latest 100 entries from the past 7 days.</li>
-            <li>The Admin filters by time range, person, action group or sheet id.</li>
+            <li>The Admin filters by time range, person, action group or sheet id. The filter is kept in the page address, so a filtered view can be bookmarked or shared.</li>
             <li>The Admin clicks an entry to see its details.</li>
-            <li>The Admin clicks "Download CSV"; the system exports exactly the current filter as UTF-8 with a BOM so Excel shows Vietnamese characters correctly.</li>
+            <li>The Admin clicks "Download CSV"; the system exports exactly the current filter as UTF-8 with a BOM so Excel shows Vietnamese characters correctly. The file is a snapshot: it holds the rows up to the newest entry at the moment the export starts, so entries written while it is built do not appear twice or shift the rest. Cells that could be read as a formula by a spreadsheet are written as plain text.</li>
           </ol></dd>
           <dt>Exceptions</dt><dd>4a. More than 50,000 rows: "Too many results. Narrow the time range and try again."</dd>
         </dl>
@@ -1035,14 +1038,14 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
         <dl>
           <dt>Actors</dt><dd>Admin</dd>
           <dt>Preconditions</dt><dd>The sheet is in the Trash.</dd>
-          <dt>Postconditions</dt><dd>The original, the thumbnail and the sheet record are gone; the audit log has <span class="mono">sheet.purge</span> with the sheet name, file path and creator.</dd>
+          <dt>Postconditions</dt><dd>The sheet record is gone, and so are the original and the thumbnail unless the system reports otherwise (exception 3b); the audit log has <span class="mono">sheet.purge</span> with the sheet name, file path and creator.</dd>
           <dt>Main flow</dt><dd><ol>
             <li>The Admin opens the Trash (every deleted sheet, who deleted it and when) and clicks "Delete permanently".</li>
             <li>The system shows a confirmation dialog: thumbnail, sheet name, a warning that this cannot be undone, and a field to retype the sheet name. The delete button is enabled only when the name matches.</li>
-            <li>The server checks the Admin role, deletes both files from storage with the service role, then calls <span class="mono">purge_sheet</span> with the Admin's session to delete the record.</li>
+            <li>The server checks the Admin role and calls <span class="mono">purge_sheet</span> with the Admin's session. In one statement, <span class="mono">purge_sheet</span> checks that the sheet is still in the Trash and deletes the record. Only then does the server delete the original and the thumbnail from storage with the service role, making two attempts.</li>
             <li>The system shows "'…' was permanently deleted."</li>
           </ol></dd>
-          <dt>Exceptions</dt><dd>3a. Someone restored the sheet meanwhile: "This sheet is no longer in the Trash."<br>3b. File deletion fails: the record stays; "Deletion did not finish. Try again." A retry deletes whatever remains.</dd>
+          <dt>Exceptions</dt><dd>3a. Someone restored the sheet at the same moment: either the restore wins and the deletion stops with "This sheet is no longer in the Trash.", or the deletion wins and the restore is refused. The record is never half-deleted.<br>3b. The record is deleted but a file cannot be deleted after two attempts: the system reports that some of the sheet's files remain and that the orphan clean-up will remove them. The folder now has no record, so UC-18 finds it after 24 hours.</dd>
         </dl>
       </article>
       <article class="uc">
@@ -1052,7 +1055,7 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
           <dt>Main flow</dt><dd><ol>
             <li>The Admin opens Admin › Trash &amp; clean-up and clicks "Check for orphan files".</li>
             <li>The server (service role) lists storage folders with no matching record that are older than 24 hours; the system shows the folder count and total size.</li>
-            <li>The Admin clicks "Clean up {n} folders" and confirms; the server deletes them and logs <span class="mono">maintenance.orphan_cleanup</span>.</li>
+            <li>The Admin clicks "Clean up {n} folders" and confirms; the server recomputes the list, so a folder that gained a record or became younger than 24 hours since step 2 is skipped, deletes the folders that are still orphans and logs <span class="mono">maintenance.orphan_cleanup</span>.</li>
           </ol></dd>
           <dt>Extensions</dt><dd>2a. None found: "No orphan files."</dd>
           <dt>Note</dt><dd>The 24-hour threshold avoids deleting uploads in progress, because UC-03 uploads the file before creating the record.</dd>
@@ -1922,7 +1925,7 @@ type Edit = {
             <tr class="group-row"><td colspan="7">Admin: permanent deletion and clean-up</td></tr>
             <tr><td class="id">TC-73</td><td class="id">UC-17</td><td>Purge a sheet not in the Trash</td><td>Call <span class="mono">purge_sheet</span> on an active sheet</td><td><span class="mono">not_in_trash</span> error; no button in the UI</td><td>SQL</td><td><span class="pri h">High</span></td></tr>
             <tr><td class="id">TC-74</td><td class="id">UC-17</td><td>Typed confirmation</td><td>Type a wrong name, then the right one</td><td>Wrong: button disabled. Right: files and record gone; <span class="mono">sheet.purge</span> keeps name and path</td><td>E2E</td><td><span class="pri h">High</span></td></tr>
-            <tr><td class="id">TC-75</td><td class="id">UC-17</td><td>File deletion fails midway</td><td>Block Storage during deletion; retry</td><td>Record kept, retry offered; second attempt completes</td><td>E2E</td><td><span class="pri m">Med</span></td></tr>
+            <tr><td class="id">TC-75</td><td class="id">UC-17</td><td>File deletion fails midway</td><td>Storage refuses to delete a file</td><td>The record is deleted, the remaining files are reported and later removed by the orphan clean-up</td><td>Unit</td><td><span class="pri m">Med</span></td></tr>
             <tr><td class="id">TC-76</td><td class="id">UC-18</td><td>Orphan clean-up</td><td>One orphan folder 30 hours old, one 2 hours old</td><td>Only the 30-hour folder is listed and removed; logged</td><td>E2E</td><td><span class="pri m">Med</span></td></tr>
             <tr><td class="id">TC-77</td><td>—</td><td>Service-role key not exposed</td><td>Search the built browser bundle for the key name and value</td><td>Not found</td><td>Unit</td><td><span class="pri h">High</span></td></tr>
           </tbody>
