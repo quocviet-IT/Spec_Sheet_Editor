@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { db } from "./db";
+import { admin } from "./db";
 import { OUTSIDE_VALUES, PDF_VALUES, valuesPdf, type PlacedValue } from "./files";
 
 export type StoredBox = { cx: number; cy: number; w: number; h: number };
@@ -23,25 +23,16 @@ export async function uploadSheet(page: Page, fileName: string, mimeType: string
 }
 
 export async function storedSheet(id: string): Promise<{ name: string; version: number; detections: StoredDetection[]; edits: StoredEdit[]; deleted: boolean }> {
-  const sql = db();
-  try {
-    const [row] = await sql<{ name: string; version: number; detections: StoredDetection[]; edits: StoredEdit[]; deleted_at: Date | null }[]>`
-      select name, version, detections, edits, deleted_at from public.spec_sheets where id = ${id}`;
-    if (!row) throw new Error(`sheet ${id} not found`);
-    return { name: row.name, version: row.version, detections: row.detections, edits: row.edits, deleted: row.deleted_at !== null };
-  } finally {
-    await sql.end();
-  }
+  const { data, error } = await admin().from("spec_sheets").select("name, version, detections, edits, deleted_at").eq("id", id).maybeSingle();
+  if (error) throw new Error(`sheet ${id} not read: ${error.message}`);
+  if (!data) throw new Error(`sheet ${id} not found`);
+  return { name: data.name, version: data.version, detections: data.detections, edits: data.edits, deleted: data.deleted_at !== null };
 }
 
 export async function auditCount(id: string, action: string): Promise<number> {
-  const sql = db();
-  try {
-    const rows = await sql`select 1 from public.audit_log where target_id = ${id} and action = ${action}`;
-    return rows.length;
-  } finally {
-    await sql.end();
-  }
+  const { count, error } = await admin().from("audit_log").select("id", { count: "exact", head: true }).eq("target_id", id).eq("action", action);
+  if (error) throw new Error(`audit log not read: ${error.message}`);
+  return count ?? 0;
 }
 
 export async function waitForVersion(id: string, version: number, timeout = 30_000): Promise<void> {

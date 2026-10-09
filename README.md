@@ -60,7 +60,9 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 `npm run e2e` runs the Playwright tests against the development project. It needs the dev server
 running and `.env.local` filled in; when no dev server answers on port 3000, Playwright starts one.
 `.env.local` must also set `E2E_DEV_PROJECT_REF` to the project ref of the development project; the
-tests refuse to run unless the Supabase URL and the database user both name that ref. There are two reserved test accounts: `e2e-staff@ctyhp.vn` and `e2e-staff-b@ctyhp.vn` (the second
+tests refuse to run unless the Supabase URL names that ref (and, when `DATABASE_URL` is set, its user does too).
+The end-to-end tests need only HTTPS to Supabase, so they work from networks that block the Postgres
+ports; the SQL unit tests still need `DATABASE_URL` and the pooler port. There are two reserved test accounts: `e2e-staff@ctyhp.vn` and `e2e-staff-b@ctyhp.vn` (the second
 only for the two-person conflict test). The first run creates them and later runs reuse them; every
 run resets both passwords to random values held only in memory. The run deletes only these accounts'
 sheets: before the run, during it (after each test) and after it. The OCR test takes one to three
