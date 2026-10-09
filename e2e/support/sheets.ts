@@ -1,6 +1,4 @@
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page, type TestInfo } from "@playwright/test";
 import { admin } from "./db";
 import { OUTSIDE_VALUES, PDF_VALUES, valuesPdf, type PlacedValue } from "./files";
 
@@ -281,9 +279,14 @@ export async function openExportCheck(page: Page, format: "pdf" | "png"): Promis
   await expect(page.getByRole("dialog", { name: /Kiểm tra trước khi xuất|Check before exporting/ })).toBeVisible();
 }
 
-/** Opens the check, presses Export and saves the download under test-results/; `ms` runs from the press to the download. */
-export async function exportSheet(page: Page, format: "pdf" | "png"): Promise<{ path: string; fileName: string; ms: number }> {
+/** Opens the check, presses Export and saves the download in the test's own output folder. */
+export async function exportSheet(page: Page, format: "pdf" | "png", testInfo: TestInfo): Promise<{ path: string; fileName: string; ms: number }> {
   await openExportCheck(page, format);
+  return pressExport(page, format, testInfo);
+}
+
+/** Presses Export in the open check and saves the download in the test's output folder; `ms` runs from the press to the download. */
+export async function pressExport(page: Page, format: "pdf" | "png", testInfo: TestInfo): Promise<{ path: string; fileName: string; ms: number }> {
   const dialog = page.getByRole("dialog", { name: /Kiểm tra trước khi xuất|Check before exporting/ });
   const downloading = page.waitForEvent("download", { timeout: 60_000 });
   const started = Date.now();
@@ -291,15 +294,15 @@ export async function exportSheet(page: Page, format: "pdf" | "png"): Promise<{ 
   const download = await downloading;
   const ms = Date.now() - started;
   const fileName = download.suggestedFilename();
-  mkdirSync("test-results", { recursive: true });
-  const path = join("test-results", `${Date.now()}-${fileName}`);
+  const path = testInfo.outputPath(`${Date.now()}-${fileName}`);
   await download.saveAs(path);
   return { path, fileName, ms };
 }
 
-/** SHA-256 of the editor canvas's RGBA bytes, computed in the page. */
+/** SHA-256 of the editor canvas's RGBA bytes, computed in the page after one animation frame has painted. */
 export async function canvasHash(page: Page): Promise<string> {
   return page.evaluate(async () => {
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
     const canvas = document.querySelector<HTMLCanvasElement>("canvas[role='img']")!;
     const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
     const digest = await crypto.subtle.digest("SHA-256", data);

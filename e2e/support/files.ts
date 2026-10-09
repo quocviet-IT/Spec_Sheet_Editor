@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { PDFDocument,StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { PNG } from "pngjs";
 
 /** The template's frames (header, four panels, right table) and title on one US Letter landscape page. */
