@@ -34,27 +34,39 @@ async function run(session: ort.InferenceSession, input: Tensor): Promise<Tensor
   return { data: output.data as Float32Array, dims: output.dims };
 }
 
+/** One file of the runtime, or a `runtime_download` failure that names it. */
+async function runtimeFile(url: string): Promise<Response> {
+  const failed = (why: string) => new OcrFailure("runtime_download", `OCR runtime download failed: ${url} (${why})`);
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    throw failed(error instanceof Error ? error.message : String(error));
+  }
+  if (!response.ok) throw failed(`HTTP ${response.status}`);
+  return response;
+}
+
 /**
  * The runtime's JavaScript is loaded from a Blob URL: its thread workers start from that same URL, and
- * a Worker could not start a nested Worker from a network URL in the browser this was tested in.
+ * a Worker could not start a nested Worker from a network URL in the browser this was tested in. The
+ * WebAssembly file is downloaded here too and handed over as bytes, so a failed download reads as one
+ * and not as "the browser cannot run the reader".
  */
-async function runtimePaths(prefix: string): Promise<{ mjs: string; wasm: string }> {
-  const url = `${prefix}ort-wasm-simd-threaded.mjs`;
+async function runtimePaths(prefix: string): Promise<{ mjs: string; wasm: ArrayBuffer }> {
+  const [glue, binary] = await Promise.all([runtimeFile(`${prefix}ort-wasm-simd-threaded.mjs`), runtimeFile(`${prefix}ort-wasm-simd-threaded.wasm`)]);
   let text: string;
+  let wasm: ArrayBuffer;
   try {
-    const glue = await fetch(url);
-    if (!glue.ok) throw new OcrFailure("runtime_download", `OCR runtime download failed: ${url} (HTTP ${glue.status})`);
-    text = await glue.text();
+    [text, wasm] = await Promise.all([glue.text(), binary.arrayBuffer()]);
   } catch (error) {
-    if (error instanceof OcrFailure) throw error;
-    throw new OcrFailure("runtime_download", `OCR runtime download failed: ${url} (${error instanceof Error ? error.message : String(error)})`);
+    throw new OcrFailure("runtime_download", `OCR runtime download failed: ${prefix} (${error instanceof Error ? error.message : String(error)})`);
   }
-  const mjs = URL.createObjectURL(new Blob([text], { type: "text/javascript" }));
-  return { mjs, wasm: `${prefix}ort-wasm-simd-threaded.wasm` };
+  return { mjs: URL.createObjectURL(new Blob([text], { type: "text/javascript" })), wasm };
 }
 
 /** onnxruntime initialises its runtime once per Worker, so the Blob URL is made once too. */
-let runtime: Promise<{ mjs: string; wasm: string }> | null = null;
+let runtime: Promise<{ mjs: string; wasm: ArrayBuffer }> | null = null;
 
 /** Runs inside the Worker only (uses self.crossOriginIsolated and navigator). */
 export async function loadModels(options: InitOptions): Promise<{ models: LoadedModels; info: InitResult }> {
@@ -65,7 +77,9 @@ export async function loadModels(options: InitOptions): Promise<{ models: Loaded
     runtime = null; // a failed download may be retried
     throw error;
   });
-  ort.env.wasm.wasmPaths = await runtime;
+  const files = await runtime;
+  ort.env.wasm.wasmPaths = { mjs: files.mjs };
+  ort.env.wasm.wasmBinary = new Uint8Array(files.wasm);
   ort.env.wasm.numThreads = numThreads;
 
   const started = performance.now();
