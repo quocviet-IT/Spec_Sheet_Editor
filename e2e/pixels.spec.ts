@@ -27,7 +27,9 @@ test("TC-30 editing 16.30 changes only pixels inside its mask, and the dimension
   await page.keyboard.press("Control+s");
   await waitForVersion(id, 3);
   const [edit] = (await storedSheet(id)).edits;
-  expect(polygonTouchesRect(maskPolygon(edit, size.width, size.height), DIMENSION_LINE_PX)).toBe(false);
+  // The line itself (DIMENSION_LINE_PX is grown by 2 px on each side) lies outside the mask.
+  const line = { x: DIMENSION_LINE_PX.x + 2, y: DIMENSION_LINE_PX.y + 2, w: DIMENSION_LINE_PX.w - 4, h: DIMENSION_LINE_PX.h - 4 };
+  expect(polygonTouchesRect(maskPolygon(edit, size.width, size.height), line)).toBe(false);
   const inMask = await canvasChanges(page, maskPolygon(edit, size.width, size.height));
   expect(inMask.changed).toBeGreaterThan(0);
   expect(inMask.outside).toBe(0);
