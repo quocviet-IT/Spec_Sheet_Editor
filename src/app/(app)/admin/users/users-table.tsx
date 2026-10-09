@@ -9,7 +9,12 @@ import { ResetPasswordButton } from "./reset-password";
 
 type Pending = { row: UserRow; kind: "role" | "status"; opener: HTMLElement | null };
 
-function ConfirmDialog({ message, confirmLabel, cancelLabel, busy, onConfirm, onCancel }: {
+/** Lower-case text without accents, so "nhan" finds "Nhân". */
+function fold(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/đ/g, "d");
+}
+
+export function ConfirmDialog({ message, confirmLabel, cancelLabel, busy, onConfirm, onCancel }: {
   message: string;
   confirmLabel: string;
   cancelLabel: string;
@@ -55,7 +60,7 @@ function ConfirmDialog({ message, confirmLabel, cancelLabel, busy, onConfirm, on
         tabIndex={-1}
         role="alertdialog"
         aria-modal="true"
-        aria-describedby={`${id}-body`}
+        aria-labelledby={`${id}-body`}
         onKeyDown={onKeyDown}
         className="w-full max-w-md space-y-4 rounded-lg bg-surface p-6 text-ink shadow-xl outline-none"
       >
@@ -82,7 +87,7 @@ export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId:
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setQuery(input.trim().toLowerCase()), 300);
+    const timer = setTimeout(() => setQuery(input.trim()), 300);
     return () => clearTimeout(timer);
   }, [input]);
 
@@ -91,8 +96,9 @@ export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId:
     timeStyle: "short",
     timeZone: "Asia/Ho_Chi_Minh",
   });
-  const visible = query
-    ? rows.filter((r) => r.email.toLowerCase().includes(query) || (r.fullName ?? "").toLowerCase().includes(query))
+  const needle = fold(query);
+  const visible = needle
+    ? rows.filter((r) => fold(r.email).includes(needle) || fold(r.fullName ?? "").includes(needle))
     : rows;
   const errors: Record<string, string> = {
     last_admin: u.errors.lastAdmin,
@@ -183,7 +189,7 @@ export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId:
           <tbody>
             {visible.length === 0 && (
               <tr className="border-t border-line">
-                <td colSpan={7} className="px-3 py-4 text-ink-2">{fill(u.noMatch, { q: input.trim() })}</td>
+                <td colSpan={7} className="px-3 py-4 text-ink-2">{fill(u.noMatch, { q: query })}</td>
               </tr>
             )}
             {visible.map((row) => {
