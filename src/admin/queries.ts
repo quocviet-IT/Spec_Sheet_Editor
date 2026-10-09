@@ -1,5 +1,6 @@
 ﻿import "server-only";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { auditRange, groupPrefix, type AuditFilter } from "./audit-filter";
 import type { SettingKey } from "./settings-ranges";
 
 export type UserRow = {
@@ -152,4 +153,96 @@ export async function fetchSettings(): Promise<Record<SettingKey, number>> {
     if (Number.isFinite(n)) out[row.key] = n;
   }
   return out;
+}
+
+export const AUDIT_PAGE = 100;
+export const AUDIT_CSV_MAX = 50_000;
+
+export type AuditRow = {
+  id: number;
+  occurredAt: string;
+  actorEmail: string | null;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  detail: unknown;
+};
+
+type AuditDbRow = {
+  id: number;
+  occurred_at: string;
+  actor_email: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  detail: unknown;
+};
+
+const AUDIT_COLUMNS = "id, occurred_at, actor_email, action, target_type, target_id, detail";
+
+function toAuditRow(r: AuditDbRow): AuditRow {
+  return { id: r.id, occurredAt: r.occurred_at, actorEmail: r.actor_email, action: r.action, targetType: r.target_type, targetId: r.target_id, detail: r.detail };
+}
+
+/** The filter as plain column values; each query applies them itself so the builder types stay shallow. */
+function auditParams(filter: AuditFilter) {
+  const { fromIso, toIsoExclusive } = auditRange(filter);
+  const prefix = groupPrefix(filter.group);
+  return { fromIso, toIsoExclusive, actor: filter.actor, like: prefix ? `${prefix}%` : null, target: filter.target };
+}
+
+/** Exact number of entries matching the filter. */
+export async function countAudit(filter: AuditFilter): Promise<number> {
+  const supabase = await createSupabaseServer();
+  const f = auditParams(filter);
+  let q = supabase.from("audit_log").select("id", { count: "exact", head: true }).gte("occurred_at", f.fromIso).lt("occurred_at", f.toIsoExclusive);
+  if (f.actor) q = q.eq("actor_id", f.actor);
+  if (f.like) q = q.like("action", f.like);
+  if (f.target) q = q.eq("target_id", f.target);
+  const { count, error } = await q;
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** One page of the audit log, newest first; `before` is the id of the last entry already shown. */
+export async function fetchAudit(filter: AuditFilter, before: number | null): Promise<{ rows: AuditRow[]; next: number | null; total: number }> {
+  const supabase = await createSupabaseServer();
+  const f = auditParams(filter);
+  let q = supabase.from("audit_log").select(AUDIT_COLUMNS).gte("occurred_at", f.fromIso).lt("occurred_at", f.toIsoExclusive);
+  if (f.actor) q = q.eq("actor_id", f.actor);
+  if (f.like) q = q.like("action", f.like);
+  if (f.target) q = q.eq("target_id", f.target);
+  if (before !== null) q = q.lt("id", before);
+  const [page, total] = await Promise.all([q.order("id", { ascending: false }).limit(AUDIT_PAGE + 1), countAudit(filter)]);
+  if (page.error) throw page.error;
+  const rows = ((page.data ?? []) as unknown as AuditDbRow[]).map(toAuditRow);
+  const more = rows.length > AUDIT_PAGE;
+  const shown = more ? rows.slice(0, AUDIT_PAGE) : rows;
+  return { rows: shown, next: more ? shown[shown.length - 1].id : null, total };
+}
+
+/** Every matching entry, newest first, read in pages of 1000. */
+export async function fetchAuditAll(filter: AuditFilter): Promise<AuditRow[]> {
+  const supabase = await createSupabaseServer();
+  const f = auditParams(filter);
+  const all: AuditRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = supabase.from("audit_log").select(AUDIT_COLUMNS).gte("occurred_at", f.fromIso).lt("occurred_at", f.toIsoExclusive);
+    if (f.actor) q = q.eq("actor_id", f.actor);
+    if (f.like) q = q.like("action", f.like);
+    if (f.target) q = q.eq("target_id", f.target);
+    const { data, error } = await q.order("id", { ascending: false }).range(from, from + PAGE - 1);
+    if (error) throw error;
+    const rows = ((data ?? []) as unknown as AuditDbRow[]).map(toAuditRow);
+    all.push(...rows);
+    if (rows.length < PAGE) return all;
+  }
+}
+
+export type AuditPerson = { id: string; email: string; fullName: string | null };
+
+/** Every profile, for the person filter. */
+export async function fetchAuditPeople(): Promise<AuditPerson[]> {
+  const supabase = await createSupabaseServer();
+  return (await fetchProfiles(supabase)).map((p) => ({ id: p.id, email: p.email, fullName: p.full_name }));
 }
