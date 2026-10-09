@@ -7,7 +7,7 @@ import { needsOwnRotation, orientationMatrix, orientedSize, readJpegOrientation,
 import { pdfErrorCode, pdfScale, type PdfError } from "./pdf-errors";
 import { toPageText, type PageTextItem } from "./text";
 
-export type RenderedPage = { raster: Raster; pageCount: number; text: PageTextItem[] };
+export type RenderedPage = { raster: Raster; pageCount: number; text: PageTextItem[]; pagePt: { width: number; height: number } | null };
 export type TrimmedPage = { raster: Raster; offsetX: number; offsetY: number };
 
 export class PageError extends Error {
@@ -66,7 +66,7 @@ async function renderPdf(file: Blob): Promise<RenderedPage> {
       } catch {
         // The page is still shown when its text cannot be read; detection then uses OCR.
       }
-      return { raster, pageCount: doc.numPages, text };
+      return { raster, pageCount: doc.numPages, text, pagePt: { width: unit.width, height: unit.height } };
     } catch (error) {
       canvas.width = 0; // release the backing store on failure too
       canvas.height = 0;
@@ -100,7 +100,7 @@ async function renderImage(file: Blob, sourceType: SourceType): Promise<Rendered
     if (!ctx) throw new PageError("image_unreadable");
     if (own) ctx.setTransform(...orientationMatrix(orientation, bitmap.width, bitmap.height));
     ctx.drawImage(bitmap, 0, 0);
-    return { raster: flattenOnWhite(canvasRaster(canvas)), pageCount: 1, text: [] };
+    return { raster: flattenOnWhite(canvasRaster(canvas)), pageCount: 1, text: [], pagePt: null };
   } finally {
     bitmap.close();
   }

@@ -65,7 +65,7 @@ describe("fromPdfText", () => {
   it("turns text-layer values into stored detections", () => {
     // 6.90 at 9 pt and 300 DPI: font size 37.5 px, baseline start (300, 400), advance 70 px.
     const text: PageTextItem[] = [{ str: "6.90", transform: [37.5, 0, 0, -37.5, 300, 400], width: 70 }];
-    const [d] = fromPdfText({ raster: createRaster(W, H), text, offsetX: 0, offsetY: 0 }, ids());
+    const [d] = fromPdfText({ raster: createRaster(W, H), text, offsetX: 0, offsetY: 0, source: { kind: "image" } }, ids());
     expect(d).toMatchObject({ id: "id-1", readValue: "6.90", confidence: null, source: "pdf-text", angle: 0 });
     near(d.box.cx * W, 335); // blank page: nothing to tighten to, the text-layer box is kept
     near(d.box.cy * H, 386.5);
@@ -86,7 +86,7 @@ describe("detectValues", () => {
     const reader = { scan: vi.fn(async () => scan()), ...over };
     return reader as unknown as OcrLike & typeof reader;
   };
-  const loaded = (text: PageTextItem[] = []): LoadedPage => ({ raster: page(), text, offsetX: 0, offsetY: 0 });
+  const loaded = (text: PageTextItem[] = []): LoadedPage => ({ raster: page(), text, offsetX: 0, offsetY: 0, source: { kind: "image" } });
 
   it("uses the text layer and never asks for the reader when it has values", async () => {
     const getReader = vi.fn(async () => ready());

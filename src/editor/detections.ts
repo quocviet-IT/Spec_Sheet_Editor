@@ -3,13 +3,14 @@ import { OcrFailure } from "@/lib/ocr/protocol";
 import type { Raster } from "@/lib/ocr/raster";
 import type { ScanResult } from "@/lib/ocr/scan";
 import type { PageTextItem } from "@/lib/page/text";
+import type { ExportSource } from "./export-plan";
 import { boxFromQuad, centreInDrawingArea, drawingAreaPx, roundAngle, roundBox, toBox, toPx } from "./geometry";
 import { pdfTextValues } from "./pdf-text";
 import { analyseBox } from "./pixels";
 import type { Detection, Edit, PxBox } from "./types";
 
 /** The trimmed page as the editor holds it, with the PDF text items of the rendered page. */
-export type LoadedPage = { raster: Raster; text: readonly PageTextItem[]; offsetX: number; offsetY: number };
+export type LoadedPage = { raster: Raster; text: readonly PageTextItem[]; offsetX: number; offsetY: number; source: ExportSource };
 /** A READY reader: models loaded, page set. */
 export type OcrLike = Pick<OcrClient, "scan">;
 export type ReaderFailure = "ocr_load" | "ocr_unsupported";

@@ -142,3 +142,29 @@ export async function loadEditorState(id: string): Promise<EditorState | { error
   if (!parsed.success) return { error: "unknown" };
   return { version: data.version, name: data.name, detections: parsed.data.detections, edits: parsed.data.edits, deleted: data.deleted_at !== null };
 }
+
+const exportInput = z.object({
+  id: z.uuid(),
+  format: z.enum(["png", "pdf"]),
+  edits: z.number().int().min(0).max(300),
+  unsaved: z.boolean(),
+});
+
+/** UC-09 postcondition: `sheet.export_png` / `sheet.export_pdf` in the audit log (`log_client_event`). */
+export async function logExport(input: { id: string; format: "png" | "pdf"; edits: number; unsaved: boolean }): Promise<{ ok: true } | { error: "invalid" | "unknown" }> {
+  await requireUser("/sheets");
+  const parsed = exportInput.safeParse(input);
+  if (!parsed.success) return { error: "invalid" };
+  const { id, format, edits, unsaved } = parsed.data;
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase.rpc("log_client_event", {
+    p_action: format === "png" ? "sheet.export_png" : "sheet.export_pdf",
+    p_target_id: id,
+    p_detail: { edits, unsaved },
+  });
+  if (error) {
+    console.error("logExport failed:", error.message);
+    return { error: "unknown" };
+  }
+  return { ok: true };
+}

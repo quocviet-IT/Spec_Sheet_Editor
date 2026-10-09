@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { loadArimo, type FontMetrics } from "@/editor/canvas";
+import type { ExportSource } from "@/editor/export-plan";
 import { matchingValues } from "@/editor/matching";
 import { detectValues, makeEdit, ocrFailureReason, toDetection, type LoadedPage } from "@/editor/detections";
 import { boxForDrawnRect, boxFromQuad, detectionAt, MIN_DRAWN_PX, pointInDrawingArea, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
@@ -271,7 +272,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       }
       const canvas = document.createElement("canvas");
       drawRaster(canvas, trimmed.raster);
-      const page: LoadedPage = { raster: trimmed.raster, text: rendered.text, offsetX: trimmed.offsetX, offsetY: trimmed.offsetY };
+      const source: ExportSource = rendered.pagePt
+        ? { kind: "pdf", pageWidthPt: rendered.pagePt.width, pageHeightPt: rendered.pagePt.height, pxPerPt: rendered.raster.width / rendered.pagePt.width, offsetX: trimmed.offsetX, offsetY: trimmed.offsetY }
+        : { kind: "image" };
+      const page: LoadedPage = { raster: trimmed.raster, text: rendered.text, offsetX: trimmed.offsetX, offsetY: trimmed.offsetY, source };
       setLoaded({ page, base: canvas, metrics });
       // Only a sheet that has never stored anything is scanned, and never twice: whatever is held now
       // (stored or pending) stays, because the edits point at its ids.
