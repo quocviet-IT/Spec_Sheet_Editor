@@ -178,3 +178,77 @@ export function watchOcrRequests(page: Page): string[] {
   });
   return seen;
 }
+
+export type Point = { x: number; y: number };
+
+/** Stores the canvas pixels on `window` for `canvasChanges`; returns the canvas size. */
+export async function rememberCanvas(page: Page): Promise<{ width: number; height: number }> {
+  return page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>("canvas[role='img']")!;
+    const ctx = canvas.getContext("2d")!;
+    (window as unknown as { __remembered: ImageData }).__remembered = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    return { width: canvas.width, height: canvas.height };
+  });
+}
+
+/** Pixels changed since `rememberCanvas`; with a polygon, how many lie inside and outside it; `angle` is the
+ *  principal direction of the changed pixels (degrees, y down) from their second moments. */
+export async function canvasChanges(page: Page, polygon?: Point[]): Promise<{ changed: number; inside: number; outside: number; angle: number | null }> {
+  return page.evaluate((poly) => {
+    const canvas = document.querySelector<HTMLCanvasElement>("canvas[role='img']")!;
+    const { width, height } = canvas;
+    const before = (window as unknown as { __remembered: ImageData }).__remembered;
+    const now = canvas.getContext("2d")!.getImageData(0, 0, width, height);
+    const a = before.data;
+    const b = now.data;
+    const inPoly = (px: number, py: number) => {
+      let inside = false;
+      for (let i = 0, j = poly!.length - 1; i < poly!.length; j = i++) {
+        const p = poly![i];
+        const q = poly![j];
+        if (p.y > py !== q.y > py && px < ((q.x - p.x) * (py - p.y)) / (q.y - p.y) + p.x) inside = !inside;
+      }
+      return inside;
+    };
+    let changed = 0, inside = 0, outside = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        if (a[i] === b[i] && a[i + 1] === b[i + 1] && a[i + 2] === b[i + 2]) continue;
+        changed++;
+        const px = x + 0.5;
+        const py = y + 0.5;
+        sx += px; sy += py; sxx += px * px; syy += py * py; sxy += px * py;
+        if (poly) {
+          if (inPoly(px, py)) inside++;
+          else outside++;
+        }
+      }
+    }
+    let angle: number | null = null;
+    if (changed >= 2) {
+      const mx = sx / changed;
+      const my = sy / changed;
+      const vx = sxx / changed - mx * mx;
+      const vy = syy / changed - my * my;
+      const cxy = sxy / changed - mx * my;
+      angle = (0.5 * Math.atan2(2 * cxy, vx - vy) * 180) / Math.PI;
+    }
+    return { changed, inside, outside, angle };
+  }, polygon);
+}
+
+/** The edit's mask as the app draws it (digits box plus max(1, 0.15 x digit height), turned by the angle),
+ *  grown by 1.5 px for anti-aliasing. */
+export function maskPolygon(edit: StoredEdit, width: number, height: number): Point[] {
+  void height;
+  const pad = Math.max(1, 0.15 * edit.box.h * width);
+  const hw = (edit.box.w * width + 2 * pad) / 2 + 1.5;
+  const hh = (edit.box.h * width + 2 * pad) / 2 + 1.5;
+  const rad = (edit.angle * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const cx = edit.box.cx * width;
+  const cy = edit.box.cy * height;
+  return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => ({ x: cx + x * cos - y * sin, y: cy + x * sin + y * cos }));
+}
