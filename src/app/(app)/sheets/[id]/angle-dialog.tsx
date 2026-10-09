@@ -21,8 +21,11 @@ export function AngleDialog({ style, onChoose, onCancel }: { style: CSSPropertie
     first.current?.focus();
   }, []);
 
+  // Focus moves to the degrees field only when the person clicked "Free rotation"; arrow keys stay in the radio group.
+  const focusDegrees = useRef(false);
   useEffect(() => {
-    if (choice === "free") degreesInput.current?.focus();
+    if (choice === "free" && focusDegrees.current) degreesInput.current?.focus();
+    focusDegrees.current = false;
   }, [choice]);
 
   function submit(e: FormEvent) {
@@ -66,7 +69,7 @@ export function AngleDialog({ style, onChoose, onCancel }: { style: CSSPropertie
         <legend className="sr-only">{a.title}</legend>
         {options.map((o, i) => (
           <label key={o.key} className="flex items-center gap-2 text-sm">
-            <input ref={i === 0 ? first : undefined} type="radio" name={`${id}-angle`} checked={choice === o.key} onChange={() => { setChoice(o.key); setError(null); }} />
+            <input ref={i === 0 ? first : undefined} type="radio" name={`${id}-angle`} checked={choice === o.key} onClick={(e) => { if (o.key === "free" && e.detail > 0) focusDegrees.current = true; }} onChange={() => { setChoice(o.key); setError(null); }} />
             {o.label}
           </label>
         ))}

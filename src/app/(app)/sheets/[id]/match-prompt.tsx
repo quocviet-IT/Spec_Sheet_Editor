@@ -18,6 +18,7 @@ export function MatchPrompt({ oldValue, count, onApply, onSkip }: { oldValue: st
   return (
     <section
       role="dialog"
+      data-match-prompt
       aria-labelledby={`${id}-title`}
       aria-describedby={`${id}-body`}
       onKeyDown={(e) => {

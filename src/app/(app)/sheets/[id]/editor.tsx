@@ -93,6 +93,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const [drawing, setDrawing] = useState(false);
   const [drawn, setDrawn] = useState<Rect | null>(null);
   const drawButton = useRef<HTMLButtonElement | null>(null);
+  const matchRef = useRef<typeof match>(null);
+  const drawingRef = useRef(false);
+  const [nameKey, setNameKey] = useState(0);
   const readingNow = useRef(false);
   const inFlight = useRef(false);
   const alive = useRef(true);
@@ -102,6 +105,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   useEffect(() => {
     latest.current = { ...latest.current, detections, edits, name, saved: savedSnapshot, firstStore };
     ensureReader.current = reader.ensure;
+    matchRef.current = match;
+    drawingRef.current = drawing;
   });
   useEffect(() => {
     alive.current = true;
@@ -125,6 +130,27 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     setNotice((n) => (n?.draw ? null : n));
   }, []);
 
+  const focusMarker = useCallback((id: string) => {
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-detection="${CSS.escape(id)}"]`)?.focus());
+  }, []);
+  const focusDrawButton = useCallback(() => {
+    requestAnimationFrame(() => drawButton.current?.focus());
+  }, []);
+  /** Closes the matching prompt; if focus was inside it, hands focus to the marker it came from (or the Draw box button). */
+  const closeMatch = useCallback(
+    (toDraw = false) => {
+      const m = matchRef.current;
+      if (!m) return;
+      matchRef.current = null;
+      const inside = document.activeElement?.closest("[data-match-prompt]") != null;
+      setMatch(null);
+      if (!inside) return;
+      if (toDraw) focusDrawButton();
+      else focusMarker(m.from);
+    },
+    [focusMarker, focusDrawButton],
+  );
+
   /** Take what the database holds (after a conflict, or when someone else stored the first detection). */
   const reloadLatest = useCallback(async (): Promise<boolean> => {
     let state: Awaited<ReturnType<typeof loadEditorState>> | undefined;
@@ -146,13 +172,16 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     setDetections(state.detections);
     setEdits(state.edits);
     setName(state.name);
-    setMatch(null);
+    closeMatch();
+    endDraw();
+    setNotice(null);
+    setNameKey((k) => k + 1);
     setSavedSnapshot(saved);
     setActiveId(null);
     setDetect(state.detections.length === 0 ? "none" : "idle");
     setSave({ state: state.deleted ? "trashed" : "idle" });
     return true;
-  }, [sheet.id]);
+  }, [sheet.id, closeMatch, endDraw]);
 
   /**
    * UC-08: save the lists with the version this screen holds. Nothing happens while a save is running
@@ -165,7 +194,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       const force = sent.firstStore;
       if (inFlight.current || (!force && snapshot(sent.name, sent.detections, sent.edits) === sent.saved)) return;
       inFlight.current = true;
-      setMatch(null);
+      closeMatch();
       setSave({ state: "saving" });
       let result: SaveResult | undefined;
       try {
@@ -201,7 +230,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       }
       setSave({ state: result.error === "trashed" ? "trashed" : "failed" });
     },
-    [sheet.id, reloadLatest],
+    [sheet.id, reloadLatest, closeMatch],
   );
 
   // Load the page and the font; on the first open, detect and store the values (UC-04).
@@ -293,9 +322,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         if (e.repeat || !loadedReady || detectRunning || conflictOpen || drawnOpen || popoverOpen || match !== null || target?.closest("[role='dialog']")) return;
         if (drawing) endDraw();
         else setDrawing(true);
-      } else if (e.key === "Escape" && drawing) {
+      } else if (e.key === "Escape") {
+        if (!drawing || e.defaultPrevented) return; // already handled by the popover, the prompt or a dialog
         endDraw();
-      } else if (e.key === "+" || e.key === "=") setZoom(zoomIn(scale));
+      } else if (conflictOpen) return;
+      else if (e.key === "+" || e.key === "=") setZoom(zoomIn(scale));
       else if (e.key === "-") setZoom(zoomOut(scale));
       else if (e.key === "0") setZoom("fit");
       else return;
@@ -320,10 +351,6 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     return () => window.clearTimeout(timer);
   }, [loaded, detect, textLayerOnly, ensureNow]);
 
-  function focusMarker(id: string) {
-    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-detection="${CSS.escape(id)}"]`)?.focus());
-  }
-
   function closePopover(id: string) {
     setActiveId(null);
     focusMarker(id);
@@ -338,7 +365,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     setEdits(next);
     latest.current = { ...latest.current, edits: next };
     setActiveId(null);
-    if (others.length > 0) setMatch({ from: detection.id, oldValue, newValue, ids: others.map((d) => d.id) });
+    if (others.length > 0) {
+      const next = { from: detection.id, oldValue, newValue, ids: others.map((d) => d.id) };
+      matchRef.current = next;
+      setMatch(next);
+    }
     else focusMarker(detection.id);
   }
 
@@ -352,13 +383,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     const next = [...latest.current.edits, ...added];
     latest.current = { ...latest.current, edits: next };
     setEdits(next);
-    const from = match.from;
-    setMatch(null);
-    focusMarker(from);
+    closeMatch();
   }
 
   function revert(id: string) {
-    setMatch(null);
+    closeMatch();
     setEdits((list) => list.filter((e) => e.detectionId !== id));
     closePopover(id);
   }
@@ -372,12 +401,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     );
   }
 
-  function focusDrawButton() {
-    requestAnimationFrame(() => drawButton.current?.focus());
-  }
-
   function onDrawn(rect: Rect) {
     if (rect.w < MIN_DRAWN_PX || rect.h < MIN_DRAWN_PX) return;
+    closeMatch(true);
     if (detect === "running") {
       // The first detection replaces the value list when it finishes, which would drop a drawn value.
       setNotice({ kind: "status", text: t.editor.waitDetect });
@@ -393,7 +419,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
 
   function onAngle(angle: number) {
     if (!loaded || !drawn) return;
-    setMatch(null);
+    closeMatch(true);
     const px = boxForDrawnRect(drawn, angle);
     setDrawn(null);
     if (!analyseBox(loaded.page.raster, px)) {
@@ -425,8 +451,15 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         return;
       }
       if (alive.current) setNotice({ kind: "status", text: t.editor.reading });
-      const result = await client.read(p).catch(() => null);
+      let result: Awaited<ReturnType<OcrClient["read"]>> | null = null;
+      let crashed = false;
+      try {
+        result = await client.read(p);
+      } catch {
+        crashed = true;
+      }
       if (!alive.current) return;
+      if (crashed) reader.reset(); // the Worker is gone; the next click starts a new one
       const r = result?.reading ?? null;
       const px = r ? boxFromQuad(r.quad, r.angle) : null;
       if (!r || !px || !pointInDrawingArea({ x: px.cx, y: px.cy }, W, H)) {
@@ -434,6 +467,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         return;
       }
       setNotice(null);
+      if (drawingRef.current) endDraw(); // never a popover with the draw layer on
       const hit = detectionAt(latest.current.detections, { x: px.cx, y: px.cy }, W, H);
       if (hit) {
         open(hit.id);
@@ -470,6 +504,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     />
   ) : null;
 
+  function rename(next: string) {
+    latest.current = { ...latest.current, name: next }; // a save started in the same keystroke sends it
+    setName(next);
+  }
+
   async function loadLatest() {
     setConflictLoad({ loading: true, failed: false });
     const ok = await reloadLatest();
@@ -502,12 +541,12 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     <section aria-label={name} data-wide data-reader-state={reader.state} className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col gap-3">
       <header className="flex flex-wrap items-center gap-3">
         <Link href="/sheets" className="text-sm text-ink-2 hover:text-ink">← {t.sheet.back}</Link>
-        <NameField name={name} onRename={setName} />
+        <NameField key={nameKey} name={name} onRename={rename} />
         <div role="status" aria-live="polite" className="text-sm">{status()}</div>
         <button
           type="button"
           ref={drawButton}
-          onClick={() => { if (drawing) endDraw(); else { setDrawing(true); setDrawn(null); } }}
+          onClick={() => { closeMatch(); if (drawing) endDraw(); else { setDrawing(true); setDrawn(null); } }}
           aria-pressed={drawing}
           aria-keyshortcuts="K"
           disabled={!loaded || detectRunning}
@@ -535,7 +574,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
             </p>
           ) : null}
           {match ? (
-            <MatchPrompt oldValue={match.oldValue} count={match.ids.length} onApply={applyMatches} onSkip={() => { const from = match.from; setMatch(null); focusMarker(from); }} />
+            <MatchPrompt oldValue={match.oldValue} count={match.ids.length} onApply={applyMatches} onSkip={() => closeMatch()} />
           ) : null}
           <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-line">
           {loadError ? (

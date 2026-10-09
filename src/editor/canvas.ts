@@ -20,7 +20,10 @@ export function loadArimo(): Promise<FontMetrics> {
     await face.load();
     document.fonts.add(face);
     // A same-metric system font must never stand in silently.
-    if (face.status !== "loaded" || !document.fonts.check(`100px ${ARIMO_FAMILY}`)) throw new Error("Arimo is not available");
+    if (face.status !== "loaded" || !document.fonts.check(`100px ${ARIMO_FAMILY}`)) {
+      document.fonts.delete(face); // a retry must not stack a second face
+      throw new Error("Arimo is not available");
+    }
     const ctx = document.createElement("canvas").getContext("2d");
     if (!ctx) throw new Error("No 2D canvas");
     ctx.font = `100px ${ARIMO_FAMILY}`;

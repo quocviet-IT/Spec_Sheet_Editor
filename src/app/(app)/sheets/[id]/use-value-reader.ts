@@ -15,7 +15,7 @@ export type ReaderState = "idle" | "loading" | "ready" | ReaderFailure;
  * the reader keeps the page it started with (the editor shows one page for its whole life). The Worker is
  * held from the moment it exists, so closing the page stops it even in the middle of loading the models.
  */
-export function useValueReader(): { state: ReaderState; ensure: (page: Raster) => Promise<OcrClient> } {
+export function useValueReader(): { state: ReaderState; ensure: (page: Raster) => Promise<OcrClient>; reset: () => void } {
   const client = useRef<OcrClient | null>(null);
   const starting = useRef<Promise<OcrClient> | null>(null);
   const alive = useRef(true);
@@ -29,6 +29,14 @@ export function useValueReader(): { state: ReaderState; ensure: (page: Raster) =
       client.current = null;
       starting.current = null;
     };
+  }, []);
+
+  /** Throws the Worker away (it crashed); the next `ensure` starts a new one. */
+  const reset = useCallback(() => {
+    client.current?.dispose();
+    client.current = null;
+    starting.current = null;
+    if (alive.current) setState("idle");
   }, []);
 
   const ensure = useCallback((page: Raster): Promise<OcrClient> => {
@@ -46,7 +54,7 @@ export function useValueReader(): { state: ReaderState; ensure: (page: Raster) =
         if (client.current === fresh) client.current = null;
         throw error;
       }
-      if (!alive.current) {
+      if (!alive.current || client.current !== fresh) {
         fresh.dispose();
         throw new Error("The page was closed.");
       }
@@ -61,5 +69,5 @@ export function useValueReader(): { state: ReaderState; ensure: (page: Raster) =
     return start;
   }, []);
 
-  return { state, ensure };
+  return { state, ensure, reset };
 }

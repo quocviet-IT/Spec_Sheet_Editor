@@ -60,6 +60,16 @@ export function NameField({ name, onRename }: { name: string; onRename: (name: s
           onKeyDown={(e) => {
             if (e.key === "Enter") { e.preventDefault(); finish(true, true); }
             if (e.key === "Escape") { e.preventDefault(); finish(false, true); }
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "s") {
+              // Save the draft with the sheet: commit it first (an empty name is refused and nothing is saved).
+              if (!draft.trim()) {
+                e.preventDefault();
+                e.stopPropagation();
+                setError(r.empty);
+                return;
+              }
+              finish(true, true);
+            }
           }}
           onBlur={() => finish(true, false)}
           aria-invalid={error !== null}
