@@ -19,8 +19,12 @@ export function renderResult(base: HTMLCanvasElement, edits: readonly Edit[], wi
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
-  if (!ctx || canvas.width !== width) throw new ExportError("No canvas of that size");
-  paintSheet(ctx, base, edits, width, height, metrics);
+  if (!ctx || canvas.width !== width || canvas.height !== height) throw new ExportError("No canvas of that size");
+  try {
+    paintSheet(ctx, base, edits, width, height, metrics);
+  } catch (error) {
+    throw new ExportError(`Could not paint the page: ${error instanceof Error ? error.message : String(error)}`);
+  }
   return canvas;
 }
 

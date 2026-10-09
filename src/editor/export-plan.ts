@@ -1,12 +1,18 @@
 import { matchingValues } from "./matching";
 import type { Detection, Edit } from "./types";
 
-/** UC-09 step 5 / TC-46: "<sheet name>-edited.<ext>"; characters file systems refuse become "-". */
+const MAX_STEM = 150;
+
+/**
+ * UC-09 step 5 / TC-46: "<sheet name>-edited.<ext>"; characters file systems refuse, control characters
+ * and bidirectional marks (which can hide what a name really ends in) become "-"; the name part stops at 150.
+ */
 export function exportFileName(name: string, ext: "png" | "pdf"): string {
   const safe = name
-    .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "-")
+    .replace(/[\\/:*?"<>|\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, "-")
     .replace(/ {2,}/g, " ")
     .trim()
+    .slice(0, MAX_STEM)
     .replace(/[. ]+$/, "");
   return `${safe.replace(/^[. ]+$/, "") || "sheet"}-edited.${ext}`;
 }

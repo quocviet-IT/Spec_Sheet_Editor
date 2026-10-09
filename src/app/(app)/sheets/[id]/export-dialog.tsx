@@ -57,7 +57,7 @@ export function ExportDialog({ format, items, suggestions, dirty, busy, failed, 
   });
   useEffect(() => {
     function onEscape(ev: globalThis.KeyboardEvent) {
-      if (ev.key !== "Escape") return;
+      if (ev.key !== "Escape" || ev.defaultPrevented) return;
       ev.preventDefault();
       if (busyRef.current) return;
       closeRef.current();

@@ -100,6 +100,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const drawButton = useRef<HTMLButtonElement | null>(null);
   const matchRef = useRef<typeof match>(null);
   const drawingRef = useRef(false);
+  /** Mirrors whether S5 is open, for listeners and awaits that must not open anything behind it. */
+  const exportOpenRef = useRef(false);
   const [nameKey, setNameKey] = useState(0);
   const readingNow = useRef(false);
   const inFlight = useRef(false);
@@ -112,6 +114,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     ensureReader.current = reader.ensure;
     matchRef.current = match;
     drawingRef.current = drawing;
+    exportOpenRef.current = exporting !== null;
   });
   useEffect(() => {
     alive.current = true;
@@ -230,6 +233,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
           return;
         }
         setConflictLoad({ loading: false, failed: false });
+        if (exportOpenRef.current) {
+          exportOpenRef.current = false;
+          setExporting(null); // one modal at a time: the conflict dialog owns Escape and focus
+        }
         setConflict({ byName: result.byName, savedAt: result.savedAt });
         setSave({ state: "idle" });
         return;
@@ -415,6 +422,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     setExporting({ format, busy: true, failed: false });
     let canvas: HTMLCanvasElement | null = null;
     try {
+      // Let the busy state paint before the page is rendered.
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
       const { raster, source } = loaded.page;
       canvas = renderResult(loaded.base, latest.current.edits, raster.width, raster.height, loaded.metrics);
       const file = exportFileName(latest.current.name, format);
@@ -424,8 +433,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       if (!alive.current) return;
       setExporting(null);
       setNotice({ kind: "status", text: fill(t.editor.export.done, { file }) });
-    } catch {
-      if (alive.current) setExporting({ format, busy: false, failed: true });
+    } catch (error) {
+      console.error("Export failed:", error instanceof Error ? error.message : String(error));
+      if (alive.current && exportOpenRef.current) setExporting({ format, busy: false, failed: true });
     } finally {
       if (canvas) releaseCanvas(canvas);
     }
@@ -438,6 +448,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   }
 
   function open(id: string) {
+    if (exportOpenRef.current) return; // nothing opens behind the pre-export check
     setMatch(null);
     setNotice(null);
     setActiveId(id);
@@ -613,6 +624,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
             closeMatch();
             if (drawingRef.current) endDraw();
             setActiveId(null);
+            exportOpenRef.current = true;
             setExporting({ format, busy: false, failed: false });
           }}
         />

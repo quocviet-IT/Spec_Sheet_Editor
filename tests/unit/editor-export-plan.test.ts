@@ -13,6 +13,19 @@ describe("exportFileName (TC-46)", () => {
     expect(exportFileName("tab\there", "pdf")).toBe("tab-here-edited.pdf");
     expect(exportFileName("...", "pdf")).toBe("sheet-edited.pdf");
   });
+
+  it("replaces bidirectional marks and C1 controls, which can hide what a name ends in", () => {
+    expect(exportFileName("report‮fdp.exe", "png")).toBe("report-fdp.exe-edited.png");
+    expect(exportFileName("a‎b‏c⁦d⁩e", "pdf")).toBe("a-b-c-d-e-edited.pdf");
+    expect(exportFileName("x\u0085y\u009Fz", "png")).toBe("x-y-z-edited.png");
+  });
+
+  it("keeps the name part to 150 characters, even for the longest name the schema allows", () => {
+    const long = exportFileName("n".repeat(200), "pdf");
+    expect(long).toBe(`${"n".repeat(150)}-edited.pdf`);
+    // A cut that lands on spaces or dots leaves none at the end of the stem.
+    expect(exportFileName(`${"n".repeat(148)}. .more`, "png")).toBe(`${"n".repeat(148)}-edited.png`);
+  });
 });
 
 describe("pdfLayout (UC-09 step 4)", () => {
@@ -55,6 +68,12 @@ describe("exportSuggestions (UC-10 step 2)", () => {
     const detections = [det("a", "2.50"), det("b", "2.50"), det("c", "6.90"), det("d", "2.50")];
     const edits = [edit("a", "2.50", "2.60"), edit("d", "2.50", "2.60"), edit("c", "6.90", "7.10")];
     expect(exportSuggestions(detections, edits)).toEqual([{ oldValue: "2.50", newValue: "2.60", ids: ["b"] }]);
+  });
+
+  it("uses the first edit's new value when one old value was edited to two different values", () => {
+    const detections = [det("a", "2.50"), det("b", "2.50"), det("c", "2.50")];
+    const edits = [edit("a", "2.50", "2.60"), edit("b", "2.50", "2.70")];
+    expect(exportSuggestions(detections, edits)).toEqual([{ oldValue: "2.50", newValue: "2.60", ids: ["c"] }]);
   });
 
   it("offers nothing when every match is edited", () => {
