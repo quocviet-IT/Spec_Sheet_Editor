@@ -141,6 +141,61 @@ after the page opens.
 - Code: share the trim/replace of the dimension helpers; use `hourCycle: "h23"` in the clock helper; derive the baseline from the box height; the font check cannot tell Arimo from a same-metric fallback; the runtime is fetched inside the inference session creation, so an offline start reads as an init failure.
 - M7: confirm the 3-second reopen and the 5-second read on click on a production build.
 
+### M5 result (2026-10-09)
+
+Commits `git log --oneline f8ce215..HEAD` on branch `feat/m5-export`: the export file names, the PDF
+page layout and the pre-export suggestions; rendering, encoding and downloading the export in the
+browser, with the export log entry; the Export menu and the pre-export check; and the end-to-end tests
+that open the exported files.
+
+Measured: unit tests 36 files, 220 tests passing; end-to-end 41 tests passing (full run 14.6 minutes on
+the office PC). The SQL suites were not run on this network (the Postgres pooler port is blocked), so
+no new SQL count is given; M5 added no migration. TC-42: PDF export takes 1.6 s from pressing Export to
+the download (limit 5 s); the exported PDFs have 1 page, 792 × 612 pt and no text items. TC-44: the
+exported PNG's pixels equal the editor canvas (SHA-256 of the RGBA bytes). TC-47 (the same render on
+Windows and macOS) stays with M7, because it needs a macOS machine.
+
+### Carried into M5 and later from the M5 export work
+
+- Export rendering: check the canvas height as well as the width after rendering, and turn any error thrown while painting or encoding into the "file could not be rendered" message; replace C1 control characters and bidirectional marks in file names, and cap the name stem at about 150 characters; add a test for two edits that share an old value but have different new values.
+- Export dialog: paint the "Preparing the file" text before the rendering starts (wait one animation frame); do not open the read-on-click popover while an export is running, so it cannot appear behind the dialog; the dialog's `Esc` handling should ignore keys already handled by another layer; check that `Shift+Tab` from the dialog's first control behaves like `Tab` from its last; add a test that "Apply there too" in the dialog also skips values that were edited.
+- M7: TC-47 on macOS; confirm the 5-second PDF export on a production build.
+
+### M6 result (2026-10-09)
+
+Commits `git log --oneline 50b5a0f..HEAD` on branch `feat/m6-admin`: the plan; the audit filter, the CSV
+builder, the orphan selection and the permanent-deletion sequence; the Admin navigation and the desktop
+notice; the users list with role changes and suspension; the permitted domains and emails with account
+counts, and the system settings; the audit log with its CSV; permanent deletion with typed confirmation and
+the orphan clean-up; the fixes found on the way; and the end-to-end tests of the whole area.
+
+Measured: unit tests 40 files, 249 tests passing; end-to-end 50 tests passing (full run 18.8 minutes on
+the office PC; the Admin spec alone, 9 tests, 5.0 minutes). The SQL suites were not run on this network
+(the Postgres pooler port is blocked), so no new SQL count is given. The Admin end-to-end tests change
+shared state (settings, the access lists, a second account's role and status) and restore it; the
+README lists what they touch.
+
+Decisions taken during M6 (also in the design, UC-14, UC-16 and UC-17):
+
+- Permanent deletion removes the record first, in one statement that also checks the sheet is in the
+  Trash, and only then deletes the files, with two attempts. Files that cannot be deleted are reported and
+  become an orphan folder for the clean-up. This replaces "files first; a retry deletes what remains".
+- The permitted lists gate only Google sign-ins; password accounts an Admin created are always admitted.
+  The account counts and the "will lose access" warning therefore count only Google accounts, and the
+  warning counts those matched by that entry and by no other.
+- The audit CSV is a snapshot: rows up to the newest entry when the export starts, stopping at 50,000.
+  Cells that a spreadsheet could read as a formula are written as plain text.
+- The Admin area needs a window at least 1024 px wide.
+
+### Carried into M7 from the M6 admin work
+
+- Desktop notice: below 1024 px the notice is only hidden by style; the server still reads the page's data on a phone. Skip the reads for narrow windows, or accept the cost and note it.
+- Copy: the English wording of the unknown-error message on the users page.
+- Orphan clean-up: when a batch of deletions fails midway, log the folders that were actually removed; when nothing was removed, say "none" instead of "Cleaned up 0"; show 1048575 bytes as "1.0 MB" and not "1024.0 KB".
+- Permanent deletion: remove the unreachable "forbidden" branch in the error mapping; move focus sensibly after a successful deletion (the row is gone) and when the orphan confirmation dialog closes; confirm there are tests for the accent-composed (NFC) name match and for the restore-at-the-same-moment case.
+- End-to-end run: the whole run now takes 18.8 minutes against a 25-minute limit in `playwright.config.ts`; raise the limit before the suite grows further.
+- SQL: run the SQL suites for the Admin functions (TC-56 to TC-61, TC-65, TC-69 to TC-71, TC-73) from a network that reaches the pooler port.
+
 ### Carried into M3 and later from the M2 review
 
 - M3 (sheet decode): composite transparency onto white before OCR; the Raster sent to the Worker is always opaque.

@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { loadArimo, type FontMetrics } from "@/editor/canvas";
+import { encodePdf, encodePng, downloadBlob, releaseCanvas, renderResult } from "@/editor/export";
+import { exportFileName, exportSuggestions, type ExportSource, type Suggestion } from "@/editor/export-plan";
 import { matchingValues } from "@/editor/matching";
 import { detectValues, makeEdit, ocrFailureReason, toDetection, type LoadedPage } from "@/editor/detections";
-import { boxForDrawnRect, boxFromQuad, detectionAt, MIN_DRAWN_PX, pointInDrawingArea, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
+import { boxForDrawnRect, boxFromQuad, detectionAt, MIN_DRAWN_PX, panelOf, pointInDrawingArea, readingOrder, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
 import { analyseBox } from "@/editor/pixels";
 import type { Detection, Edit } from "@/editor/types";
 import { zoomIn, zoomOut, type Zoom } from "@/editor/zoom";
@@ -14,12 +16,14 @@ import type { Point, Rect } from "@/lib/ocr/geometry";
 import { drawRaster, renderSource, trimPage, type RenderedPage } from "@/lib/page/render";
 import { useLocale, useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
-import { loadEditorState, saveSheet } from "@/sheets/actions";
+import { loadEditorState, logExport, saveSheet } from "@/sheets/actions";
 import { clockTime } from "@/sheets/format";
 import type { EditorSheet, SaveResult } from "@/sheets/types";
 import { AngleDialog } from "./angle-dialog";
 import { ConflictDialog } from "./conflict-dialog";
 import { EditPopover } from "./edit-popover";
+import { ExportDialog } from "./export-dialog";
+import { ExportMenu } from "./export-menu";
 import { MatchPrompt } from "./match-prompt";
 import { NameField } from "./name-field";
 import { SheetCanvas } from "./sheet-canvas";
@@ -92,9 +96,12 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const [notice, setNotice] = useState<{ kind: "status" | "alert"; text: string; draw?: boolean } | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [drawn, setDrawn] = useState<Rect | null>(null);
+  const [exporting, setExporting] = useState<{ format: "png" | "pdf"; busy: boolean; failed: boolean } | null>(null);
   const drawButton = useRef<HTMLButtonElement | null>(null);
   const matchRef = useRef<typeof match>(null);
   const drawingRef = useRef(false);
+  /** Mirrors whether S5 is open, for listeners and awaits that must not open anything behind it. */
+  const exportOpenRef = useRef(false);
   const [nameKey, setNameKey] = useState(0);
   const readingNow = useRef(false);
   const inFlight = useRef(false);
@@ -107,6 +114,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     ensureReader.current = reader.ensure;
     matchRef.current = match;
     drawingRef.current = drawing;
+    exportOpenRef.current = exporting !== null;
   });
   useEffect(() => {
     alive.current = true;
@@ -119,6 +127,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const conflictOpen = conflict !== null;
   const drawnOpen = drawn !== null;
   const popoverOpen = activeId !== null;
+  const exportOpen = exporting !== null;
   const loadedReady = loaded !== null;
   const detectRunning = detect === "running";
   const scale = zoom === "fit" ? fitScale : zoom;
@@ -224,6 +233,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
           return;
         }
         setConflictLoad({ loading: false, failed: false });
+        if (exportOpenRef.current) {
+          exportOpenRef.current = false;
+          setExporting(null); // one modal at a time: the conflict dialog owns Escape and focus
+        }
         setConflict({ byName: result.byName, savedAt: result.savedAt });
         setSave({ state: "idle" });
         return;
@@ -271,7 +284,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       }
       const canvas = document.createElement("canvas");
       drawRaster(canvas, trimmed.raster);
-      const page: LoadedPage = { raster: trimmed.raster, text: rendered.text, offsetX: trimmed.offsetX, offsetY: trimmed.offsetY };
+      const source: ExportSource = rendered.pagePt
+        ? { kind: "pdf", pageWidthPt: rendered.pagePt.width, pageHeightPt: rendered.pagePt.height, pxPerPt: rendered.raster.width / rendered.pagePt.width, offsetX: trimmed.offsetX, offsetY: trimmed.offsetY }
+        : { kind: "image" };
+      const page: LoadedPage = { raster: trimmed.raster, text: rendered.text, offsetX: trimmed.offsetX, offsetY: trimmed.offsetY, source };
       setLoaded({ page, base: canvas, metrics });
       // Only a sheet that has never stored anything is scanned, and never twice: whatever is held now
       // (stored or pending) stays, because the edits point at its ids.
@@ -312,10 +328,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        if (!conflictOpen) void store();
+        if (!conflictOpen && !exportOpen) void store();
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (exportOpen) return; // the pre-export check owns the keyboard, Escape included
       const target = e.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
       if (e.key === "k" || e.key === "K") {
@@ -334,7 +351,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [store, scale, conflictOpen, drawing, drawnOpen, popoverOpen, match, loadedReady, detectRunning, endDraw]);
+  }, [store, scale, conflictOpen, exportOpen, drawing, drawnOpen, popoverOpen, match, loadedReady, detectRunning, endDraw]);
 
   useLeaveGuard(dirty, t.editor.leave);
 
@@ -386,6 +403,44 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     closeMatch();
   }
 
+  function applySuggestion(s: Suggestion) {
+    if (!loaded) return;
+    // Only values still unedited now; every existing edit stays.
+    const targets = latest.current.detections.filter(
+      (d) => s.ids.includes(d.id) && !latest.current.edits.some((e) => e.detectionId === d.id),
+    );
+    if (targets.length === 0) return;
+    const added = targets.map((d) => makeEdit(loaded.page.raster, d, s.oldValue, s.newValue));
+    const next = [...latest.current.edits, ...added];
+    latest.current = { ...latest.current, edits: next };
+    setEdits(next);
+  }
+
+  async function runExport() {
+    if (!loaded || !exporting) return;
+    const { format } = exporting;
+    setExporting({ format, busy: true, failed: false });
+    let canvas: HTMLCanvasElement | null = null;
+    try {
+      // Let the busy state paint before the page is rendered.
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const { raster, source } = loaded.page;
+      canvas = renderResult(loaded.base, latest.current.edits, raster.width, raster.height, loaded.metrics);
+      const file = exportFileName(latest.current.name, format);
+      const blob = format === "png" ? await encodePng(canvas) : await encodePdf(canvas, source, latest.current.name);
+      downloadBlob(blob, file);
+      void logExport({ id: sheet.id, format, edits: latest.current.edits.length, unsaved: dirty }).catch((error) => console.error("logExport failed:", error));
+      if (!alive.current) return;
+      setExporting(null);
+      setNotice({ kind: "status", text: fill(t.editor.export.done, { file }) });
+    } catch (error) {
+      console.error("Export failed:", error instanceof Error ? error.message : String(error));
+      if (alive.current && exportOpenRef.current) setExporting({ format, busy: false, failed: true });
+    } finally {
+      if (canvas) releaseCanvas(canvas);
+    }
+  }
+
   function revert(id: string) {
     closeMatch();
     setEdits((list) => list.filter((e) => e.detectionId !== id));
@@ -393,6 +448,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   }
 
   function open(id: string) {
+    if (exportOpenRef.current) return; // nothing opens behind the pre-export check
     setMatch(null);
     setNotice(null);
     setActiveId(id);
@@ -482,6 +538,14 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     }
   }
 
+  const exportItems = exporting
+    ? readingOrder(detections).flatMap((d) => {
+        const edit = edits.find((e) => e.detectionId === d.id);
+        return edit ? [{ id: d.id, oldValue: edit.oldValue, newValue: edit.newValue, panel: t.editor.panels[panelOf(d.box)] }] : [];
+      })
+    : [];
+  const exportSuggestionList = exporting ? exportSuggestions(detections, edits) : [];
+
   const active = loaded && activeId ? detections.find((d) => d.id === activeId) ?? null : null;
   const popoverPx = active ? toPx(active.box, active.angle, W, H) : null;
   const popover = active && popoverPx ? (
@@ -554,6 +618,16 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         >
           {t.editor.drawBox} <kbd aria-hidden className="ml-1 font-sans text-xs opacity-75">K</kbd>
         </button>
+        <ExportMenu
+          disabled={!loaded}
+          onChoose={(format) => {
+            closeMatch();
+            if (drawingRef.current) endDraw();
+            setActiveId(null);
+            exportOpenRef.current = true;
+            setExporting({ format, busy: false, failed: false });
+          }}
+        />
         <button
           type="button"
           onClick={() => void store()}
@@ -620,6 +694,19 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         {sheet.lowRes ? <span className="rounded bg-warn-soft px-2 py-0.5 text-ink">{t.editor.lowRes}</span> : null}
         <span className="ml-auto">{t.editor.keys}</span>
       </footer>
+      {exporting ? (
+        <ExportDialog
+          format={exporting.format}
+          items={exportItems}
+          suggestions={exportSuggestionList}
+          dirty={dirty}
+          busy={exporting.busy}
+          failed={exporting.failed}
+          onApplySuggestion={applySuggestion}
+          onExport={() => void runExport()}
+          onClose={() => setExporting(null)}
+        />
+      ) : null}
       {conflict ? (
         <ConflictDialog byName={conflict.byName} savedAt={conflict.savedAt} loading={conflictLoad.loading} failed={conflictLoad.failed} onLoad={() => void loadLatest()} onStay={() => setConflict(null)} />
       ) : null}

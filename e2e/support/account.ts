@@ -1,11 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { admin } from "./db";
 
-// Both addresses are reserved for tests; their passwords are reset at every run.
+// These three addresses are reserved for tests; their passwords are reset at every run.
 export const STAFF_EMAIL = "e2e-staff@ctyhp.vn";
 export const STAFF_NAME = "E2E Staff";
 export const STAFF_B_EMAIL = "e2e-staff-b@ctyhp.vn";
 export const STAFF_B_NAME = "E2E Staff B";
+export const ADMIN_EMAIL = "e2e-admin@ctyhp.vn";
+export const ADMIN_NAME = "E2E Admin";
 
 /** The Auth user with this address (compared case-insensitively), or null; pages through the user list. */
 async function findUserId(email: string): Promise<string | null> {
@@ -21,10 +23,10 @@ async function findUserId(email: string): Promise<string | null> {
 }
 
 /**
- * A reserved test Staff account: created once, then its password is replaced by a fresh random one at every
+ * A reserved test account (Staff unless `role` says Admin): created once, then its password is replaced by a fresh random one at every
  * run (kept in memory only). It is a password account without a one-time password.
  */
-export async function ensureAccount(email: string, name: string): Promise<{ id: string; email: string; password: string }> {
+export async function ensureAccount(email: string, name: string, role: "user" | "admin" = "user"): Promise<{ id: string; email: string; password: string }> {
   const password = randomBytes(18).toString("base64url");
   let id = await findUserId(email);
   if (!id) {
@@ -38,7 +40,7 @@ export async function ensureAccount(email: string, name: string): Promise<{ id: 
     if (error) throw new Error(`test account password not reset: ${error.message}`);
   }
   const profile = await admin().from("profiles").upsert(
-    { id, email, full_name: name, role: "user", password_account: true, must_change_password: false, status: "active" },
+    { id, email, full_name: name, role, password_account: true, must_change_password: false, status: "active" },
     { onConflict: "id" },
   );
   if (profile.error) throw new Error(`test profile not saved: ${profile.error.message}`);
@@ -56,6 +58,16 @@ export async function ensureAccount(email: string, name: string): Promise<{ id: 
 
 export const ensureStaff = () => ensureAccount(STAFF_EMAIL, STAFF_NAME);
 export const ensureStaffB = () => ensureAccount(STAFF_B_EMAIL, STAFF_B_NAME);
+export const ensureAdmin = () => ensureAccount(ADMIN_EMAIL, ADMIN_NAME, "admin");
+
+/** A fresh random password for a reserved account, set through the Auth admin API, for a sign-in inside a test. */
+export async function resetPassword(email: string): Promise<string> {
+  if (![STAFF_EMAIL, STAFF_B_EMAIL, ADMIN_EMAIL].includes(email)) throw new Error(`${email} is not a reserved test account`);
+  const password = randomBytes(18).toString("base64url");
+  const { error } = await admin().auth.admin.updateUserById(await accountId(email), { password });
+  if (error) throw new Error(`test account password not reset: ${error.message}`);
+  return password;
+}
 
 const ids = new Map<string, string>();
 
@@ -71,3 +83,35 @@ export async function accountId(email: string): Promise<string> {
 
 export const staffId = () => accountId(STAFF_EMAIL);
 export const staffBId = () => accountId(STAFF_B_EMAIL);
+export const adminId = () => accountId(ADMIN_EMAIL);
+
+/** Puts a reserved account back to Staff and active (the Admin tests change both). */
+export async function restoreStaff(email: string): Promise<void> {
+  if (email !== STAFF_EMAIL && email !== STAFF_B_EMAIL) throw new Error(`${email} is not a reserved Staff account`);
+  const id = await accountId(email);
+  // Retried: this runs in `finally` blocks, where one dropped connection would hide the test's own failure.
+  let message = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await admin().from("profiles").update({ role: "user", status: "active" }).eq("id", id);
+    if (!error) return;
+    message = error.message;
+    await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+  }
+  throw new Error(`test account not restored: ${message}`);
+}
+
+/**
+ * Suspends the reserved Admin so it is never left active between runs (global setup makes it active again).
+ * The database refuses to leave no active Admin; the real Admin account is active, so this is allowed.
+ */
+export async function suspendAdmin(): Promise<void> {
+  const id = await accountId(ADMIN_EMAIL);
+  let message = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await admin().from("profiles").update({ status: "suspended" }).eq("id", id);
+    if (!error) return;
+    message = error.message;
+    await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+  }
+  throw new Error(`test Admin not suspended: ${message}`);
+}

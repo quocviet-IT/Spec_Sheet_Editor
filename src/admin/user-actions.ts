@@ -111,3 +111,54 @@ export async function resetPassword(_prev: ResetPasswordState, form: FormData): 
   revalidatePath("/admin/users");
   return { error: null, issued: { email: target.email, tempPassword } };
 }
+
+type ChangeError = "last_admin" | "self_suspend" | "forbidden" | "not_found" | "unknown";
+
+function mapChangeError(message: string): ChangeError {
+  const found = (word: string) => new RegExp(`(?<![a-z_])${word}(?![a-z_])`).test(message);
+  if (found("last_admin")) return "last_admin";
+  if (found("self_suspend")) return "self_suspend";
+  if (found("forbidden")) return "forbidden";
+  if (found("user_not_found")) return "not_found";
+  return "unknown";
+}
+
+const roleInput = z.object({ userId: z.uuid(), role: z.enum(["user", "admin"]) });
+const statusInput = z.object({ userId: z.uuid(), status: z.enum(["active", "suspended"]) });
+
+/** Changes a role in the Admin's own session, so the audit row names the Admin. */
+export async function setRole(input: {
+  userId: string;
+  role: "user" | "admin";
+}): Promise<{ ok: true } | { error: "last_admin" | "forbidden" | "not_found" | "unknown" }> {
+  await requireAdmin("/admin/users");
+  const parsed = roleInput.safeParse(input);
+  if (!parsed.success) return { error: "unknown" };
+  try {
+    const supabase = await createSupabaseServer();
+    const { error } = await supabase.rpc("set_user_role", { p_user: parsed.data.userId, p_role: parsed.data.role });
+    if (!error) return { ok: true };
+    const code = mapChangeError(error.message);
+    return { error: code === "self_suspend" ? "unknown" : code };
+  } catch {
+    return { error: "unknown" };
+  }
+}
+
+/** Suspends or reinstates an account; the database refuses suspending oneself and the last active Admin. */
+export async function setStatus(input: {
+  userId: string;
+  status: "active" | "suspended";
+}): Promise<{ ok: true } | { error: ChangeError }> {
+  await requireAdmin("/admin/users");
+  const parsed = statusInput.safeParse(input);
+  if (!parsed.success) return { error: "unknown" };
+  try {
+    const supabase = await createSupabaseServer();
+    const { error } = await supabase.rpc("set_user_status", { p_user: parsed.data.userId, p_status: parsed.data.status });
+    if (!error) return { ok: true };
+    return { error: mapChangeError(error.message) };
+  } catch {
+    return { error: "unknown" };
+  }
+}
