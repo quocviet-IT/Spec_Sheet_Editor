@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import type { SourceType } from "@/lib/form/template";
-import { sheetDataSchema } from "@/editor/schema";
+import { readStoredData } from "./stored-data";
 import { PAGE_SIZE, type Cursor, type EditorSheet, type SheetPage, type SheetRow, type SheetTab, type UploadSettings } from "./types";
 
 type ListRow = {
@@ -94,22 +94,18 @@ export async function fetchEditorSheet(id: string): Promise<EditorSheet | null> 
   ]);
   if (error) throw error;
   if (!data) return null;
-  const parsed = sheetDataSchema.safeParse({ detections: data.detections, edits: data.edits });
-  if (!parsed.success) {
-    // Paths only, never values: enough to find the damaged field.
-    const paths = parsed.error.issues.map((issue) => issue.path.join(".") || "(root)").slice(0, 10);
-    console.error(`Sheet ${id}: stored detections or edits do not match the schema at ${paths.join(", ")}`);
-  }
+  const stored = readStoredData(data.detections, data.edits);
+  if (!stored.ok) console.error(`Sheet ${id}: stored detections or edits do not match the schema at ${stored.paths.join(", ")}`);
   const { data: signed } = await supabase.storage
     .from("spec-sheets")
     .createSignedUrl(`${id}/source.${data.source_type}`, cfg.signed_url_ttl_min * 60);
   return {
     id: data.id, name: data.name, sourceType: data.source_type, pageW: data.page_px_w, pageH: data.page_px_h,
     version: data.version,
-    detections: parsed.success ? parsed.data.detections : [],
-    edits: parsed.success ? parsed.data.edits : [],
+    detections: stored.ok ? stored.detections : [],
+    edits: stored.ok ? stored.edits : [],
     deleted: data.deleted_at !== null,
-    broken: !parsed.success,
+    broken: !stored.ok,
     sourceUrl: signed?.signedUrl ?? null,
     lowRes: data.page_px_w < cfg.lowres_warn_px,
   };
