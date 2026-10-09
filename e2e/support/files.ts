@@ -1,4 +1,5 @@
-import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { readFileSync } from "node:fs";
+import { PDFDocument,StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { PNG } from "pngjs";
 
 /** The template's frames (header, four panels, right table) and title on one US Letter landscape page. */
@@ -115,4 +116,25 @@ export async function valuesPdf(options: { asImage?: { value: string; png: Buffe
     page.drawImage(image, { x: imageValue.cx * 792 - w / 2, y: 612 - imageValue.cy * 612 - h / 2, width: w, height: h });
   }
   return Buffer.from(await doc.save());
+}
+
+/** Page 1 of a PDF file read in Node (pdfjs-dist, scale 1): page count, size in points and text items. */
+export async function readPdf(path: string): Promise<{ pages: number; width: number; height: number; textItems: number }> {
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const task = getDocument({ data: new Uint8Array(readFileSync(path)), verbosity: 0 });
+  try {
+    const doc = await task.promise;
+    const page = await doc.getPage(1);
+    const view = page.getViewport({ scale: 1 });
+    const text = await page.getTextContent();
+    return { pages: doc.numPages, width: view.width, height: view.height, textItems: text.items.length };
+  } finally {
+    await task.destroy(); // the loading task owns the document and the worker
+  }
+}
+
+/** A PNG file decoded: size and RGBA bytes. */
+export function readPng(path: string): { width: number; height: number; data: Buffer } {
+  const png = PNG.sync.read(readFileSync(path));
+  return { width: png.width, height: png.height, data: png.data };
 }
