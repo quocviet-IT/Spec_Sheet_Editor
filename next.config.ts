@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-/** Sent on every response. A nonce-based script CSP is added in M7 hardening. */
+/** Sent on every response. Pages also get the full policy from src/proxy.ts (src/lib/security/csp.ts). */
 const securityHeaders = [
   { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
   { key: "X-Frame-Options", value: "DENY" },
