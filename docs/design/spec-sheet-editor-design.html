@@ -927,8 +927,8 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
             <li>The user clicks "Export" and chooses PNG or PDF; the system performs UC-10.</li>
             <li>The user clicks the export button in the dialog.</li>
             <li>The system renders the result page at original resolution (300 DPI for PDFs; native size for images).</li>
-            <li>PNG: encode as PNG. PDF: embed the page as JPEG at quality 0.92 in a single page, sized like the original PDF, or US Letter landscape 792 × 612 pt for images <a class="cite" href="#ref-pdflib">(pdf-lib, n.d.)</a>.</li>
-            <li>The browser downloads <span class="mono">&lt;sheet name&gt;-edited.png|pdf</span>.</li>
+            <li>PNG: encode as PNG. PDF: embed the page as JPEG at quality 0.92 in a single page. A PDF sheet keeps the original page size, with the image placed where the trimmed page sat; an image sheet is fitted and centred on US Letter landscape, 792 × 612 pt <a class="cite" href="#ref-pdflib">(pdf-lib, n.d.)</a>.</li>
+            <li>The browser downloads <span class="mono">&lt;sheet name&gt;-edited.png|pdf</span>. The file is made in the browser and is never stored. The audit log entry records the number of edits and whether there were unsaved changes.</li>
           </ol></dd>
           <dt>Extensions</dt><dd>1a. No values edited, or unsaved changes: the dialog says so and still allows export of exactly what is on screen.</dd>
           <dt>Exceptions</dt><dd>3a. The browser runs out of memory: "The file could not be rendered. Close some tabs and try again."</dd>
@@ -940,7 +940,7 @@ pre.code{margin:0;background:var(--sunk);border:1px solid var(--line);padding:14
           <dt>Actors</dt><dd>System, Staff</dd>
           <dt>Main flow</dt><dd><ol>
             <li>The system lists the edited values as "old → new".</li>
-            <li>For each old value still appearing elsewhere unedited, the system shows a suggestion with an "Apply there too" button.</li>
+            <li>For each old value still appearing elsewhere unedited, the system shows the line "{old} still appears unedited in {n} other place(s)." with an "Apply there too" button; the button changes only the places that have not been edited.</li>
             <li>The system shows the reminder: "The table on the right does not change with the drawing. Check Size and the stone size in the Stone Chart."</li>
             <li>The user chooses "Export" or "Back to editing".</li>
           </ol></dd>

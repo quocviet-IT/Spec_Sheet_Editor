@@ -511,8 +511,8 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 1. The user clicks "Export" and chooses PNG or PDF; the system performs UC-10.
 2. The user clicks the export button in the dialog.
 3. The system renders the result page at original resolution (300 DPI for PDFs; native size for images).
-4. PNG: encode as PNG. PDF: embed the page as JPEG at quality 0.92 in a single page, sized like the original PDF, or US Letter landscape 792 × 612 pt for images (pdf-lib, n.d.).
-5. The browser downloads `<sheet name>-edited.png|pdf`.
+4. PNG: encode as PNG. PDF: embed the page as JPEG at quality 0.92 in a single page. A PDF sheet keeps the original page size, with the image placed where the trimmed page sat; an image sheet is fitted and centred on US Letter landscape, 792 × 612 pt (pdf-lib, n.d.).
+5. The browser downloads `<sheet name>-edited.png|pdf`. The file is made in the browser and is never stored. The audit log entry records the number of edits and whether there were unsaved changes.
 
 **Extensions:** 1a. No values edited, or unsaved changes: the dialog says so and still allows export of exactly what is on screen.
 
@@ -527,7 +527,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 **Main flow:**
 
 1. The system lists the edited values as "old → new".
-2. For each old value still appearing elsewhere unedited, the system shows a suggestion with an "Apply there too" button.
+2. For each old value still appearing elsewhere unedited, the system shows the line "{old} still appears unedited in {n} other place(s)." with an "Apply there too" button; the button changes only the places that have not been edited.
 3. The system shows the reminder: "The table on the right does not change with the drawing. Check Size and the stone size in the Stone Chart."
 4. The user chooses "Export" or "Back to editing".
 
