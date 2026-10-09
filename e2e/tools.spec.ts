@@ -4,7 +4,7 @@ import { deleteSheetsOf } from "./support/db";
 import { PDF_VALUES } from "./support/files";
 import {
   TOP_LEFT, auditCount, canvasPoint, dragBox, drawValuesPng, editValue, marker, openSheetWithImageValue, openValuesSheet, storedSheet,
-  uploadSheet, waitForVersion,
+  uploadSheet, waitForVersion, watchOcrRequests,
 } from "./support/sheets";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -147,4 +147,36 @@ test("Escape cancels a rename", async ({ page }) => {
   await page.getByLabel(/Tên phiếu|Sheet name/).press("Escape");
   await expect(page.getByRole("heading", { name })).toBeVisible();
   await expect(page.getByText(/● (Chưa lưu|Unsaved)/)).toHaveCount(0);
+});
+
+test("the same refusal twice is a new alert each time", async ({ page }) => {
+  await openValuesSheet(page, "twice");
+  await drawButton(page).click();
+  const refusal = page.getByRole("alert").filter({ hasText: /bốn ô hình vẽ|four drawing panels/ });
+  await dragBox(page, 0.6, 0.3, 0.75, 0.33);
+  await expect(refusal).toBeVisible();
+  const first = await refusal.elementHandle();
+  const firstId = await refusal.getAttribute("data-notice-id");
+  await dragBox(page, 0.6, 0.3, 0.75, 0.33);
+  await expect.poll(() => refusal.getAttribute("data-notice-id")).not.toBe(firstId);
+  expect(await first!.evaluate((el) => el.isConnected)).toBe(false); // the old alert element was replaced
+  await expect(refusal).toHaveCount(1);
+});
+
+test("a press outside an open popover only closes it; the next click reads", async ({ page }) => {
+  test.setTimeout(240_000);
+  const { target } = await openSheetWithImageValue(page, "outside");
+  const ocr = watchOcrRequests(page); // the reader is not started until something asks for it
+  await marker(page, "6.90", TOP_LEFT).click();
+  await expect(popover(page)).toBeVisible();
+  const rows = await page.locator("[data-value-row]").count();
+  const point = await canvasPoint(page, target.cx, target.cy); // a value the list does not hold
+  await page.mouse.click(point.x, point.y);
+  await expect(popover(page)).toHaveCount(0);
+  await page.waitForTimeout(2500); // the assertion is that nothing starts
+  expect(ocr).toEqual([]);
+  await expect(popover(page)).toHaveCount(0);
+  expect(await page.locator("[data-value-row]").count()).toBe(rows);
+  await page.mouse.click(point.x, point.y); // the second click reads
+  await expect.poll(() => ocr.length, { timeout: 30_000 }).toBeGreaterThan(0);
 });

@@ -14,6 +14,7 @@ import { zoomIn, zoomOut, type Zoom } from "@/editor/zoom";
 import type { OcrClient } from "@/lib/ocr/client";
 import type { Point, Rect } from "@/lib/ocr/geometry";
 import { drawRaster, renderSource, trimPage, type RenderedPage } from "@/lib/page/render";
+import type { Messages } from "@/messages";
 import { useLocale, useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 import { loadEditorState, logExport, saveSheet } from "@/sheets/actions";
@@ -87,17 +88,22 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const [save, setSave] = useState<SaveState>({ state: "idle" });
   const [firstStore, setFirstStore] = useState(false);
   const [conflict, setConflict] = useState<{ byName: string | null; savedAt: string | null } | null>(null);
-  const [conflictLoad, setConflictLoad] = useState({ loading: false, failed: false });
+  const [conflictLoad, setConflictLoad] = useState<{ loading: boolean; failed: "load" | "broken" | null }>({ loading: false, failed: null });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [fitScale, setFitScale] = useState(0.25);
   const reader = useValueReader();
   const ensureReader = useRef(reader.ensure);
-  const [notice, setNotice] = useState<{ kind: "status" | "alert"; text: string; draw?: boolean } | null>(null);
+  /** The latest props, for the load effect, which must run once per sheet (the signed link changes on every render). */
+  const sheetRef = useRef(sheet);
+  const storeRef = useRef<() => Promise<void>>(async () => {});
+  const [notice, setNotice] = useState<{ id: number; kind: "status" | "alert"; text: (m: Messages) => string; draw?: boolean; wait?: boolean } | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [drawn, setDrawn] = useState<Rect | null>(null);
   const [exporting, setExporting] = useState<{ format: "png" | "pdf"; busy: boolean; failed: boolean } | null>(null);
   const drawButton = useRef<HTMLButtonElement | null>(null);
+  const opener = useRef<"marker" | "row">("marker");
+  const noticeSeq = useRef(0);
   const matchRef = useRef<typeof match>(null);
   const drawingRef = useRef(false);
   /** Mirrors whether S5 is open, for listeners and awaits that must not open anything behind it. */
@@ -113,6 +119,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     latest.current = { ...latest.current, detections, edits, name, saved: savedSnapshot, firstStore };
     ensureReader.current = reader.ensure;
     matchRef.current = match;
+    sheetRef.current = sheet;
     drawingRef.current = drawing;
     exportOpenRef.current = exporting !== null;
   });
@@ -121,6 +128,13 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     return () => {
       alive.current = false;
     };
+  }, []);
+
+  /** Every notice has its own id, so the same refusal twice is a new alert for a screen reader. */
+  /** A notice keeps its message, not its words: a language switch while it is showing changes them too. */
+  const notify = useCallback((n: { kind: "status" | "alert"; text: (m: Messages) => string; draw?: boolean; wait?: boolean }) => {
+    noticeSeq.current += 1;
+    setNotice({ ...n, id: noticeSeq.current });
   }, []);
 
   const dirty = snapshot(name, detections, edits) !== savedSnapshot || firstStore;
@@ -142,6 +156,12 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const focusMarker = useCallback((id: string) => {
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-detection="${CSS.escape(id)}"]`)?.focus());
   }, []);
+  /** Focus goes back to what opened the popover: the marker on the page or the row in the list. */
+  const focusOpener = useCallback((id: string) => {
+    const own = CSS.escape(id);
+    const selector = opener.current === "row" ? `[data-value-row="${own}"]` : `[data-detection="${own}"]`;
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(selector)?.focus());
+  }, []);
   const focusDrawButton = useCallback(() => {
     requestAnimationFrame(() => drawButton.current?.focus());
   }, []);
@@ -161,18 +181,18 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   );
 
   /** Take what the database holds (after a conflict, or when someone else stored the first detection). */
-  const reloadLatest = useCallback(async (): Promise<boolean> => {
+  const reloadLatest = useCallback(async (): Promise<"ok" | "broken" | "failed"> => {
     let state: Awaited<ReturnType<typeof loadEditorState>> | undefined;
     try {
       state = await loadEditorState(sheet.id);
     } catch {
       if (alive.current) setSave({ state: "offline" });
-      return false;
+      return "failed";
     }
-    if (!alive.current) return false;
+    if (!alive.current) return "failed";
     if (!state || "error" in state) {
       setSave({ state: "failed" });
-      return false;
+      return state && state.error === "broken" ? "broken" : "failed";
     }
     const saved = snapshot(state.name, state.detections, state.edits);
     latest.current = { detections: state.detections, edits: state.edits, version: state.version, name: state.name, saved, firstStore: false };
@@ -189,7 +209,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     setActiveId(null);
     setDetect(state.detections.length === 0 ? "none" : "idle");
     setSave({ state: state.deleted ? "trashed" : "idle" });
-    return true;
+    return "ok";
   }, [sheet.id, closeMatch, endDraw]);
 
   /**
@@ -232,7 +252,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
           await reloadLatest(); // someone else stored the first detection; take theirs
           return;
         }
-        setConflictLoad({ loading: false, failed: false });
+        setConflictLoad({ loading: false, failed: null });
         if (exportOpenRef.current) {
           exportOpenRef.current = false;
           setExporting(null); // one modal at a time: the conflict dialog owns Escape and focus
@@ -246,6 +266,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     [sheet.id, reloadLatest, closeMatch],
   );
 
+  useEffect(() => {
+    storeRef.current = store;
+  });
+
   // Load the page and the font; on the first open, detect and store the values (UC-04).
   useEffect(() => {
     let cancelled = false;
@@ -255,9 +279,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     (async () => {
       let rendered: RenderedPage;
       try {
-        const response = await fetch(sheet.sourceUrl ?? "", { signal: controller.signal });
+        const response = await fetch(sheetRef.current.sourceUrl ?? "", { signal: controller.signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        rendered = await renderSource(await response.blob(), sheet.sourceType);
+        rendered = await renderSource(await response.blob(), sheetRef.current.sourceType);
       } catch {
         if (!cancelled) {
           setLoadError("load");
@@ -277,7 +301,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       }
       if (cancelled) return;
       const trimmed = trimPage(rendered);
-      if (!sameSize(trimmed.raster.width, trimmed.raster.height, sheet.pageW, sheet.pageH)) {
+      if (!sameSize(trimmed.raster.width, trimmed.raster.height, sheetRef.current.pageW, sheetRef.current.pageH)) {
         setLoadError("size");
         setDetect("idle");
         return;
@@ -303,13 +327,13 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       setDetections(result.detections);
       setFirstStore(true);
       setDetect(result.detections.length === 0 ? "none" : "idle");
-      await store();
+      await storeRef.current();
     })();
     return () => {
       cancelled = true;
       controller.abort();
     };
-  }, [sheet.id, sheet.sourceUrl, sheet.sourceType, sheet.pageW, sheet.pageH, store]);
+  }, [sheet.id]);
 
   // Release the previous base canvas once a new one replaces it, and the last one on unmount, so the
   // canvas being painted is never zeroed while it is still in use.
@@ -370,7 +394,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
 
   function closePopover(id: string) {
     setActiveId(null);
-    focusMarker(id);
+    focusOpener(id);
   }
 
   function apply(detection: Detection, oldValue: string, newValue: string) {
@@ -387,7 +411,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       matchRef.current = next;
       setMatch(next);
     }
-    else focusMarker(detection.id);
+    else focusOpener(detection.id);
   }
 
   function applyMatches() {
@@ -432,7 +456,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       void logExport({ id: sheet.id, format, edits: latest.current.edits.length, unsaved: dirty }).catch((error) => console.error("logExport failed:", error));
       if (!alive.current) return;
       setExporting(null);
-      setNotice({ kind: "status", text: fill(t.editor.export.done, { file }) });
+      notify({ kind: "status", text: (m) => fill(m.editor.export.done, { file }) });
     } catch (error) {
       console.error("Export failed:", error instanceof Error ? error.message : String(error));
       if (alive.current && exportOpenRef.current) setExporting({ format, busy: false, failed: true });
@@ -447,8 +471,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     closePopover(id);
   }
 
-  function open(id: string) {
+  function open(id: string, from: "marker" | "row" = "marker") {
     if (exportOpenRef.current) return; // nothing opens behind the pre-export check
+    opener.current = from;
     setMatch(null);
     setNotice(null);
     setActiveId(id);
@@ -462,11 +487,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     closeMatch(true);
     if (detect === "running") {
       // The first detection replaces the value list when it finishes, which would drop a drawn value.
-      setNotice({ kind: "status", text: t.editor.waitDetect });
+      notify({ kind: "status", text: (m) => m.editor.waitDetect, wait: true });
       return;
     }
     if (!rectInDrawingArea(rect, W, H)) {
-      setNotice({ kind: "alert", text: t.editor.drawOutside, draw: true });
+      notify({ kind: "alert", text: (m) => m.editor.drawOutside, draw: true });
       return;
     }
     setNotice(null);
@@ -479,7 +504,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     const px = boxForDrawnRect(drawn, angle);
     setDrawn(null);
     if (!analyseBox(loaded.page.raster, px)) {
-      setNotice({ kind: "alert", text: t.editor.drawEmpty, draw: true });
+      notify({ kind: "alert", text: (m) => m.editor.drawEmpty, draw: true });
       focusDrawButton();
       return;
     }
@@ -493,20 +518,20 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   async function readAt(p: Point) {
     if (drawing || !loaded || readingNow.current || !pointInDrawingArea(p, W, H)) return;
     if (detect === "running") {
-      setNotice({ kind: "status", text: t.editor.waitDetect });
+      notify({ kind: "status", text: (m) => m.editor.waitDetect, wait: true });
       return;
     }
     readingNow.current = true;
-    setNotice({ kind: "status", text: reader.state === "ready" ? t.editor.reading : t.editor.readerLoading });
+    notify({ kind: "status", text: reader.state === "ready" ? (m) => m.editor.reading : (m) => m.editor.readerLoading });
     try {
       let client: OcrClient;
       try {
         client = await reader.ensure(loaded.page.raster);
       } catch (error) {
-        if (alive.current) setNotice({ kind: "alert", text: ocrFailureReason(error) === "ocr_unsupported" ? t.editor.ocrUnsupported : t.editor.ocrLoad });
+        if (alive.current) notify({ kind: "alert", text: ocrFailureReason(error) === "ocr_unsupported" ? (m) => m.editor.ocrUnsupported : (m) => m.editor.ocrLoad });
         return;
       }
-      if (alive.current) setNotice({ kind: "status", text: t.editor.reading });
+      if (alive.current) notify({ kind: "status", text: (m) => m.editor.reading });
       let result: Awaited<ReturnType<OcrClient["read"]>> | null = null;
       let crashed = false;
       try {
@@ -519,7 +544,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       const r = result?.reading ?? null;
       const px = r ? boxFromQuad(r.quad, r.angle) : null;
       if (!r || !px || !pointInDrawingArea({ x: px.cx, y: px.cy }, W, H)) {
-        setNotice({ kind: "alert", text: t.editor.clickNoRead });
+        notify({ kind: "alert", text: (m) => m.editor.clickNoRead });
         return;
       }
       setNotice(null);
@@ -574,9 +599,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   }
 
   async function loadLatest() {
-    setConflictLoad({ loading: true, failed: false });
-    const ok = await reloadLatest();
-    if (alive.current && !ok) setConflictLoad({ loading: false, failed: true });
+    setConflictLoad({ loading: true, failed: null });
+    const outcome = await reloadLatest();
+    if (alive.current && outcome !== "ok") setConflictLoad({ loading: false, failed: outcome === "broken" ? "broken" : "load" });
   }
 
   function status() {
@@ -596,13 +621,13 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   }
 
   // "Still finding the values…" goes as soon as the detection has finished.
-  const current = notice?.text === t.editor.waitDetect && !detectRunning ? null : notice;
-  const shownNotice: { kind: "status" | "alert"; text: string } | null =
-    current?.kind === "alert" ? current : drawing ? { kind: "status", text: t.editor.drawHint } : current;
+  const current = notice?.wait && !detectRunning ? null : notice;
+  const shownNotice: { id: number; kind: "status" | "alert"; text: string } | null =
+    current?.kind === "alert" ? { id: current.id, kind: "alert", text: current.text(t) } : drawing ? { id: 0, kind: "status", text: t.editor.drawHint } : current ? { id: current.id, kind: "status", text: current.text(t) } : null;
   const errorText = loadError === "font" ? t.editor.fontFailed : loadError === "size" ? t.editor.sizeMismatch : t.sheet.loadError;
 
   return (
-    <section aria-label={name} data-wide data-reader-state={reader.state} className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col gap-3">
+    <section aria-label={name} data-wide data-editor-root data-reader-state={reader.state} className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col gap-3">
       <header className="flex flex-wrap items-center gap-3">
         <Link href="/sheets" className="text-sm text-ink-2 hover:text-ink">← {t.sheet.back}</Link>
         <NameField key={nameKey} name={name} onRename={rename} />
@@ -643,7 +668,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
           <div role="status" aria-live="polite" className="sr-only">{!loadError && !loaded ? t.sheet.loading : ""}</div>
           <div role="status" aria-live="polite" className="sr-only">{shownNotice?.kind === "status" ? shownNotice.text : ""}</div>
           {shownNotice ? (
-            <p role={shownNotice.kind === "alert" ? "alert" : undefined} className={"mb-2 rounded-md px-3 py-1.5 text-sm " + (shownNotice.kind === "alert" ? "bg-danger-soft" : "bg-sunk text-ink-2")}>
+            <p key={shownNotice.id} data-notice-id={shownNotice.id} role={shownNotice.kind === "alert" ? "alert" : undefined} className={"mb-2 rounded-md px-3 py-1.5 text-sm " + (shownNotice.kind === "alert" ? "bg-danger-soft" : "bg-sunk text-ink-2")}>
               {shownNotice.text}
             </p>
           ) : null}
@@ -680,7 +705,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
           </div>
         </div>
         <div className="w-72 shrink-0">
-          <ValueList detections={detections} edits={edits} activeId={activeId} detect={detect} showHint={!!loaded && detect !== "running"} onOpen={open} />
+          <ValueList detections={detections} edits={edits} activeId={activeId} detect={detect} showHint={!!loaded && detect !== "running"} onOpen={(id) => open(id, "row")} />
         </div>
       </div>
       <footer className="flex flex-wrap items-center gap-4 text-xs text-ink-2">

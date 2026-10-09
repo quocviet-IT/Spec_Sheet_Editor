@@ -16,6 +16,26 @@ type Props = {
   onClose: (refocus: boolean) => void;
 };
 
+const INTERACTIVE = "button, a[href], input, select, textarea, [role='button'], [data-detection]";
+
+/**
+ * Stops the click that completes the press which closed the popover. It goes away with the next press
+ * (a drag makes no click) or after one click, whichever comes first.
+ */
+function swallowNextClick(): void {
+  function end() {
+    document.removeEventListener("click", onClick, true);
+    document.removeEventListener("pointerdown", end, true);
+  }
+  function onClick(e: MouseEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    end();
+  }
+  document.addEventListener("click", onClick, true);
+  document.addEventListener("pointerdown", end, true);
+}
+
 /** UC-05 steps 2–4 (Figure 8.1): confirm the old value (BR-04), type the new one (BR-05). */
 export function EditPopover({ detection, edit, style, onApply, onRevert, onClose }: Props) {
   const t = useMessages();
@@ -63,6 +83,8 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
       const own = CSS.escape(detection.id);
       if (target.closest(`[data-detection="${own}"], [data-value-row="${own}"]`)) return;
       close.current(false);
+      // The press only closes the popover: the click that follows it on the bare page does not start a read.
+      if (!target.closest(INTERACTIVE)) swallowNextClick();
     }
     document.addEventListener("pointerdown", onPointer);
     return () => document.removeEventListener("pointerdown", onPointer);

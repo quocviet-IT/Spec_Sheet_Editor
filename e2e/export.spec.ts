@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { staffId } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
-import { framedPng, PDF_VALUES, readPdf, readPng } from "./support/files";
+import { framedPng, PDF_VALUES, readPdf, readPng, valuesPdf } from "./support/files";
 import {
-  BOTTOM_LEFT, TOP_LEFT, auditCount, canvasHash, editValue, exportSheet, openExportCheck, openValuesSheet, pressExport,
-  storedSheet, uploadSheet, waitForVersion,
+  BOTTOM_LEFT, TOP_LEFT, TOP_RIGHT, auditCount, canvasHash, editValue, exportSheet, openExportCheck, openValuesSheet, pressExport,
+  marker, markers, storedSheet, uploadSheet, waitForVersion,
 } from "./support/sheets";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -122,4 +122,40 @@ test("exporting a sheet with no edits shows the notice and still exports", async
   expect({ w: png.width, h: png.height }).toEqual({ w: 3300, h: 2550 });
   await expect(dialog).toBeHidden();
   await expect.poll(() => auditCount(id, "sheet.export_png")).toBe(1);
+});
+
+test("Apply there too in the export check leaves a value that was edited to something else alone", async ({ page }) => {
+  // Three 2.50: top-left, bottom-left and (added here) top-right.
+  await page.goto("/sheets");
+  const { id } = await uploadSheet(page, `applyskip-${Date.now()}.pdf`, "application/pdf", await valuesPdf({ extra: [{ value: "2.50", cx: 0.5, cy: 0.4, angle: 0 }] }));
+  await expect(markers(page)).toHaveCount(12, { timeout: 30_000 });
+  await waitForVersion(id, 2);
+  const noPrompt = async () => page.getByRole("dialog", { name: /Số trùng|Same value elsewhere/ }).getByRole("button", { name: /^(Không|No)$/ }).click();
+  await editValue(page, "2.50", TOP_LEFT, "2.6");
+  await noPrompt();
+  await editValue(page, "2.50", BOTTOM_LEFT, "2.8"); // edited to something else first
+  await noPrompt();
+  await openExportCheck(page, "pdf");
+  const dialog = checkDialog(page);
+  await expect(dialog.getByRole("listitem")).toHaveCount(2);
+  await dialog.getByRole("button", { name: /Sửa luôn những chỗ đó|Apply there too/ }).click();
+  await expect(dialog.getByRole("listitem")).toHaveCount(3);
+  await expect(dialog.getByRole("button", { name: /Sửa luôn những chỗ đó|Apply there too/ })).toHaveCount(0);
+  await dialog.getByRole("button", { name: /Quay lại sửa|Back to editing/ }).click();
+  await expect(marker(page, "2.50", TOP_LEFT)).toHaveAccessibleName(/(đã sửa thành|edited to) 2\.60/);
+  await expect(marker(page, "2.50", BOTTOM_LEFT)).toHaveAccessibleName(/(đã sửa thành|edited to) 2\.80/); // untouched
+  await expect(marker(page, "2.50", TOP_RIGHT)).toHaveAccessibleName(/(đã sửa thành|edited to) 2\.60/); // the one left over
+});
+
+test("Shift+Tab from the first control of the check dialog goes to the last one, and Tab from the last to the first", async ({ page }) => {
+  await openValuesSheet(page, "dialogtab");
+  await openExportCheck(page, "png");
+  const dialog = checkDialog(page);
+  const back = dialog.getByRole("button", { name: /Quay lại sửa|Back to editing/ });
+  const start = dialog.getByRole("button", { name: /^(Xuất|Export) PNG$/ });
+  await back.focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(start).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(back).toBeFocused();
 });
