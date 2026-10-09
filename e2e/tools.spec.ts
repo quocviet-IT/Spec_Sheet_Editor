@@ -1,9 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { staffId } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
-import { PDF_VALUES, valuesPdf } from "./support/files";
+import { PDF_VALUES } from "./support/files";
 import {
-  TOP_LEFT, auditCount, canvasPoint, dragBox, drawValuesPng, editValue, marker, markers, openValuesSheet, storedSheet, textPng,
+  TOP_LEFT, auditCount, canvasPoint, dragBox, drawValuesPng, editValue, marker, openSheetWithImageValue, openValuesSheet, storedSheet,
   uploadSheet, waitForVersion,
 } from "./support/sheets";
 
@@ -19,13 +19,8 @@ const matchingPrompt = (page: Page) => page.getByRole("dialog", { name: /Số tr
 
 test("TC-24 a value missing from the text layer is read by clicking it, within 5 seconds", async ({ page }) => {
   test.setTimeout(240_000);
-  await page.goto("/sheets");
-  const image = await textPng(page, "1.70");
-  const { id } = await uploadSheet(page, `tc24-${Date.now()}.pdf`, "application/pdf", await valuesPdf({ asImage: { value: "1.70", ...image } }));
-  await expect(markers(page)).toHaveCount(10, { timeout: 30_000 });
-  await waitForVersion(id, 2);
+  const { id, target } = await openSheetWithImageValue(page, "tc24");
   // A sheet read from its text layer does not warm the reader up: the first click starts it.
-  const target = PDF_VALUES.find((v) => v.value === "1.70")!;
   const point = await canvasPoint(page, target.cx, target.cy);
   await page.mouse.click(point.x, point.y);
   await expect(page.locator("section[data-reader-state='ready']")).toBeVisible({ timeout: 120_000 });

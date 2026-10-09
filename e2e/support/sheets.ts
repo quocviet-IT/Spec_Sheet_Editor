@@ -150,6 +150,16 @@ export async function openValuesSheet(page: Page, tag: string): Promise<{ id: st
   return sheet;
 }
 
+/** TC-24 setup: a PDF whose 1.70 is a picture (missing from the text layer), stored at version 2. The reader is not warm yet. */
+export async function openSheetWithImageValue(page: Page, tag: string): Promise<{ id: string; name: string; target: PlacedValue }> {
+  await page.goto("/sheets");
+  const image = await textPng(page, "1.70");
+  const sheet = await uploadSheet(page, `${tag}-${Date.now()}.pdf`, "application/pdf", await valuesPdf({ asImage: { value: "1.70", ...image } }));
+  await expect(markers(page)).toHaveCount(10, { timeout: 30_000 });
+  await waitForVersion(sheet.id, 2);
+  return { ...sheet, target: PDF_VALUES.find((v) => v.value === "1.70")! };
+}
+
 export async function editValue(page: Page, value: string, panel: RegExp, next: string, confirmedOld?: string): Promise<void> {
   await marker(page, value, panel).click();
   const popover = page.getByRole("dialog", { name: /Sửa kích thước|Edit dimension/ });
