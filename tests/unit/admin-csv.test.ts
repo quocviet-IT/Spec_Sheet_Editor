@@ -16,6 +16,9 @@ describe("csvCell", () => {
     expect(csvCell("+1")).toBe("'+1");
     expect(csvCell("-1")).toBe("'-1");
     expect(csvCell("@x")).toBe("'@x");
+    expect(csvCell("\tx")).toBe("'\tx");
+    expect(csvCell("\rx")).toBe("\"'\rx\"");
+    expect(csvCell(-5)).toBe("-5");
   });
 });
 
@@ -24,9 +27,10 @@ describe("auditCsv", () => {
     const csv = auditCsv([
       { occurredAt: "2026-10-09T03:00:00Z", actorEmail: "a@ctyhp.vn", action: "sheet.upload", targetType: "sheet", targetId: "id-1", detail: { name: "Nhẫn kim cương" } },
     ]);
+    expect(csv.charCodeAt(0)).toBe(0xfeff);
     expect(csv.startsWith(CSV_BOM)).toBe(true);
     const lines = csv.slice(1).split("\r\n");
     expect(lines[0]).toBe("occurred_at,actor_email,action,target_type,target_id,detail");
-    expect(lines[1]).toBe('2026-10-09T03:00:00Z,a@ctyhp.vn,sheet.upload,sheet,id-1,"{""name"":""Nhẫn kim cương""}"');
+    expect(lines[1]).toBe('2026-10-09 10:00:00,a@ctyhp.vn,sheet.upload,sheet,id-1,"{""name"":""Nhẫn kim cương""}"');
   });
 });

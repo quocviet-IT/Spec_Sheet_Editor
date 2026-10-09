@@ -20,6 +20,23 @@ describe("parseAuditFilter", () => {
     expect(parseAuditFilter({ from: "2026-10-08", to: "2026-10-02" }, NOW)).toMatchObject({ from: "2026-10-02", to: "2026-10-08" });
   });
 
+  it("takes the first value of a repeated parameter and lower-cases a uuid", () => {
+    const other = "11111111-2222-4333-8444-555555555555";
+    expect(parseAuditFilter({ actor: [UUID, other], target: UUID.toUpperCase() }, NOW)).toMatchObject({ actor: UUID, target: UUID });
+    expect(parseAuditFilter({ group: ["sheet", "user"], from: ["2026-10-01", "x"] }, NOW)).toMatchObject({ group: "sheet", from: "2026-10-01" });
+    expect(parseAuditFilter({ actor: [], from: [] }, NOW)).toEqual({ from: "2026-10-03", to: "2026-10-09", actor: null, group: "all", target: null });
+    expect(() => parseAuditFilter({ actor: {} as unknown as string, from: 5 as unknown as string }, NOW)).not.toThrow();
+  });
+
+  it("falls back to the default for an impossible date", () => {
+    expect(parseAuditFilter({ from: "2026-02-30" }, NOW).from).toBe("2026-10-03");
+  });
+
+  it("applies defaults before swapping a reversed range with one bound missing", () => {
+    expect(parseAuditFilter({ from: "2026-10-20" }, NOW)).toMatchObject({ from: "2026-10-09", to: "2026-10-20" });
+    expect(parseAuditFilter({ to: "2026-09-01" }, NOW)).toMatchObject({ from: "2026-09-01", to: "2026-10-03" });
+  });
+
   it("uses the Ho Chi Minh City day for today", () => {
     expect(parseAuditFilter({}, new Date("2026-10-09T18:30:00Z")).to).toBe("2026-10-10"); // 01:30 next day there
   });
@@ -28,7 +45,7 @@ describe("parseAuditFilter", () => {
 describe("auditRange and groups", () => {
   it("covers whole local days", () => {
     expect(auditRange({ from: "2026-10-03", to: "2026-10-09", actor: null, group: "all", target: null }))
-      .toEqual({ fromIso: "2026-10-03T00:00:00+07:00", toIsoExclusive: "2026-10-10T00:00:00+07:00" });
+      .toEqual({ fromIso: "2026-10-02T17:00:00.000Z", toIsoExclusive: "2026-10-09T17:00:00.000Z" });
   });
 
   it("maps groups to action prefixes", () => {

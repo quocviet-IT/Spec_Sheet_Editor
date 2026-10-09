@@ -8,6 +8,7 @@ export type StorageFolder = { name: string; newestAt: string; bytes: number; pat
 /**
  * UC-18 step 2: folders named like a sheet id with no sheet record, whose newest file is at least
  * `minAgeHours` old (an upload in progress writes its files before its record, design 5.3).
+ * `recordIds` must hold every sheet id, trashed ones included, or a trashed sheet's files look orphaned.
  */
 export function findOrphans(folders: readonly StorageFolder[], recordIds: ReadonlySet<string>, now: Date, minAgeHours = ORPHAN_MIN_AGE_HOURS): StorageFolder[] {
   const cutoff = now.getTime() - minAgeHours * 3_600_000;

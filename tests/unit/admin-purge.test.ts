@@ -12,18 +12,25 @@ function steps(over: Partial<PurgeSteps> = {}) {
 }
 
 describe("purgeSequence (UC-17)", () => {
-  it("removes the files first, then the record", async () => {
+  it("deletes the record first, then the files", async () => {
     const s = steps();
     expect(await purgeSequence(s, "id", "Ring 5")).toBe("ok");
     expect(s.removeFiles).toHaveBeenCalledWith(["id/source.pdf", "id/thumb.jpg"]);
-    expect(s.removeFiles.mock.invocationCallOrder[0]).toBeLessThan(s.purgeRecord.mock.invocationCallOrder[0]);
+    expect(s.purgeRecord.mock.invocationCallOrder[0]).toBeLessThan(s.removeFiles.mock.invocationCallOrder[0]);
   });
 
   it("needs the exact name (BR-16)", async () => {
     const s = steps();
     expect(await purgeSequence(s, "id", "ring 5")).toBe("name_mismatch");
     expect(await purgeSequence(s, "id", "Ring 5 ")).toBe("name_mismatch");
+    expect(s.purgeRecord).not.toHaveBeenCalled();
     expect(s.removeFiles).not.toHaveBeenCalled();
+  });
+
+  it("matches a Vietnamese name typed in decomposed form", async () => {
+    const stored = "Nhẫn kim cương".normalize("NFC");
+    const s = steps({ load: vi.fn(async () => ({ name: stored, paths: ["id/a"], inTrash: true })) });
+    expect(await purgeSequence(s, "id", stored.normalize("NFD"))).toBe("ok");
   });
 
   it("refuses a sheet that is not in the Trash or is gone", async () => {
@@ -31,16 +38,27 @@ describe("purgeSequence (UC-17)", () => {
     expect(await purgeSequence(steps({ load: vi.fn(async () => null) }), "id", "Ring 5")).toBe("not_found");
   });
 
-  it("keeps the record when the files cannot be removed, and a retry completes (TC-75)", async () => {
-    let calls = 0;
-    const s = steps({ removeFiles: vi.fn(async () => ++calls > 1) });
-    expect(await purgeSequence(s, "id", "Ring 5")).toBe("files_failed");
-    expect(s.purgeRecord).not.toHaveBeenCalled();
-    expect(await purgeSequence(s, "id", "Ring 5")).toBe("ok");
-    expect(s.purgeRecord).toHaveBeenCalledTimes(1);
+  it("never removes files when a restore wins the race", async () => {
+    const s = steps({ purgeRecord: vi.fn(async () => "not_in_trash" as const) });
+    expect(await purgeSequence(s, "id", "Ring 5")).toBe("not_in_trash");
+    expect(s.removeFiles).not.toHaveBeenCalled();
   });
 
-  it("passes on a restore that happened between the check and the purge", async () => {
-    expect(await purgeSequence(steps({ purgeRecord: vi.fn(async () => "not_in_trash" as const) }), "id", "Ring 5")).toBe("not_in_trash");
+  it("reports files_left when the files cannot be removed after two tries", async () => {
+    const s = steps({ removeFiles: vi.fn(async () => false) });
+    expect(await purgeSequence(s, "id", "Ring 5")).toBe("files_left");
+    expect(s.removeFiles).toHaveBeenCalledTimes(2);
+  });
+
+  it("is ok when the second try removes the files", async () => {
+    let calls = 0;
+    const s = steps({ removeFiles: vi.fn(async () => ++calls > 1) });
+    expect(await purgeSequence(s, "id", "Ring 5")).toBe("ok");
+    expect(s.removeFiles).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns failed when any step throws", async () => {
+    expect(await purgeSequence(steps({ load: vi.fn(async () => { throw new Error("db"); }) }), "id", "Ring 5")).toBe("failed");
+    expect(await purgeSequence(steps({ purgeRecord: vi.fn(async () => { throw new Error("db"); }) }), "id", "Ring 5")).toBe("failed");
   });
 });
