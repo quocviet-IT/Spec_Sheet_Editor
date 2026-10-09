@@ -99,3 +99,19 @@ export async function restoreStaff(email: string): Promise<void> {
   }
   throw new Error(`test account not restored: ${message}`);
 }
+
+/**
+ * Suspends the reserved Admin so it is never left active between runs (global setup makes it active again).
+ * The database refuses to leave no active Admin; the real Admin account is active, so this is allowed.
+ */
+export async function suspendAdmin(): Promise<void> {
+  const id = await accountId(ADMIN_EMAIL);
+  let message = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await admin().from("profiles").update({ status: "suspended" }).eq("id", id);
+    if (!error) return;
+    message = error.message;
+    await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+  }
+  throw new Error(`test Admin not suspended: ${message}`);
+}

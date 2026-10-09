@@ -2,6 +2,7 @@ import { chromium, type Browser } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { ensureAdmin, ensureStaff, ensureStaffB } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
+import { snapshotSettings } from "./support/settings";
 
 async function signIn(browser: Browser, account: { email: string; password: string }, path: string): Promise<void> {
   const page = await browser.newPage({ baseURL: "http://localhost:3000" });
@@ -19,6 +20,7 @@ async function signIn(browser: Browser, account: { email: string; password: stri
 }
 
 export default async function globalSetup(): Promise<void> {
+  await snapshotSettings(); // before anything runs; global teardown writes it back
   const staff = await ensureStaff();
   const staffB = await ensureStaffB();
   const adminAccount = await ensureAdmin();

@@ -21,6 +21,28 @@ async function contextAs(browser: Browser, state: string): Promise<BrowserContex
   return context;
 }
 
+/**
+ * Signs Staff B in again with a fresh password and saves the session, so the saved file is valid for the other specs
+ * whatever a test did to the account or its session.
+ */
+async function resignStaffB(browser: Browser): Promise<void> {
+  const password = await resetPassword(STAFF_B_EMAIL);
+  const context = await browser.newContext({ baseURL: "http://localhost:3000", viewport: VIEWPORT });
+  try {
+    context.setDefaultTimeout(15_000);
+    context.setDefaultNavigationTimeout(30_000);
+    const page = await context.newPage();
+    await page.goto("/login");
+    await page.locator("#email").fill(STAFF_B_EMAIL);
+    await page.locator("#password").fill(password);
+    await page.locator("form", { has: page.locator("#password") }).locator('button[type="submit"]').click();
+    await page.waitForURL("**/sheets");
+    await context.storageState({ path: STAFF_B_STATE });
+  } finally {
+    await context.close();
+  }
+}
+
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const SAVED = /^(Đã lưu\.|Saved\.)$/;
 
@@ -68,7 +90,8 @@ test("TC-58 the Admin makes Staff B an Admin; the Admin link appears and the cha
     await expect(other.getByRole("button", { name: /Tải phiếu lên|Upload sheet/ }).first()).toBeVisible();
     await expect(other.locator('header a[href="/admin"]')).toHaveCount(0);
 
-    const { data: before } = await admin().from("audit_log").select("id").eq("action", "user.role_change").order("id", { ascending: false }).limit(1);
+    const actor = await adminId();
+    const { data: before } = await admin().from("audit_log").select("id").eq("actor_id", actor).eq("action", "user.role_change").order("id", { ascending: false }).limit(1);
     const lastId = before?.[0]?.id ?? 0;
     await changeUser(page, STAFF_B_EMAIL, "role");
     await expect(ROW_OF(page, STAFF_B_EMAIL)).toContainText(/Quản trị viên|Admin/);
@@ -76,10 +99,10 @@ test("TC-58 the Admin makes Staff B an Admin; the Admin link appears and the cha
     await other.reload();
     await expect(other.locator('header a[href="/admin"]')).toBeVisible();
 
-    const { data, error } = await admin().from("audit_log").select("actor_id, actor_email, detail, target_id").eq("action", "user.role_change").gt("id", lastId);
+    const { data, error } = await admin().from("audit_log").select("actor_id, actor_email, detail, target_id").eq("actor_id", actor).eq("action", "user.role_change").gt("id", lastId);
     if (error) throw new Error(`audit log not read: ${error.message}`);
     expect(data).toHaveLength(1);
-    expect(data![0]).toMatchObject({ actor_id: await adminId(), actor_email: ADMIN_EMAIL, target_id: await staffBId() });
+    expect(data![0]).toMatchObject({ actor_id: actor, actor_email: ADMIN_EMAIL, target_id: await staffBId() });
     expect(data![0].detail).toMatchObject({ email: STAFF_B_EMAIL, from: "user", to: "admin" });
 
     await changeUser(page, STAFF_B_EMAIL, "role"); // back to Staff
@@ -116,10 +139,14 @@ test("TC-62 / TC-63 a suspended person is stopped at the next save, cannot sign 
 
     // TC-63: signing in again is refused with the same message.
     const password = await resetPassword(STAFF_B_EMAIL);
+    await other.goto("/login"); // a fresh form: the "suspended" notice of the redirect above must not be what the check reads
+    await expect(other.getByRole("alert")).toHaveCount(0);
     await other.locator("#email").fill(STAFF_B_EMAIL);
     await other.locator("#password").fill(password);
-    await other.locator("form", { has: other.locator("#password") }).locator('button[type="submit"]').click();
-    await expect(other.getByText(/đã bị khoá|has been suspended/)).toBeVisible();
+    const signInButton = other.locator("form", { has: other.locator("#password") }).locator('button[type="submit"]');
+    await signInButton.click();
+    await expect(other.getByRole("alert").filter({ hasText: /đã bị khoá|has been suspended/ })).toBeVisible();
+    await expect(signInButton).toBeEnabled(); // the sign-in answer has arrived
     await expect(other).toHaveURL(/\/login/);
 
     await changeUser(page, STAFF_B_EMAIL, "status"); // reinstate
@@ -127,11 +154,11 @@ test("TC-62 / TC-63 a suspended person is stopped at the next save, cannot sign 
     await other.locator("#password").fill(password);
     await other.locator("form", { has: other.locator("#password") }).locator('button[type="submit"]').click();
     await other.waitForURL("**/sheets");
-    await staffB.storageState({ path: STAFF_B_STATE }); // keep the saved session valid for the other specs
   } finally {
     await staff.close();
     await staffB.close();
     await restoreStaff(STAFF_B_EMAIL);
+    await resignStaffB(browser); // always, so the saved session is valid for the other specs
     await deleteSheetsOf(await staffId());
   }
 });
@@ -188,10 +215,15 @@ test.describe("settings seen by Staff", () => {
       await expect(dialog.getByRole("alert")).toContainText(/Tệp này nặng 6 MB; giới hạn là 5 MB\.|This file is 6 MB; the limit is 5 MB\./);
 
       for (const bad of ["0", "60"]) {
+        await settings.reload(); // a fresh form: the previous attempt's message cannot satisfy this one
+        await expect(settings.getByLabel(label)).toHaveValue("5");
+        await expect(settings.getByText(RANGE)).toHaveCount(0);
         await settings.getByLabel(label).fill(bad);
         await settings.getByRole("button", { name: /^(Lưu cài đặt|Save settings)$/ }).click();
         await expect(settings.getByText(RANGE)).toBeVisible();
         expect(await settingValue("max_file_mb")).toBe(5); // nothing was saved
+        await settings.reload();
+        await expect(settings.getByLabel(label)).toHaveValue("5"); // the stored value is unchanged
       }
     } finally {
       await adminContext.close();
@@ -306,14 +338,14 @@ async function trashFromList(page: Page, name: string): Promise<void> {
   await page.getByRole("searchbox").fill(name);
   await page.getByRole("button", { name: new RegExp(escape(name)) }).click(); // the row's ⋯ menu
   await page.getByRole("menuitem", { name: /Đưa vào Thùng rác|Move to Trash/ }).click();
-  await expect(page.getByRole("status")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /Thùng rác|Trash/ })).toBeVisible();
 }
 
 async function restoreFromTrash(page: Page, name: string): Promise<void> {
   await page.goto("/sheets");
   await page.getByRole("tab", { name: /Thùng rác|Trash/ }).click();
   await page.locator("li", { hasText: name }).getByRole("button", { name: /Khôi phục|Restore/ }).click();
-  await expect(page.getByRole("status")).toContainText(/khôi phục|restored/i);
+  await expect(page.getByRole("status").filter({ hasText: /khôi phục|restored/i })).toBeVisible();
 }
 
 /** Opens the permanent-deletion dialog for a sheet on /admin/trash. */
@@ -456,6 +488,7 @@ test("TC-76 a fresh folder with no sheet record is not offered as an orphan", as
   const bucket = admin().storage.from("spec-sheets");
   const check = page.getByRole("button", { name: /^(Kiểm tra tệp mồ côi|Check for orphan files)$/ });
   const reading = async () => {
+    await page.goto("/admin/trash"); // a fresh page for every reading, so a result left on screen cannot answer the next one
     await check.click();
     const found = page.getByText(/^\d+ (thư mục|folder\(s\)), /);
     const none = page.getByText(/^(Không có tệp mồ côi\.|No orphan files\.)$/);
@@ -463,7 +496,6 @@ test("TC-76 a fresh folder with no sheet record is not offered as an orphan", as
     return (await none.count()) > 0 ? "none" : await found.innerText();
   };
   try {
-    await page.goto("/admin/trash");
     const baseline = await reading(); // folders older than 24 hours that belong to other people's work stay as they are
     const { error } = await bucket.upload(path, framedPng(8, 8), { contentType: "image/png" });
     if (error) throw new Error(`orphan fixture not uploaded: ${error.message}`);
@@ -471,6 +503,7 @@ test("TC-76 a fresh folder with no sheet record is not offered as an orphan", as
     expect(await reading()).toBe(baseline);
     expect((await bucket.list(folder)).data?.length).toBe(1); // checking deletes nothing
   } finally {
-    await bucket.remove([path]);
+    const { error: removeError } = await bucket.remove([path]);
+    if (removeError) throw new Error(`orphan fixture not removed: ${removeError.message}`);
   }
 });
