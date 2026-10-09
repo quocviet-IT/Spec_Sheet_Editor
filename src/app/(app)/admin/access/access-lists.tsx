@@ -167,7 +167,7 @@ export function AccessLists({ domains, emails }: { domains: AccessEntry[]; email
       {alert && <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{alert}</p>}
       {pending && (
         <ConfirmDialog
-          message={fill(a.removeConfirm, { n: pending.entry.accounts })}
+          message={fill(a.removeConfirm, { n: pending.entry.loseAccess })}
           confirmLabel={a.remove}
           cancelLabel={t.common.cancel}
           busy={busy}

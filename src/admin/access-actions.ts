@@ -5,10 +5,10 @@ import { z } from "zod";
 import { requireAdmin } from "@/auth/session";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
-const DOMAIN = /^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const DOMAIN = /^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})$/;
 
 const kindSchema = z.enum(["domain", "email"]);
-const valueSchema = z.string().trim().toLowerCase();
+const valueSchema = z.string().trim().toLowerCase().max(320);
 const addInput = z.object({ kind: kindSchema, value: valueSchema, note: z.string().trim().max(200) }).superRefine((v, ctx) => {
   const ok = v.kind === "domain" ? DOMAIN.test(v.value) : z.email().safeParse(v.value).success;
   if (!ok) ctx.addIssue({ code: "custom", path: ["value"], message: "invalid" });

@@ -13,7 +13,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
  */
 export async function saveSettings(
   values: Record<SettingKey, number>,
-): Promise<{ ok: true } | { error: "out_of_range"; key: SettingKey } | { error: "forbidden" | "unknown" }> {
+): Promise<{ ok: true } | { error: "out_of_range"; key: SettingKey } | { error: "partial"; saved: SettingKey[] } | { error: "forbidden" | "unknown" }> {
   await requireAdmin("/admin/access");
   for (const key of SETTING_KEYS) {
     const v = values?.[key];
@@ -23,14 +23,21 @@ export async function saveSettings(
   try {
     const stored = await fetchSettings();
     const supabase = await createSupabaseServer();
+    const saved: SettingKey[] = [];
     for (const key of SETTING_KEYS) {
       if (values[key] === stored[key]) continue;
       const { error } = await supabase.rpc("set_setting", { p_key: key, p_value: values[key] });
       if (error) {
+        // Earlier values are already stored: say so, so the form shows what is really saved.
+        if (saved.length > 0) {
+          revalidatePath("/admin/access");
+          return { error: "partial", saved };
+        }
         if (/(?<![a-z_])out_of_range(?![a-z_])/.test(error.message)) return { error: "out_of_range", key };
         if (/(?<![a-z_])forbidden(?![a-z_])/.test(error.message)) return { error: "forbidden" };
         return { error: "unknown" };
       }
+      saved.push(key);
     }
     revalidatePath("/admin/access");
     return { ok: true };

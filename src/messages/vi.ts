@@ -328,6 +328,7 @@ export const vi = {
       saving: "Đang lưu…",
       saved: "Đã lưu cài đặt. Áp dụng với mọi người từ lần tải trang kế tiếp.",
       range: "Giá trị phải từ {min} đến {max}.",
+      partial: "Một số cài đặt đã lưu, một số chưa. Kiểm tra lại các giá trị rồi lưu lại.",
     },
     audit: {
       title: "Nhật ký hoạt động",

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useId, useState, type FormEvent } from "react";
 import { saveSettings } from "@/admin/settings-actions";
 import { SETTING_KEYS, SETTING_RANGES, type SettingKey } from "@/admin/settings-ranges";
@@ -10,6 +11,7 @@ export function SettingsForm({ initial }: { initial: Record<SettingKey, number> 
   const t = useMessages();
   const a = t.admin.access;
   const id = useId();
+  const router = useRouter();
   const [values, setValues] = useState<Record<SettingKey, string>>(
     () => Object.fromEntries(SETTING_KEYS.map((k) => [k, String(initial[k])])) as Record<SettingKey, string>,
   );
@@ -44,7 +46,10 @@ export function SettingsForm({ initial }: { initial: Record<SettingKey, number> 
     setBusy(false);
     if ("ok" in result) setSaved(true);
     else if (result.error === "out_of_range") setBadKey(result.key);
-    else setAlert(result.error === "forbidden" ? t.admin.users.errors.forbidden : a.errors.unknown);
+    else if (result.error === "partial") {
+      setAlert(a.partial);
+      router.refresh(); // reload the stored values
+    } else setAlert(result.error === "forbidden" ? t.admin.users.errors.forbidden : a.errors.unknown);
   }
 
   return (

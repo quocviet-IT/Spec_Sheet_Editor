@@ -1,4 +1,4 @@
-﻿import "server-only";
+import "server-only";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { auditRange, groupPrefix, type AuditFilter } from "./audit-filter";
 import type { SettingKey } from "./settings-ranges";
@@ -79,7 +79,8 @@ export async function fetchUsers(): Promise<UserRow[]> {
   }));
 }
 
-export type AccessEntry = { value: string; note: string | null; accounts: number };
+/** `accounts`: Google accounts the entry admits; `loseAccess`: those admitted by this entry and no other. */
+export type AccessEntry = { value: string; note: string | null; accounts: number; loseAccess: number };
 
 type AllowedRow = { value: string; note: string | null };
 
@@ -101,41 +102,37 @@ async function fetchAllowed(supabase: Supabase, table: "allowed_domains" | "allo
   }
 }
 
-/** Every profile's email, paged. */
-async function fetchProfileEmails(supabase: Supabase): Promise<string[]> {
-  const all: string[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("email")
-      .order("email")
-      .order("id")
-      .range(from, from + PAGE - 1);
-    if (error) throw error;
-    const rows = (data ?? []) as { email: string }[];
-    for (const r of rows) all.push(r.email.toLowerCase());
-    if (rows.length < PAGE) return all;
-  }
-}
-
-/** The permitted domains and emails, each with the number of accounts it admits (case-insensitive). */
+/** The permitted domains and emails, each with the Google accounts it admits (case-insensitive). */
 export async function fetchAccess(): Promise<{ domains: AccessEntry[]; emails: AccessEntry[] }> {
   const supabase = await createSupabaseServer();
-  const [domains, emails, profileEmails] = await Promise.all([
+  const [domains, emails, profiles] = await Promise.all([
     fetchAllowed(supabase, "allowed_domains", "domain"),
     fetchAllowed(supabase, "allowed_emails", "email"),
-    fetchProfileEmails(supabase),
+    fetchProfiles(supabase),
   ]);
-  const byDomain = new Map<string, number>();
-  const byEmail = new Map<string, number>();
-  for (const e of profileEmails) {
-    byEmail.set(e, (byEmail.get(e) ?? 0) + 1);
-    const domain = e.slice(e.lastIndexOf("@") + 1);
-    byDomain.set(domain, (byDomain.get(domain) ?? 0) + 1);
+  // The lists gate Google sign-ins only; password accounts an Admin created are always admitted.
+  const google = profiles.filter((p) => !p.password_account).map((p) => p.email.toLowerCase());
+  const domainSet = new Set(domains.map((d) => d.value.toLowerCase()));
+  const emailSet = new Set(emails.map((d) => d.value.toLowerCase()));
+  const domainOf = (e: string) => e.slice(e.lastIndexOf("@") + 1);
+  const byDomain = new Map<string, { accounts: number; loseAccess: number }>();
+  const byEmail = new Map<string, { accounts: number; loseAccess: number }>();
+  const bump = (m: Map<string, { accounts: number; loseAccess: number }>, key: string, only: boolean) => {
+    const c = m.get(key) ?? { accounts: 0, loseAccess: 0 };
+    c.accounts += 1;
+    if (only) c.loseAccess += 1;
+    m.set(key, c);
+  };
+  for (const e of google) {
+    const d = domainOf(e);
+    // An account loses access only when this entry is the one entry that admits it.
+    if (domainSet.has(d)) bump(byDomain, d, !emailSet.has(e));
+    if (emailSet.has(e)) bump(byEmail, e, !domainSet.has(d));
   }
+  const none = { accounts: 0, loseAccess: 0 };
   return {
-    domains: domains.map((d) => ({ ...d, accounts: byDomain.get(d.value.toLowerCase()) ?? 0 })),
-    emails: emails.map((d) => ({ ...d, accounts: byEmail.get(d.value.toLowerCase()) ?? 0 })),
+    domains: domains.map((d) => ({ ...d, ...(byDomain.get(d.value.toLowerCase()) ?? none) })),
+    emails: emails.map((d) => ({ ...d, ...(byEmail.get(d.value.toLowerCase()) ?? none) })),
   };
 }
 

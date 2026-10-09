@@ -330,6 +330,7 @@ export const en: Messages = {
       saving: "Saving…",
       saved: "Settings saved. They apply from everyone's next page load.",
       range: "The value must be between {min} and {max}.",
+      partial: "Some settings were saved and some were not. Check the values and save again.",
     },
     audit: {
       title: "Audit log",
