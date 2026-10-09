@@ -14,3 +14,16 @@ export function findOrphans(folders: readonly StorageFolder[], recordIds: Readon
   const cutoff = now.getTime() - minAgeHours * 3_600_000;
   return folders.filter((f) => SHEET_ID.test(f.name) && !recordIds.has(f.name) && new Date(f.newestAt).getTime() <= cutoff);
 }
+
+/** "0 B", "1.5 KB", "2.3 MB": 1024-based, one decimal above bytes. */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i += 1;
+  }
+  return i === 0 ? `${Math.round(value)} B` : `${value.toFixed(1)} ${units[i]}`;
+}

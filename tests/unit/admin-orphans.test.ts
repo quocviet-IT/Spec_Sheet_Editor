@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findOrphans, type StorageFolder } from "@/admin/orphans";
+import { findOrphans, formatBytes, type StorageFolder } from "@/admin/orphans";
 
 const NOW = new Date("2026-10-09T12:00:00Z");
 const ID = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
@@ -19,5 +19,20 @@ describe("findOrphans (UC-18, TC-76)", () => {
 
   it("treats exactly 24 hours as old enough", () => {
     expect(findOrphans([folder(ID(4), 24)], new Set(), NOW)).toHaveLength(1);
+  });
+});
+
+describe("formatBytes", () => {
+  it("writes a size a person can read", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(1023)).toBe("1023 B");
+    expect(formatBytes(1536)).toBe("1.5 KB");
+    expect(formatBytes(2.3 * 1024 * 1024)).toBe("2.3 MB");
+    expect(formatBytes(5 * 1024 ** 3)).toBe("5.0 GB");
+  });
+
+  it("treats a bad value as zero", () => {
+    expect(formatBytes(-5)).toBe("0 B");
+    expect(formatBytes(Number.NaN)).toBe("0 B");
   });
 });

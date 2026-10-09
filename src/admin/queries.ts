@@ -243,3 +243,36 @@ export async function fetchAuditPeople(): Promise<AuditPerson[]> {
   const supabase = await createSupabaseServer();
   return (await fetchProfiles(supabase)).map((p) => ({ id: p.id, email: p.email, fullName: p.full_name }));
 }
+
+export type TrashRow = { id: string; name: string; thumbUrl: string | null; deletedAt: string; deletedByName: string | null };
+
+type TrashDbRow = { id: string; name: string; thumb_path: string; deleted_at: string; deleted_by_name: string | null };
+
+/** Every sheet in the Trash, newest first, with short-lived thumbnail links (as in the sheet list). */
+export async function fetchTrash(): Promise<TrashRow[]> {
+  const supabase = await createSupabaseServer();
+  const rows: TrashDbRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("sheet_list")
+      .select("id, name, thumb_path, deleted_at, deleted_by_name")
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as unknown as TrashDbRow[];
+    rows.push(...page);
+    if (page.length < PAGE) break;
+  }
+  const links = new Map<string, string>();
+  if (rows.length > 0) {
+    const ttl = (await fetchSettings()).signed_url_ttl_min * 60;
+    for (let i = 0; i < rows.length; i += 200) {
+      const { data: signed, error } = await supabase.storage.from("spec-sheets").createSignedUrls(rows.slice(i, i + 200).map((r) => r.thumb_path), ttl);
+      if (error) console.error("createSignedUrls failed:", error.message);
+      for (const s of signed ?? []) if (s.path && s.signedUrl && !s.error) links.set(s.path, s.signedUrl);
+    }
+  }
+  return rows.map((r) => ({ id: r.id, name: r.name, thumbUrl: links.get(r.thumb_path) ?? null, deletedAt: r.deleted_at, deletedByName: r.deleted_by_name }));
+}
