@@ -3,7 +3,7 @@ import { staffId } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
 import { PDF_VALUES, valuesPdf } from "./support/files";
 import {
-  TOP_LEFT, auditCount, canvasPoint, dragBox, drawValuesPng, editValue, markers, openValuesSheet, storedSheet, textPng,
+  TOP_LEFT, auditCount, canvasPoint, dragBox, drawValuesPng, editValue, marker, markers, openValuesSheet, storedSheet, textPng,
   uploadSheet, waitForVersion,
 } from "./support/sheets";
 
@@ -33,7 +33,6 @@ test("TC-24 a value missing from the text layer is read by clicking it, within 5
   await expect(popover(page)).toBeVisible({ timeout: 5_000 });
   const elapsed = Date.now() - readyAt;
   test.info().annotations.push({ type: "tc24", description: `reader ready to popover: ${elapsed} ms` });
-  console.log(`TC-24 reader ready to popover: ${elapsed} ms`);
   await expect(popover(page).getByLabel(/Số cũ|Old value/)).toHaveValue("1.70");
   await popover(page).getByLabel(/Số mới|New value/).fill("1.75");
   await popover(page).getByLabel(/Số mới|New value/).press("Enter");
@@ -98,6 +97,7 @@ test("TC-34 a box running into the right-hand table is refused", async ({ page }
   await dragBox(page, 0.6, 0.3, 0.75, 0.33);
   await expect(page.getByRole("alert").filter({ hasText: /bốn ô hình vẽ|four drawing panels/ })).toBeVisible();
   await expect(page.getByRole("dialog", { name: /Chiều của số|Direction of the value/ })).toHaveCount(0);
+  await expect(popover(page)).toHaveCount(0);
 });
 
 test("TC-35 a box over blank paper says there is no text in it", async ({ page }) => {
@@ -106,7 +106,20 @@ test("TC-35 a box over blank paper says there is no text in it", async ({ page }
   await dragBox(page, 0.3, 0.39, 0.34, 0.42);
   await page.getByRole("dialog", { name: /Chiều của số|Direction of the value/ }).getByRole("button", { name: /Tiếp tục|Continue/ }).click();
   await expect(page.getByRole("alert").filter({ hasText: /không có chữ|no text in this box/ })).toBeVisible();
+  await page.waitForTimeout(1000); // nothing should happen, so there is nothing to wait for
   await expect(popover(page)).toHaveCount(0);
+});
+
+test("the matching prompt keeps K and Escape to itself", async ({ page }) => {
+  await openValuesSheet(page, "matchkeys");
+  await editValue(page, "2.50", TOP_LEFT, "2.6");
+  await expect(matchingPrompt(page)).toBeVisible();
+  await page.keyboard.press("k");
+  await expect(drawButton(page)).toHaveAttribute("aria-pressed", "false");
+  await page.keyboard.press("Escape");
+  await expect(matchingPrompt(page)).toHaveCount(0);
+  await expect(drawButton(page)).toHaveAttribute("aria-pressed", "false");
+  await expect(marker(page, "2.50", TOP_LEFT)).toBeFocused();
 });
 
 test("K switches Draw box on and Escape switches it off", async ({ page }) => {

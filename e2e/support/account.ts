@@ -57,9 +57,15 @@ export async function ensureAccount(email: string, name: string): Promise<{ id: 
 export const ensureStaff = () => ensureAccount(STAFF_EMAIL, STAFF_NAME);
 export const ensureStaffB = () => ensureAccount(STAFF_B_EMAIL, STAFF_B_NAME);
 
+const ids = new Map<string, string>();
+
+/** Looked up once per address for the whole run (the account list is paged, and every test asks). */
 export async function accountId(email: string): Promise<string> {
+  const known = ids.get(email);
+  if (known) return known;
   const id = await findUserId(email);
   if (!id) throw new Error(`test account ${email} missing; global setup did not run`);
+  ids.set(email, id);
   return id;
 }
 

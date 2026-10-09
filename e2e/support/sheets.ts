@@ -229,10 +229,38 @@ export async function canvasChanges(page: Page, polygon?: Point[]): Promise<{ ch
   }, polygon);
 }
 
+/** How many dark pixels (red channel under 200) the remembered canvas holds inside a rectangle. */
+export async function rememberedDarkPixels(page: Page, rect: { x: number; y: number; w: number; h: number }): Promise<number> {
+  return page.evaluate((r) => {
+    const before = (window as unknown as { __remembered: ImageData }).__remembered;
+    let dark = 0;
+    for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(before.height, Math.ceil(r.y + r.h)); y++) {
+      for (let x = Math.max(0, Math.floor(r.x)); x < Math.min(before.width, Math.ceil(r.x + r.w)); x++) {
+        if (before.data[(y * before.width + x) * 4] < 200) dark++;
+      }
+    }
+    return dark;
+  }, rect);
+}
+
+/** Whether a polygon covers any point of a rectangle (checked on a 1 px grid). */
+export function polygonTouchesRect(poly: Point[], r: { x: number; y: number; w: number; h: number }): boolean {
+  const inside = (px: number, py: number) => {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const p = poly[i];
+      const q = poly[j];
+      if (p.y > py !== q.y > py && px < ((q.x - p.x) * (py - p.y)) / (q.y - p.y) + p.x) hit = !hit;
+    }
+    return hit;
+  };
+  for (let y = r.y; y <= r.y + r.h; y++) for (let x = r.x; x <= r.x + r.w; x++) if (inside(x, y)) return true;
+  return false;
+}
+
 /** The edit's mask as the app draws it (digits box plus max(1, 0.15 x digit height), turned by the angle),
  *  grown by 1.5 px for anti-aliasing. */
 export function maskPolygon(edit: StoredEdit, width: number, height: number): Point[] {
-  void height;
   const pad = Math.max(1, 0.15 * edit.box.h * width);
   const hw = (edit.box.w * width + 2 * pad) / 2 + 1.5;
   const hh = (edit.box.h * width + 2 * pad) / 2 + 1.5;
