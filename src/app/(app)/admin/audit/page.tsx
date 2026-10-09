@@ -80,6 +80,8 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
           <p role="note" className="text-ink-2">
             {a.tooMany}
           </p>
+        ) : total === 0 ? (
+          <span className="rounded-md border border-line px-3 py-2 font-medium text-ink-2">{a.csv}</span>
         ) : (
           <a href={`/admin/audit/export?${query}`} className="rounded-md border border-line px-3 py-2 font-medium hover:bg-sunk">
             {a.csv}
@@ -112,8 +114,11 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
                   </td>
                   <td className="px-3 py-2">
                     <details>
-                      <summary className="cursor-pointer">{a.details}</summary>
-                      <pre className="mt-2 max-w-md overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-sunk p-2 text-xs">
+                      <summary className="cursor-pointer">
+                        {a.details}
+                        <span className="sr-only">{` ${r.action} ${localTime(r.occurredAt)}`}</span>
+                      </summary>
+                      <pre tabIndex={0} className="mt-2 max-w-md overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-sunk p-2 text-xs">
                         {JSON.stringify(r.detail ?? {}, null, 2)}
                       </pre>
                     </details>

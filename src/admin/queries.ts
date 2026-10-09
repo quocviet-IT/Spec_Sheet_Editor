@@ -188,17 +188,32 @@ function auditParams(filter: AuditFilter) {
   return { fromIso, toIsoExclusive, actor: filter.actor, like: prefix ? `${prefix}%` : null, target: filter.target };
 }
 
-/** Exact number of entries matching the filter. */
-export async function countAudit(filter: AuditFilter): Promise<number> {
+/** Exact number of entries matching the filter; `maxId` bounds it to entries up to that id (a snapshot). */
+export async function countAudit(filter: AuditFilter, maxId: number | null = null): Promise<number> {
   const supabase = await createSupabaseServer();
   const f = auditParams(filter);
   let q = supabase.from("audit_log").select("id", { count: "exact", head: true }).gte("occurred_at", f.fromIso).lt("occurred_at", f.toIsoExclusive);
   if (f.actor) q = q.eq("actor_id", f.actor);
   if (f.like) q = q.like("action", f.like);
   if (f.target) q = q.eq("target_id", f.target);
+  if (maxId !== null) q = q.lte("id", maxId);
   const { count, error } = await q;
   if (error) throw error;
   return count ?? 0;
+}
+
+/** The newest entry id matching the filter, or null when there is none. */
+export async function maxAuditId(filter: AuditFilter): Promise<number | null> {
+  const supabase = await createSupabaseServer();
+  const f = auditParams(filter);
+  let q = supabase.from("audit_log").select("id").gte("occurred_at", f.fromIso).lt("occurred_at", f.toIsoExclusive);
+  if (f.actor) q = q.eq("actor_id", f.actor);
+  if (f.like) q = q.like("action", f.like);
+  if (f.target) q = q.eq("target_id", f.target);
+  const { data, error } = await q.order("id", { ascending: false }).limit(1);
+  if (error) throw error;
+  const row = ((data ?? []) as { id: number }[])[0];
+  return row ? row.id : null;
 }
 
 /** One page of the audit log, newest first; `before` is the id of the last entry already shown. */
@@ -218,21 +233,32 @@ export async function fetchAudit(filter: AuditFilter, before: number | null): Pr
   return { rows: shown, next: more ? shown[shown.length - 1].id : null, total };
 }
 
-/** Every matching entry, newest first, read in pages of 1000. */
-export async function fetchAuditAll(filter: AuditFilter): Promise<AuditRow[]> {
+/**
+ * A stable snapshot of every matching entry, newest first: bounded by the newest id at the start and read
+ * with keyset paging (no offsets), so entries written meanwhile are not included and none is read twice.
+ * `overCap` is true when more than AUDIT_CSV_MAX entries exist; `rows` is then empty.
+ */
+export async function fetchAuditAll(filter: AuditFilter): Promise<{ rows: AuditRow[]; overCap: boolean }> {
+  const maxId = await maxAuditId(filter);
+  if (maxId === null) return { rows: [], overCap: false };
+  if ((await countAudit(filter, maxId)) > AUDIT_CSV_MAX) return { rows: [], overCap: true };
   const supabase = await createSupabaseServer();
   const f = auditParams(filter);
   const all: AuditRow[] = [];
-  for (let from = 0; ; from += PAGE) {
-    let q = supabase.from("audit_log").select(AUDIT_COLUMNS).gte("occurred_at", f.fromIso).lt("occurred_at", f.toIsoExclusive);
+  let last: number | null = null;
+  for (;;) {
+    let q = supabase.from("audit_log").select(AUDIT_COLUMNS).gte("occurred_at", f.fromIso).lt("occurred_at", f.toIsoExclusive).lte("id", maxId);
     if (f.actor) q = q.eq("actor_id", f.actor);
     if (f.like) q = q.like("action", f.like);
     if (f.target) q = q.eq("target_id", f.target);
-    const { data, error } = await q.order("id", { ascending: false }).range(from, from + PAGE - 1);
+    if (last !== null) q = q.lt("id", last);
+    const { data, error } = await q.order("id", { ascending: false }).limit(PAGE);
     if (error) throw error;
     const rows = ((data ?? []) as unknown as AuditDbRow[]).map(toAuditRow);
     all.push(...rows);
-    if (rows.length < PAGE) return all;
+    if (all.length > AUDIT_CSV_MAX) return { rows: [], overCap: true };
+    if (rows.length < PAGE) return { rows: all, overCap: false };
+    last = rows[rows.length - 1].id;
   }
 }
 
