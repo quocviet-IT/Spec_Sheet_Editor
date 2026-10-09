@@ -72,6 +72,19 @@ describe("fromPdfText", () => {
   });
 });
 
+describe("fromPdfText with ink on the page", () => {
+  it("tightens the text-layer box to the ink", () => {
+    // font 37.5 px, baseline start (190, 216), advance 70 px: a box 70 x 27 px, much larger than the 41 x 13 ink
+    const text: PageTextItem[] = [{ str: "2.50", transform: [37.5, 0, 0, -37.5, 190, 216], width: 70 }];
+    const [d] = fromPdfText({ raster: page(), text, offsetX: 0, offsetY: 0, source: { kind: "image" } }, ids());
+    expect(d).toMatchObject({ readValue: "2.50", source: "pdf-text", angle: 0 });
+    near(d.box.cx * W, 220);
+    near(d.box.cy * H, 206);
+    near(d.box.w * W, 41);
+    near(d.box.h * W, 13);
+  });
+});
+
 describe("ocrFailureReason", () => {
   it("tells a connection problem from a browser that cannot run the reader", () => {
     expect(ocrFailureReason(new OcrFailure("model_download", "x"))).toBe("ocr_load");
@@ -103,6 +116,12 @@ describe("detectValues", () => {
     expect(reader.scan).toHaveBeenCalledWith({ x: 51, y: 113, w: 686, h: 521 });
   });
 
+  it("reports an empty list when the scan returns no values", async () => {
+    const reader = ready({ scan: vi.fn(async () => ({ detections: [], timing: { horizontalMs: 1, verticalMs: 1 } })) });
+    expect(await detectValues(loaded(), async () => reader, ids())).toEqual({ ok: true, source: "ocr", detections: [] });
+    expect(reader.scan).toHaveBeenCalledTimes(1);
+  });
+
   it("passes on why the reader could not start", async () => {
     const fail = (code: "model_download" | "init_failed") => async () => {
       throw new OcrFailure(code, "x");
@@ -130,6 +149,18 @@ describe("makeEdit", () => {
     expect(e).toMatchObject({ detectionId: d.id, oldValue: "2.50", newValue: "2.60", angle: 0, textColor: "#676672", bgColor: "#ffffff" });
     near(e.fontPx * W, 13);
     near(e.box.cx * W, 220);
+  });
+
+  it("measures a vertical value along its own axes", () => {
+    const [, d] = fromScan(scan(), page(), ids());
+    expect(d.angle).toBe(-90);
+    const e = makeEdit(page(), d, "6.90", "6.80");
+    expect(e).toMatchObject({ detectionId: d.id, angle: -90, textColor: "#676672", bgColor: "#ffffff" });
+    near(e.fontPx * W, 13); // the digit height is the box height, across the text
+    near(e.box.cx * W, 406);
+    near(e.box.cy * H, 320);
+    near(e.box.w * W, 41); // along the text, which runs up the page
+    near(e.box.h * W, 13);
   });
 
   it("falls back to the detection box and black on white when no text is found", () => {

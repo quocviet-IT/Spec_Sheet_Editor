@@ -99,9 +99,10 @@ test("TC-35 a box over blank paper says there is no text in it", async ({ page }
   await openValuesSheet(page, "tc35");
   await drawButton(page).click();
   await dragBox(page, 0.3, 0.39, 0.34, 0.42);
-  await page.getByRole("dialog", { name: /Chiều của số|Direction of the value/ }).getByRole("button", { name: /Tiếp tục|Continue/ }).click();
+  const direction = page.getByRole("dialog", { name: /Chiều của số|Direction of the value/ });
+  await direction.getByRole("button", { name: /Tiếp tục|Continue/ }).click();
+  await expect(direction).toBeHidden(); // the step is over, so no edit popover is about to open
   await expect(page.getByRole("alert").filter({ hasText: /không có chữ|no text in this box/ })).toBeVisible();
-  await page.waitForTimeout(1000); // nothing should happen, so there is nothing to wait for
   await expect(popover(page)).toHaveCount(0);
 });
 

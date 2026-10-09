@@ -105,9 +105,8 @@ test("TC-45 the check lists the edits, suggests the other 2.50 and reminds about
   await dialog.getByRole("button", { name: /Quay lại sửa|Back to editing/ }).click();
   await expect(dialog).toBeHidden();
   expect(await auditCount(id, "sheet.export_pdf")).toBe(0);
-  await page.waitForTimeout(1000); // the assertion is that nothing happens
+  await expect(page.getByRole("button", { name: /(đã sửa thành|edited to) 2\.60/ })).toHaveCount(2); // the page is back and settled
   expect(downloads).toBe(0);
-  await expect(page.getByRole("button", { name: /(đã sửa thành|edited to) 2\.60/ })).toHaveCount(2);
 });
 
 test("exporting a sheet with no edits shows the notice and still exports", async ({ page }, testInfo) => {

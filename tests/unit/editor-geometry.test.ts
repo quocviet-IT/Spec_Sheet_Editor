@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DRAWING_AREA } from "@/lib/form/template";
 import type { Quad } from "@/lib/ocr/geometry";
 import {
   axes, boxCorners, boxForDrawnRect, boxFromQuad, centreInDrawingArea, detectionAt, drawingAreaPx, panelOf,
@@ -21,12 +22,16 @@ describe("reading axes", () => {
 describe("boxFromQuad", () => {
   it("measures a horizontal reading along and across the text", () => {
     const quad: Quad = [{ x: 100, y: 50 }, { x: 160, y: 50 }, { x: 160, y: 70 }, { x: 100, y: 70 }];
-    expect(boxFromQuad(quad, 0)).toEqual({ cx: 130, cy: 60, w: 60, h: 20, angle: 0 });
+    const box = boxFromQuad(quad, 0);
+    close(box.cx, 130); close(box.cy, 60); close(box.w, 60); close(box.h, 20);
+    expect(box.angle).toBe(0);
   });
 
   it("does not depend on the corner order (the detector's order is not the text's)", () => {
     const quad: Quad = [{ x: 160, y: 70 }, { x: 100, y: 70 }, { x: 100, y: 50 }, { x: 160, y: 50 }];
-    expect(boxFromQuad(quad, 0)).toEqual({ cx: 130, cy: 60, w: 60, h: 20, angle: 0 });
+    const box = boxFromQuad(quad, 0);
+    close(box.cx, 130); close(box.cy, 60); close(box.w, 60); close(box.h, 20);
+    expect(box.angle).toBe(0);
   });
 
   it("puts the long side of a vertical reading along the text", () => {
@@ -51,8 +56,10 @@ describe("boxFromQuad", () => {
 describe("fractions and pixels", () => {
   it("measures both sizes against the page width", () => {
     const box = toBox({ cx: 1650, cy: 1275, w: 66, h: 33, angle: -90 }, 3300, 2550);
-    expect(box).toEqual({ cx: 0.5, cy: 0.5, w: 0.02, h: 0.01 });
-    expect(toPx(box, -90, 3300, 2550)).toEqual({ cx: 1650, cy: 1275, w: 66, h: 33, angle: -90 });
+    close(box.cx, 0.5); close(box.cy, 0.5); close(box.w, 0.02); close(box.h, 0.01);
+    const back = toPx(box, -90, 3300, 2550);
+    close(back.cx, 1650); close(back.cy, 1275); close(back.w, 66); close(back.h, 33);
+    expect(back.angle).toBe(-90);
   });
 
   it("rounds stored numbers", () => {
@@ -112,6 +119,34 @@ describe("drawn boxes (UC-07)", () => {
     expect(rectInDrawingArea({ x: 400, y: 320, w: 80, h: 30 }, 3300, 2550)).toBe(false); // starts in the header band
   });
 
+  it("accepts a rectangle exactly on the four edges of the drawing area", () => {
+    const W = 3300;
+    const H = 2550;
+    const { x0, x1, y0, y1 } = DRAWING_AREA;
+    // starts picked so that the sum x + w lands exactly on the right and bottom edges
+    expect(rectInDrawingArea({ x: x0 * W, y: 600, w: 80, h: 30 }, W, H)).toBe(true);
+    expect(rectInDrawingArea({ x: x0 * W - 0.01, y: 600, w: 80, h: 30 }, W, H)).toBe(false);
+    expect(rectInDrawingArea({ x: 400, y: y0 * H, w: 80, h: 30 }, W, H)).toBe(true);
+    expect(rectInDrawingArea({ x: 400, y: y0 * H - 0.01, w: 80, h: 30 }, W, H)).toBe(false);
+    expect(rectInDrawingArea({ x: 1500, y: 600, w: x1 * W - 1500, h: 30 }, W, H)).toBe(true);
+    expect(rectInDrawingArea({ x: 1500, y: 600, w: x1 * W - 1500 + 0.01, h: 30 }, W, H)).toBe(false);
+    expect(rectInDrawingArea({ x: 400, y: 1200, w: 80, h: y1 * H - 1200 }, W, H)).toBe(true);
+    expect(rectInDrawingArea({ x: 400, y: 1200, w: 80, h: y1 * H - 1200 + 0.01 }, W, H)).toBe(false);
+  });
+
+  it("counts a value centred exactly on an edge of the drawing area as inside (BR-02)", () => {
+    const { x0, x1, y0, y1 } = DRAWING_AREA;
+    const at = (cx: number, cy: number) => centreInDrawingArea({ cx, cy, w: 0.01, h: 0.005 });
+    expect(at(x0, 0.3)).toBe(true);
+    expect(at(x1, 0.3)).toBe(true);
+    expect(at(0.3, y0)).toBe(true);
+    expect(at(0.3, y1)).toBe(true);
+    expect(at(x0 - 1e-9, 0.3)).toBe(false);
+    expect(at(x1 + 1e-9, 0.3)).toBe(false);
+    expect(at(0.3, y0 - 1e-9)).toBe(false);
+    expect(at(0.3, y1 + 1e-9)).toBe(false);
+  });
+
   it("knows whether a click lies inside the drawing", () => {
     expect(pointInDrawingArea({ x: 400, y: 600 }, 3300, 2550)).toBe(true);
     expect(pointInDrawingArea({ x: 2700, y: 600 }, 3300, 2550)).toBe(false);
@@ -119,7 +154,9 @@ describe("drawn boxes (UC-07)", () => {
 
   it("takes the drawn rectangle as the text box for the chosen angle", () => {
     const rect = { x: 100, y: 200, w: 60, h: 20 };
-    expect(boxForDrawnRect(rect, 0)).toEqual({ cx: 130, cy: 210, w: 60, h: 20, angle: 0 });
+    const flat = boxForDrawnRect(rect, 0);
+    close(flat.cx, 130); close(flat.cy, 210); close(flat.w, 60); close(flat.h, 20);
+    expect(flat.angle).toBe(0);
     const up = boxForDrawnRect({ x: 100, y: 200, w: 20, h: 60 }, -90);
     close(up.w, 60);
     close(up.h, 20);
@@ -130,6 +167,19 @@ describe("drawn boxes (UC-07)", () => {
     close(turned.w, 60 * c + 20 * s);
     close(turned.h, 60 * s + 20 * c);
     expect(turned.angle).toBe(58);
+  });
+
+  it("at 58° the box covers the rectangle: all four corners of the rectangle lie inside the box", () => {
+    const rect = { x: 100, y: 200, w: 60, h: 20 };
+    const box = boxForDrawnRect(rect, 58);
+    const { u, v } = axes(box.angle);
+    const corners = [[rect.x, rect.y], [rect.x + rect.w, rect.y], [rect.x + rect.w, rect.y + rect.h], [rect.x, rect.y + rect.h]];
+    for (const [x, y] of corners) {
+      const s = (x - box.cx) * u.x + (y - box.cy) * u.y;
+      const t = (x - box.cx) * v.x + (y - box.cy) * v.y;
+      expect(Math.abs(s)).toBeLessThanOrEqual(box.w / 2 + 1e-9);
+      expect(Math.abs(t)).toBeLessThanOrEqual(box.h / 2 + 1e-9);
+    }
   });
 });
 

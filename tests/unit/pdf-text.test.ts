@@ -95,11 +95,72 @@ describe("pdfTextValues on real pdf.js output", () => {
     near(v.px.cy, 200 * SCALE - 20, 1);
   });
 
+  it("drops a run that the trim offset pushes out of the drawing area", () => {
+    // starts 140 px from the left of the rendered page: its centre (155) is inside the area (x0 = 0.046 of 3300 = 152)
+    const item: PageTextItem = { str: "2.50", transform: [37.5, 0, 0, -37.5, 140, 500], width: 30 };
+    expect(pdfTextValues([item], FULL)).toHaveLength(1);
+    // 20 px of trim moves the centre to 135, left of the area (x0 = 0.046 of 3280 = 151)
+    expect(pdfTextValues([item], { offsetX: 20, offsetY: 0, width: 3280, height: 2550 })).toEqual([]);
+  });
+
   it("keeps one value when the same run is printed twice at the same place", async () => {
     const items = await textOf((page, font) => {
       drawCentred(page, font, "2.50", 200, 200, 0);
       drawCentred(page, font, "2.50", 200.2, 200.1, 0);
     });
     expect(pdfTextValues(items, FULL)).toHaveLength(1);
+  });
+});
+
+// pdf.js itself merges runs printed next to each other into one item, so the split cases are built by hand:
+// font 37.5 px, so the digits are 27 px high; a gap under 30 % is 8.1 px and a baseline step under 25 % is 6.75 px.
+describe("pdfTextValues: a value split across runs", () => {
+  const FONT = 37.5;
+  const horizontal = (str: string, x: number, y: number, width: number): PageTextItem => ({ str, transform: [FONT, 0, 0, -FONT, x, y], width });
+  const upward = (str: string, x: number, y: number, width: number): PageTextItem => ({ str, transform: [0, -FONT, -FONT, 0, x, y], width });
+
+  it("finds a value split into \"2.\" and \"50\" once, with the union box", () => {
+    const values = pdfTextValues([horizontal("2.", 300, 400, 20), horizontal("50", 323, 400, 40)], FULL);
+    expect(values.map((v) => v.value)).toEqual(["2.50"]);
+    const [v] = values;
+    near(v.px.w, 63, 1e-9); // from the start of "2." to the end of "50"
+    near(v.px.cx, 331.5, 1e-9);
+    near(v.px.cy, 400 - (DIGIT_HEIGHT_EM * FONT) / 2, 1e-9);
+    near(v.px.h, DIGIT_HEIGHT_EM * FONT, 1e-9);
+    expect(v.px.angle).toBe(0);
+  });
+
+  it("joins three pieces when the first two do not make a value yet", () => {
+    const values = pdfTextValues([horizontal("2", 300, 400, 20), horizontal(".", 321, 400, 10), horizontal("50", 332, 400, 40)], FULL);
+    expect(values.map((v) => v.value)).toEqual(["2.50"]);
+    near(values[0].px.w, 72, 1e-9);
+  });
+
+  it("joins a vertical split value too", () => {
+    const values = pdfTextValues([upward("6.", 500, 900, 20), upward("90", 500, 877, 40)], FULL);
+    expect(values.map((v) => v.value)).toEqual(["6.90"]);
+    const [v] = values;
+    expect(v.px.angle).toBe(-90);
+    near(v.px.w, 63, 1e-9);
+    near(v.px.cx, 500 - (DIGIT_HEIGHT_EM * FONT) / 2, 1e-9);
+    near(v.px.cy, 900 - 31.5, 1e-9);
+  });
+
+  it("does not join two separate values side by side", () => {
+    const values = pdfTextValues([horizontal("2.50", 300, 400, 70), horizontal("3.00", 374, 400, 70)], FULL);
+    expect(values.map((v) => v.value)).toEqual(["2.50", "3.00"]);
+    expect(values.map((v) => v.px.w)).toEqual([70, 70]);
+  });
+
+  it("does not join pieces that are far apart, on another baseline, or read at another angle", () => {
+    expect(pdfTextValues([horizontal("2.", 300, 400, 20), horizontal("50", 329, 400, 40)], FULL)).toEqual([]); // 9 px gap > 8.1
+    expect(pdfTextValues([horizontal("2.", 300, 400, 20), horizontal("50", 323, 408, 40)], FULL)).toEqual([]); // 8 px step > 6.75
+    expect(pdfTextValues([horizontal("2.", 300, 400, 20), upward("50", 320, 400, 40)], FULL)).toEqual([]);
+    expect(pdfTextValues([horizontal("2.", 300, 400, 20), horizontal("50", 327, 405, 40)], FULL)).toHaveLength(1); // 7 px and 5 px: inside both limits
+  });
+
+  it("does not join pieces whose text is not a dimension together", () => {
+    expect(pdfTextValues([horizontal("SO", 300, 400, 20), horizontal("12345", 323, 400, 40)], FULL)).toEqual([]);
+    expect(pdfTextValues([horizontal("2.", 300, 400, 20), horizontal("5", 323, 400, 20)], FULL)).toEqual([]);
   });
 });

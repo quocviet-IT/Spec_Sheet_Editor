@@ -41,6 +41,38 @@ describe("sheetDataSchema", () => {
     expect(ok({ detections: [det("a")], edits: [edit("a", { bgColor: "#FFFFFF" })] })).toBe(false);
   });
 
+  it("holds confidence to 0–100", () => {
+    expect(ok({ detections: [det("a", { confidence: -1 })], edits: [] })).toBe(false);
+    expect(ok({ detections: [det("a", { confidence: 100.5 })], edits: [] })).toBe(false);
+    expect(ok({ detections: [det("a", { confidence: 101 })], edits: [] })).toBe(false);
+    expect(ok({ detections: [det("a", { confidence: 0 })], edits: [] })).toBe(true);
+    expect(ok({ detections: [det("a", { confidence: 100 })], edits: [] })).toBe(true);
+  });
+
+  it("holds ids to 64 characters", () => {
+    expect(ok({ detections: [det("x".repeat(64))], edits: [edit("x".repeat(64))] })).toBe(true);
+    expect(ok({ detections: [det("x".repeat(65))], edits: [] })).toBe(false);
+    expect(ok({ detections: [det("a")], edits: [edit("x".repeat(65))] })).toBe(false);
+    expect(ok({ detections: [det("")], edits: [] })).toBe(false);
+  });
+
+  it("refuses a read value or a box of the wrong type", () => {
+    expect(ok({ detections: [det("a", { readValue: ["2.50"] })], edits: [] })).toBe(false);
+    expect(ok({ detections: [det("a", { readValue: 2.5 })], edits: [] })).toBe(false);
+    expect(ok({ detections: [det("a", { box: "0.2,0.3,0.02,0.01" })], edits: [] })).toBe(false);
+    expect(ok({ detections: [det("a", { box: [0.2, 0.3, 0.02, 0.01] })], edits: [] })).toBe(false);
+    expect(ok({ detections: [det("a")], edits: [edit("a", { box: "x" })] })).toBe(false);
+    expect(ok({ detections: [det("a")], edits: [edit("a", { box: [0.2, 0.3, 0.02, 0.01] })] })).toBe(false);
+  });
+
+  it("holds the digit height to a fraction of the page width above 0", () => {
+    expect(ok({ detections: [det("a")], edits: [edit("a", { fontPx: 0 })] })).toBe(false);
+    expect(ok({ detections: [det("a")], edits: [edit("a", { fontPx: -0.01 })] })).toBe(false);
+    expect(ok({ detections: [det("a")], edits: [edit("a", { fontPx: 1.01 })] })).toBe(false);
+    expect(ok({ detections: [det("a")], edits: [edit("a", { fontPx: "0.01" })] })).toBe(false);
+    expect(ok({ detections: [det("a")], edits: [edit("a", { fontPx: 1 })] })).toBe(true);
+  });
+
   it("refuses fields it does not know", () => {
     expect(ok({ detections: [det("a", { note: "x" })], edits: [] })).toBe(false);
     expect(ok({ detections: [det("a")], edits: [edit("a", { extra: 1 })] })).toBe(false);
