@@ -65,8 +65,9 @@ The end-to-end tests need only HTTPS to Supabase, so they work from networks tha
 ports; the SQL unit tests still need `DATABASE_URL` and the pooler port. There are two reserved test accounts: `e2e-staff@ctyhp.vn` and `e2e-staff-b@ctyhp.vn` (the second
 only for the two-person conflict test). The first run creates them and later runs reuse them; every
 run resets both passwords to random values held only in memory. The run deletes only these accounts'
-sheets: before the run, during it (after each test) and after it. The OCR test takes one to three
-minutes.
+sheets: before the run, during it (after each test) and after it. The specs are `upload`, `list`, `detect`, `editor`, `tools` and `pixels`; a full run takes about
+10 to 15 minutes on the office PC (the OCR tests take one to three minutes each), so
+`playwright.config.ts` allows 25 minutes for the whole run.
 TC-17 (password-protected PDF): the error mapping is unit-tested; the full upload path for a locked
 PDF is not, because the test-file generator cannot encrypt PDFs.
 

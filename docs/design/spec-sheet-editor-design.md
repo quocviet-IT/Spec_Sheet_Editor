@@ -224,7 +224,7 @@ Priority: **Must** is required in the first release; **Should** is built if time
 | F-03 | Sheet list | Thumbnail, name, number of edits, last editor, time; newest first; 50 more rows per load. | UC-02 | Must |
 | F-04 | Search by name | Partial, case-insensitive match on the sheet name. | UC-02 | Must |
 | F-05 | Upload sheet | Accept PDF, PNG, JPG; check type, size and template; create a thumbnail; store the original. | UC-03 | Must |
-| F-06 | Rename sheet | Edit the name in the toolbar or from the list menu. | UC-02, UC-08 | Should |
+| F-06 | Rename sheet | Edit the name in the editor toolbar; the sheet list menu does not rename. | UC-02, UC-08 | Should |
 | F-07 | Move to Trash | Soft-delete a sheet. | UC-11 | Must |
 | F-08 | Restore sheet | Bring a sheet back from the Trash. | UC-11 | Must |
 | **Number detection** |  |  |  |  |
@@ -262,7 +262,7 @@ Security requirements target the access-control risk category (Broken Access Con
 
 | ID | Category | Measurable requirement |
 |---|---|---|
-| NFR-01 | Performance | The first scan of an 1135-px image completes within 60 seconds on an office PC; read-on-click completes within 5 seconds; a saved sheet opens within 3 seconds; PDF export completes within 5 seconds. |
+| NFR-01 | Performance | The first scan of an 1135-px image completes within 60 seconds on an office PC; read-on-click completes within 5 seconds once the reader is ready (on a sheet whose values all come from the PDF text layer the reader is not warmed up, so the first click there also starts it); a saved sheet opens within 3 seconds; PDF export completes within 5 seconds. |
 | NFR-02 | Security | RLS on every table; private file storage; permissions checked at three layers: interface, server and database (section 5.4). |
 | NFR-03 | Privacy | Sheet images travel only between the browser and the company's file storage; they are never sent to a third-party service. |
 | NFR-04 | Integrity | Users have no right to overwrite or delete files in storage; only the Admin permanent-deletion job, running on the server, can delete them. |
@@ -422,7 +422,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 5. Tighten each box to the digits: keep only pixels darker than halfway between background and text colour, so the box does not cut into the dimension line.
 6. Store the list and mark the values on the sheet.
 
-**Exceptions:** 3a. The model cannot be downloaded: error shown; Manual box still works.<br>4a. No values found: the user is told to click a value or draw a box.
+**Exceptions:** 3a. The reader cannot start: the message says whether it could not be downloaded (check the connection) or this browser cannot run it (use a current Chrome or Edge); Draw box works in both cases.<br>4a. No values found: the user is told to click a value or draw a box.
 
 #### UC-05 · Edit a dimension value
 
@@ -442,7 +442,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 4. The system validates the format and normalises the decimals (BR-05).
 5. The system masks the old value with the background colour and draws the new one at the same size, colour and angle, then marks the value as "edited".
 
-**Extensions:** 1a. The value is not marked: UC-06 or UC-07.<br>3a. "Revert to original": the edit is removed and the area returns to the original.<br>5a. The confirmed old value appears elsewhere unedited: the system asks "Apply to the other places too?" and applies the same new value if accepted.
+**Extensions:** 1a. The value is not marked: UC-06 or UC-07.<br>3a. "Revert to original": the edit is removed and the area returns to the original.<br>5a. The confirmed old value appears elsewhere unedited: the system asks "Apply to the other places too?" and applies the same new value if accepted. Matching uses the machine reading of values not yet edited.
 
 **Exceptions:** 1b. Click outside the drawing area: no effect.<br>4a. Invalid format: message under the field; not applied.
 
@@ -454,12 +454,12 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Main flow:**
 
-1. The user clicks a spot in the drawing area where no value is marked.
+1. The user clicks a spot in the drawing area where no value is marked. The reader starts on first need and warms up shortly after the page is ready, so a click usually reads at once. On a sheet whose values all come from the PDF text layer the reader is not warmed up in advance (such a sheet loads no OCR files at all); the first click there starts it, and the 5-second budget applies to reading once the reader is ready.
 2. The system crops a square around the click, 5.6% of the page width on each side, and scales it to 256 × 256 px.
 3. The system detects text boxes at 0°, then reads the box in both directions.
 4. The system tightens the box to the digits, samples text and background colours, then continues UC-05 from step 2.
 
-**Extensions:** 3a. No value read: try ±60° and ±90° in turn, stopping as soon as a value is read.
+**Extensions:** 1a. A click while the first detection runs asks the person to wait. A reading that falls on an existing value opens that value.<br>3a. No value read: try ±60° and ±90° in turn, stopping as soon as a value is read.
 
 **Exceptions:** 3b. More than 5 seconds, or all angles tried: "No value could be read here. Use Draw box to mark it."
 
@@ -472,8 +472,10 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 **Main flow:**
 
 1. The user clicks "Draw box" (key `K`) and drags a rectangle around the value.
-2. The user picks the angle: Horizontal, Vertical up, Vertical down or Free rotation (degrees).
+2. The user picks the angle: Horizontal, Vertical up, Vertical down or Free rotation (degrees). The drawn rectangle is taken as the text box for the chosen angle (for free rotation, the box at that angle that covers the rectangle).
 3. The system tightens the box to the digits and samples text and background colours; continues UC-05 from step 2 with "Old value" left empty.
+
+**Notes:** Draw box needs a pointer: values the machine marked are reachable by keyboard, and a value it missed is marked with the mouse.
 
 **Exceptions:** 1a. The box extends outside the drawing area: "The box must be inside the four drawing panels."<br>3a. No text inside the box: "There is no text in this box. Draw it tightly around the value."
 
@@ -1315,10 +1317,10 @@ Version 1.1 adds an Admin role with four permission groups. Permissions are chec
 ### 10.2 Open issues
 
 1. The five assumptions in Table 1.2 await confirmation.
-2. Single-pass read on click (UC-06) has not been measured; the benchmark only measured the multi-angle approach.
+2. Single-pass read on click (UC-06) was measured in the editor in M4b (TC-24: 1.7 to 1.9 s from the reader being ready to the popover); on a production build it is confirmed in M7.
 3. Recognition speed in the browser has not been measured; every timing in Table 7.3 comes from Python. TC-20 and TC-24 must run on real office PCs before the model generation is fixed.
 4. The benchmark used a single sample sheet. Five to ten more real sheets, including PDFs, are needed to confirm the 9/11 rate and the template's editable zone.
-5. Google Vision and AI vision models have not been measured. Both send sheet images to an outside service, which conflicts with NFR-03, so they should only be considered if NFR-03 is relaxed.
+5. Google Vision and large vision-language models have not been measured. Both send sheet images to an outside service, which conflicts with NFR-03, so they should only be considered if NFR-03 is relaxed.
 
 <a id="references"></a>
 
