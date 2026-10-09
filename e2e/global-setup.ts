@@ -1,6 +1,6 @@
 import { chromium, type Browser } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { ensureStaff, ensureStaffB } from "./support/account";
+import { ensureAdmin, ensureStaff, ensureStaffB } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
 
 async function signIn(browser: Browser, account: { email: string; password: string }, path: string): Promise<void> {
@@ -21,13 +21,16 @@ async function signIn(browser: Browser, account: { email: string; password: stri
 export default async function globalSetup(): Promise<void> {
   const staff = await ensureStaff();
   const staffB = await ensureStaffB();
+  const adminAccount = await ensureAdmin();
   await deleteSheetsOf(staff.id);
   await deleteSheetsOf(staffB.id);
+  await deleteSheetsOf(adminAccount.id);
   await mkdir("e2e/.auth", { recursive: true });
   const browser = await chromium.launch();
   try {
     await signIn(browser, staff, "e2e/.auth/staff.json");
     await signIn(browser, staffB, "e2e/.auth/staff-b.json");
+    await signIn(browser, adminAccount, "e2e/.auth/admin.json");
   } finally {
     await browser.close();
   }
