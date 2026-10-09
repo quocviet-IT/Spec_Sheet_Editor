@@ -1,4 +1,4 @@
-export const CSV_BOM = "﻿";
+export const CSV_BOM = "\uFEFF";
 
 /** One CSV cell: quoted when needed, quotes doubled, and a leading ' when a spreadsheet would run it as a formula. */
 export function csvCell(value: string | number | null): string {
