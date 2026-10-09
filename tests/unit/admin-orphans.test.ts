@@ -29,6 +29,8 @@ describe("formatBytes", () => {
     expect(formatBytes(1536)).toBe("1.5 KB");
     expect(formatBytes(2.3 * 1024 * 1024)).toBe("2.3 MB");
     expect(formatBytes(5 * 1024 ** 3)).toBe("5.0 GB");
+    expect(formatBytes(1048575)).toBe("1.0 MB");
+    expect(formatBytes(1023.96)).toBe("1.0 KB");
   });
 
   it("treats a bad value as zero", () => {

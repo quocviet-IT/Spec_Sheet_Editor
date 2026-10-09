@@ -1,7 +1,7 @@
 import "server-only";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { auditRange, groupPrefix, type AuditFilter } from "./audit-filter";
-import type { SettingKey } from "./settings-ranges";
+import { SETTING_DEFAULTS, type SettingKey } from "./settings-ranges";
 
 export type UserRow = {
   id: string;
@@ -136,7 +136,6 @@ export async function fetchAccess(): Promise<{ domains: AccessEntry[]; emails: A
   };
 }
 
-const SETTING_DEFAULTS: Record<SettingKey, number> = { max_file_mb: 20, lowres_warn_px: 2000, aspect_tolerance_pct: 2, signed_url_ttl_min: 10 };
 
 /** The four system settings as stored (defaults fill a missing row). */
 export async function fetchSettings(): Promise<Record<SettingKey, number>> {

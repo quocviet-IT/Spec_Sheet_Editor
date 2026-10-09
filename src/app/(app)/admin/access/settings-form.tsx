@@ -1,8 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useId, useState, type FormEvent } from "react";
-import { saveSettings } from "@/admin/settings-actions";
+import { saveSettings, type SaveResult } from "@/admin/settings-actions";
 import { SETTING_KEYS, SETTING_RANGES, type SettingKey } from "@/admin/settings-ranges";
 import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
@@ -11,7 +10,6 @@ export function SettingsForm({ initial }: { initial: Record<SettingKey, number> 
   const t = useMessages();
   const a = t.admin.access;
   const id = useId();
-  const router = useRouter();
   const [values, setValues] = useState<Record<SettingKey, string>>(
     () => Object.fromEntries(SETTING_KEYS.map((k) => [k, String(initial[k])])) as Record<SettingKey, string>,
   );
@@ -37,19 +35,22 @@ export function SettingsForm({ initial }: { initial: Record<SettingKey, number> 
       numbers[key] = n;
     }
     setBusy(true);
-    let result: Awaited<ReturnType<typeof saveSettings>>;
+    let result: SaveResult | { error: "unknown"; stored?: undefined };
     try {
       result = await saveSettings(numbers);
     } catch {
       result = { error: "unknown" };
     }
     setBusy(false);
+    // Show what is stored, so nothing unsaved looks saved after a partial save.
+    const stored = result.stored;
+    if (stored && ("ok" in result || result.error === "partial")) {
+      setValues(Object.fromEntries(SETTING_KEYS.map((k) => [k, String(stored[k])])) as Record<SettingKey, string>);
+    }
     if ("ok" in result) setSaved(true);
     else if (result.error === "out_of_range") setBadKey(result.key);
-    else if (result.error === "partial") {
-      setAlert(a.partial);
-      router.refresh(); // reload the stored values
-    } else setAlert(result.error === "forbidden" ? t.admin.users.errors.forbidden : a.errors.unknown);
+    else if (result.error === "partial") setAlert(a.partial);
+    else setAlert(result.error === "forbidden" ? t.admin.users.errors.forbidden : a.errors.unknown);
   }
 
   return (

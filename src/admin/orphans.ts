@@ -21,9 +21,11 @@ export function formatBytes(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
   let i = 0;
-  while (value >= 1024 && i < units.length - 1) {
+  // Round first, then pick the unit, so 1048575 bytes reads "1.0 MB" and never "1024.0 KB".
+  const shown = (v: number, u: number) => (u === 0 ? Math.round(v) : Math.round(v * 10) / 10);
+  while (shown(value, i) >= 1024 && i < units.length - 1) {
     value /= 1024;
     i += 1;
   }
-  return i === 0 ? `${Math.round(value)} B` : `${value.toFixed(1)} ${units[i]}`;
+  return i === 0 ? `${shown(value, 0)} B` : `${value.toFixed(1)} ${units[i]}`;
 }

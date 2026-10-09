@@ -11,6 +11,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 const BUCKET = "spec-sheets";
 const PAGE = 1000;
 const idSchema = z.uuid();
+const typedNameSchema = z.string().max(200);
 
 function has(message: string, word: string): boolean {
   return new RegExp(`(?<![a-z_])${word}(?![a-z_])`).test(message);
@@ -27,7 +28,9 @@ export async function purgeTrashed(input: {
 }): Promise<{ ok: true; name: string } | { error: Exclude<PurgeResult, "ok"> | "forbidden" }> {
   await requireAdmin("/admin/trash");
   const id = idSchema.safeParse(input?.id);
-  if (!id.success || typeof input.typedName !== "string") return { error: "not_found" };
+  if (!id.success) return { error: "not_found" };
+  const typed = typedNameSchema.safeParse(input?.typedName);
+  if (!typed.success) return { error: "name_mismatch" };
   let name = "";
   try {
     const supabase = await createSupabaseServer();
@@ -56,11 +59,12 @@ export async function purgeTrashed(input: {
           const { error } = await supabase.rpc("purge_sheet", { p_id: sheetId });
           if (!error) return "ok";
           if (has(error.message, "not_in_trash")) return "not_in_trash";
+          if (has(error.message, "forbidden")) return "forbidden";
           return "failed";
         },
       },
       id.data,
-      input.typedName,
+      typed.data,
     );
     if (result === "ok" || result === "files_left") revalidatePath("/admin/trash");
     return result === "ok" ? { ok: true, name } : { error: result };
@@ -83,9 +87,9 @@ async function listAll(bucket: Bucket, folder: string): Promise<Listed[]> {
   }
 }
 
-/** Every sheet id, trashed ones included: a trashed sheet's files are not orphans. */
+/** Every sheet id, trashed ones included: a trashed sheet's files are not orphans. Read in the Admin's own session (RLS lets the Admin read every sheet). */
 async function allSheetIds(): Promise<Set<string>> {
-  const supabase = createSupabaseAdmin();
+  const supabase = await createSupabaseServer();
   const ids = new Set<string>();
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase.from("spec_sheets").select("id").order("id").range(from, from + PAGE - 1);
@@ -139,19 +143,34 @@ export async function cleanOrphans(input: { names: string[] }): Promise<{ ok: tr
     const wanted = new Set(parsed.data);
     const targets = (await currentOrphans()).filter((f) => wanted.has(f.name));
     const bucket = createSupabaseAdmin().storage.from(BUCKET);
-    const paths = targets.flatMap((f) => f.paths);
-    for (let i = 0; i < paths.length; i += 100) {
-      const { error } = await bucket.remove(paths.slice(i, i + 100));
-      if (error) return { error: "unknown" };
+    // Folder by folder: the log must say what was really removed, even when a later folder fails.
+    let folders = 0;
+    let bytes = 0;
+    let failed = false;
+    for (const target of targets) {
+      if (target.paths.length === 0) continue; // nothing to remove, nothing to count
+      let removed = true;
+      for (let i = 0; i < target.paths.length; i += 100) {
+        const { error } = await bucket.remove(target.paths.slice(i, i + 100));
+        if (error) { removed = false; break; }
+      }
+      if (!removed) { failed = true; break; }
+      folders += 1;
+      bytes += target.bytes;
     }
-    const folders = targets.length;
-    const bytes = targets.reduce((n, f) => n + f.bytes, 0);
+    let forbidden = false;
+    let logFailed = false;
     if (folders > 0) {
       const supabase = await createSupabaseServer();
       const { error } = await supabase.rpc("log_maintenance", { p_folders: folders, p_bytes: bytes });
-      if (error) return { error: has(error.message, "forbidden") ? "forbidden" : "unknown" };
+      if (error) {
+        logFailed = true;
+        forbidden = has(error.message, "forbidden");
+      }
     }
-    revalidatePath("/admin/trash");
+    if (folders > 0) revalidatePath("/admin/trash");
+    if (logFailed) return { error: forbidden ? "forbidden" : "unknown" };
+    if (failed) return { error: "unknown" };
     return { ok: true, folders, bytes };
   } catch {
     return { error: "unknown" };

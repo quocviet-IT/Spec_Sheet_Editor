@@ -41,10 +41,11 @@ export function PurgeDialog({ row, onClose, onDone }: { row: TrashRow; onClose: 
     items[(i + (e.shiftKey ? -1 : 1) + items.length) % items.length]?.focus();
   }
 
-  const matches = typed === row.name;
+  const matches = typed.normalize("NFC") === row.name.normalize("NFC"); // the same comparison the server makes
+  const tooLong = typed.length > 200;
 
   async function submit() {
-    if (!matches || busy) return;
+    if (!matches || tooLong || busy) return;
     setBusy(true);
     setError(null);
     let result: Awaited<ReturnType<typeof purgeTrashed>>;
@@ -117,7 +118,7 @@ export function PurgeDialog({ row, onClose, onDone }: { row: TrashRow; onClose: 
           <button
             type="button"
             onClick={() => void submit()}
-            disabled={!matches || busy}
+            disabled={!matches || tooLong || busy}
             aria-busy={busy}
             className="rounded-md bg-danger px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
           >

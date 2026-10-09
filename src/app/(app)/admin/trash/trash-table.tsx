@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { TrashRow } from "@/admin/queries";
 import { useMessages } from "@/messages/client";
 import { PurgeDialog } from "./purge-dialog";
@@ -34,11 +34,19 @@ export function TrashTable({ rows: initialRows }: { rows: TrashRow[] }) {
   const [rows, setRows] = useState(initialRows);
   const [pending, setPending] = useState<Pending | null>(null);
   const [status, setStatus] = useState("");
+  const statusRef = useRef<HTMLParagraphElement | null>(null);
+  const done = useRef(false);
 
+  /** Back to the opener on cancel; after a purge the opener's row is gone, so the status message that announces it takes focus. */
   function close() {
     const opener = pending?.opener;
+    const purged = done.current;
+    done.current = false;
     setPending(null);
-    if (opener) queueMicrotask(() => { if (opener.isConnected) opener.focus(); });
+    queueMicrotask(() => {
+      if (purged) statusRef.current?.focus();
+      else if (opener?.isConnected) opener.focus();
+    });
   }
 
   return (
@@ -81,7 +89,7 @@ export function TrashTable({ rows: initialRows }: { rows: TrashRow[] }) {
           </tbody>
         </table>
       )}
-      <p role="status" className="text-sm text-ink-2">{status}</p>
+      <p ref={statusRef} tabIndex={-1} role="status" className="text-sm text-ink-2 outline-none">{status}</p>
       {pending && (
         <PurgeDialog
           row={pending.row}
@@ -89,6 +97,7 @@ export function TrashTable({ rows: initialRows }: { rows: TrashRow[] }) {
           onDone={(notice) => {
             setRows((old) => old.filter((r) => r.id !== pending.row.id));
             setStatus(notice);
+            done.current = true;
           }}
         />
       )}

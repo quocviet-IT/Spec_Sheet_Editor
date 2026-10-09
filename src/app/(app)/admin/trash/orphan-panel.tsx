@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatBytes } from "@/admin/orphans";
 import { checkOrphans, cleanOrphans } from "@/admin/trash-actions";
 import { useMessages } from "@/messages/client";
@@ -17,6 +17,26 @@ export function OrphanPanel() {
   const [confirming, setConfirming] = useState(false);
   const [status, setStatus] = useState("");
   const [alert, setAlert] = useState<string | null>(null);
+  const cleanButton = useRef<HTMLButtonElement | null>(null);
+  const statusRef = useRef<HTMLParagraphElement | null>(null);
+
+  // Focus moves after the render that re-enables the buttons (a disabled button cannot take focus).
+  const refocus = useRef<"clean" | "status" | null>(null);
+  const [turn, setTurn] = useState(0);
+  useEffect(() => {
+    if (!refocus.current || busy) return;
+    (refocus.current === "clean" ? cleanButton.current : statusRef.current)?.focus();
+    refocus.current = null;
+  }, [turn, busy]);
+  const focusAfterRender = (target: "clean" | "status") => {
+    refocus.current = target;
+    setTurn((n) => n + 1);
+  };
+
+  function cancelConfirm() {
+    setConfirming(false);
+    focusAfterRender("clean");
+  }
 
   async function check() {
     if (busy) return;
@@ -50,9 +70,11 @@ export function OrphanPanel() {
     setConfirming(false);
     if ("ok" in result) {
       setFound(null);
-      setStatus(fill(a.cleaned, { n: result.folders, size: formatBytes(result.bytes) }));
+      setStatus(result.folders === 0 ? a.none : fill(a.cleaned, { n: result.folders, size: formatBytes(result.bytes) }));
+      focusAfterRender("status"); // the button that opened the dialog is gone
     } else {
       setAlert(result.error === "forbidden" ? t.admin.users.errors.forbidden : a.cleanFailed);
+      focusAfterRender("clean");
     }
   }
 
@@ -67,13 +89,13 @@ export function OrphanPanel() {
         {found && (
           <>
             <span className="text-sm tabular-nums">{fill(a.found, { n: found.folders, size: formatBytes(found.bytes) })}</span>
-            <button type="button" onClick={() => setConfirming(true)} disabled={busy} className="rounded-md bg-danger px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+            <button ref={cleanButton} type="button" onClick={() => setConfirming(true)} disabled={busy} className="rounded-md bg-danger px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
               {fill(a.clean, { n: found.folders })}
             </button>
           </>
         )}
       </div>
-      <p role="status" className="text-sm text-ink-2">{status}</p>
+      <p ref={statusRef} tabIndex={-1} role="status" className="text-sm text-ink-2 outline-none">{status}</p>
       {alert && <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{alert}</p>}
       {confirming && found && (
         <ConfirmDialog
@@ -82,7 +104,7 @@ export function OrphanPanel() {
           cancelLabel={a.cancel}
           busy={busy}
           onConfirm={() => void clean()}
-          onCancel={() => setConfirming(false)}
+          onCancel={cancelConfirm}
         />
       )}
     </section>
