@@ -1,32 +1,13 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { staffId } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
-import { valuesPdf } from "./support/files";
-import { BOTTOM_RIGHT, TOP_LEFT, TOP_RIGHT, auditCount, marker, markers, storedSheet, uploadSheet, waitForVersion } from "./support/sheets";
+import { BOTTOM_RIGHT, TOP_LEFT, TOP_RIGHT, auditCount, editValue, marker, markers, openValuesSheet, storedSheet, waitForVersion } from "./support/sheets";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
 test.afterEach(async () => {
   await deleteSheetsOf(await staffId());
 });
-
-/** A fresh synthetic sheet with its 11 values detected and stored (version 2). */
-async function openValuesSheet(page: Page, tag: string): Promise<{ id: string; name: string }> {
-  const sheet = await uploadSheet(page, `${tag}-${Date.now()}.pdf`, "application/pdf", await valuesPdf());
-  await expect(markers(page)).toHaveCount(11, { timeout: 30_000 });
-  await waitForVersion(sheet.id, 2);
-  return sheet;
-}
-
-async function editValue(page: Page, value: string, panel: RegExp, next: string, confirmedOld?: string) {
-  await marker(page, value, panel).click();
-  const popover = page.getByRole("dialog", { name: /Sửa kích thước|Edit dimension/ });
-  await expect(popover).toBeVisible();
-  if (confirmedOld !== undefined) await popover.getByLabel(/Số cũ|Old value/).fill(confirmedOld);
-  await popover.getByLabel(/Số mới|New value/).fill(next);
-  await popover.getByLabel(/Số mới|New value/).press("Enter");
-  await expect(popover).toBeHidden();
-}
 
 function channelsNear(a: string, b: string, tolerance: number): boolean {
   const ch = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OcrClient } from "@/lib/ocr/client";
+import { OcrFailure } from "@/lib/ocr/protocol";
 
 class FakeWorker {
   static last: FakeWorker;
@@ -58,5 +59,22 @@ describe("OcrClient", () => {
     const { id } = FakeWorker.last.posted[0];
     FakeWorker.last.onmessage?.({ data: { id, ok: true, result: { reading: null, ms: 2, anglesTried: 1 } } });
     await expect(next).resolves.toMatchObject({ ms: 2 });
+  });
+
+  it("rejects with the Worker's error code", async () => {
+    const client = new OcrClient();
+    const pending = client.read({ x: 1, y: 2 });
+    const { id } = FakeWorker.last.posted[0];
+    FakeWorker.last.onmessage?.({ data: { id, ok: false, error: "Model download failed", code: "model_download" } });
+    const error = await pending.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(OcrFailure);
+    expect(error).toMatchObject({ code: "model_download", message: "Model download failed" });
+  });
+
+  it("reports a stopped Worker as a plain failure", async () => {
+    const client = new OcrClient();
+    const pending = client.read({ x: 1, y: 2 });
+    FakeWorker.last.onerror?.({ message: "boom" });
+    await expect(pending).rejects.toMatchObject({ code: "failed" });
   });
 });

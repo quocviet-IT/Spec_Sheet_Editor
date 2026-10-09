@@ -35,7 +35,7 @@ export function framedPng(width: number, height: number): Buffer {
 }
 
 /** A value printed on a synthetic sheet: its digits' centre as page fractions, read at `angle` (app convention). */
-export type PlacedValue = { value: string; cx: number; cy: number; angle: 0 | -90 | 90 };
+export type PlacedValue = { value: string; cx: number; cy: number; angle: number };
 
 /** Eleven values on the four drawing panels: three read bottom-up, one top-down, two of them 2.50 (section 2.3). */
 export const PDF_VALUES: readonly PlacedValue[] = [
@@ -75,13 +75,44 @@ function drawValue(page: PDFPage, font: PDFFont, v: PlacedValue) {
   page.drawText(v.value, { x, y, size: VALUE_PT, font, color: INK, rotate: degrees(r) });
 }
 
-/** The template with every value of PDF_VALUES and OUTSIDE_VALUES as real text, and an order number. */
-export async function valuesPdf(): Promise<Buffer> {
+const DIM_VALUE = PDF_VALUES.find((v) => v.value === "16.30")!;
+const DIM_BASELINE_PT = 612 - DIM_VALUE.cy * 612 - (DIGIT_EM * VALUE_PT) / 2; // PDF y of the value's baseline
+const DIM_Y_PT = DIM_BASELINE_PT - 2; // 2 pt under the baseline
+const DIM_THICK_PT = 0.5;
+const DIM_HALF_LENGTH_PT = 30;
+const PX_PER_PT = 300 / 72;
+
+/** The dimension line under 16.30 in pixels of the 300-DPI page (3300 x 2550), grown by 2 px on each side. */
+export const DIMENSION_LINE_PX = {
+  x: (DIM_VALUE.cx * 792 - DIM_HALF_LENGTH_PT) * PX_PER_PT - 2,
+  y: (612 - DIM_Y_PT - DIM_THICK_PT / 2) * PX_PER_PT - 2,
+  w: 2 * DIM_HALF_LENGTH_PT * PX_PER_PT + 4,
+  h: DIM_THICK_PT * PX_PER_PT + 4,
+};
+
+/** The template with every value of PDF_VALUES and OUTSIDE_VALUES as real text, and an order number.
+ *  With `asImage`, that one value (from PDF_VALUES) is drawn as the given 300-DPI image instead of text. */
+export async function valuesPdf(options: { asImage?: { value: string; png: Buffer; width: number; height: number } } = {}): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const page = doc.addPage([792, 612]);
   drawTemplate(page);
   page.drawText("SO 12345", { x: 600, y: 612 - 38, size: 11, font });
-  for (const v of [...PDF_VALUES, ...OUTSIDE_VALUES]) drawValue(page, font, v);
+  page.drawLine({
+    start: { x: DIM_VALUE.cx * 792 - DIM_HALF_LENGTH_PT, y: DIM_Y_PT },
+    end: { x: DIM_VALUE.cx * 792 + DIM_HALF_LENGTH_PT, y: DIM_Y_PT },
+    thickness: DIM_THICK_PT,
+    color: INK,
+  });
+  const asImage = options.asImage;
+  const imageValue = asImage ? PDF_VALUES.find((v) => v.value === asImage.value) : undefined;
+  if (asImage && !imageValue) throw new Error(`${asImage.value} is not one of PDF_VALUES`);
+  for (const v of [...PDF_VALUES, ...OUTSIDE_VALUES]) if (v !== imageValue) drawValue(page, font, v);
+  if (asImage && imageValue) {
+    const image = await doc.embedPng(asImage.png);
+    const w = (asImage.width * 72) / 300;
+    const h = (asImage.height * 72) / 300;
+    page.drawImage(image, { x: imageValue.cx * 792 - w / 2, y: 612 - imageValue.cy * 612 - h / 2, width: w, height: h });
+  }
   return Buffer.from(await doc.save());
 }

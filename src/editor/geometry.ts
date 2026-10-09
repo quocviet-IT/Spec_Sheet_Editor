@@ -1,6 +1,6 @@
 import { DRAWING_AREA } from "@/lib/form/template";
 import { normalizeAngle, type Point, type Quad, type Rect } from "@/lib/ocr/geometry";
-import type { Box, Panel, PxBox } from "./types";
+import type { Box, Detection, Panel, PxBox } from "./types";
 
 export function toBox(px: PxBox, pageW: number, pageH: number): Box {
   return { cx: px.cx / pageW, cy: px.cy / pageH, w: px.w / pageW, h: px.h / pageW };
@@ -101,4 +101,66 @@ export const SIZE_TOLERANCE_PX = 2;
 
 export function sameSize(w: number, h: number, pageW: number, pageH: number): boolean {
   return Math.abs(w - pageW) <= SIZE_TOLERANCE_PX && Math.abs(h - pageH) <= SIZE_TOLERANCE_PX;
+}
+
+/** A drag from one corner to the other, in either direction. */
+export function rectFromDrag(a: Point, b: Point): Rect {
+  return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
+}
+
+/** A drag shorter than this on either side (page pixels) is a click, not a box. */
+export const MIN_DRAWN_PX = 4;
+
+/** UC-07 exception 1a: every corner of the drawn rectangle lies inside the four panels. */
+export function rectInDrawingArea(rect: Rect, pageW: number, pageH: number): boolean {
+  return (
+    rect.x >= DRAWING_AREA.x0 * pageW &&
+    rect.y >= DRAWING_AREA.y0 * pageH &&
+    rect.x + rect.w <= DRAWING_AREA.x1 * pageW &&
+    rect.y + rect.h <= DRAWING_AREA.y1 * pageH
+  );
+}
+
+/** UC-05 exception 1b / UC-06 step 1: a click counts only inside the drawing. */
+export function pointInDrawingArea(p: Point, pageW: number, pageH: number): boolean {
+  return centreInDrawingArea({ cx: p.x / pageW, cy: p.y / pageH, w: 0, h: 0 });
+}
+
+/**
+ * UC-07: the text box for a rectangle drawn around a value read at `angle` — the box at that angle that
+ * covers the rectangle (for 0 the rectangle itself; for ±90 its sides swap). Tightening to the digits
+ * then shrinks it (UC-07 step 3).
+ */
+export function boxForDrawnRect(rect: Rect, angle: number): PxBox {
+  const a = normalizeAngle(angle);
+  const rad = (a * Math.PI) / 180;
+  const c = Math.abs(Math.cos(rad));
+  const s = Math.abs(Math.sin(rad));
+  return { cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2, w: rect.w * c + rect.h * s, h: rect.w * s + rect.h * c, angle: a };
+}
+
+/** Margin around a value's box when deciding what a click hit, as a share of its height. */
+const HIT_MARGIN = 0.5;
+
+/** The value whose box (in its own frame, with a small margin) holds the point, if any. */
+export function detectionAt(detections: readonly Detection[], p: Point, pageW: number, pageH: number): Detection | null {
+  let best: Detection | null = null;
+  let bestDistance = Infinity;
+  for (const d of detections) {
+    const px = toPx(d.box, d.angle, pageW, pageH);
+    const { u, v } = axes(px.angle);
+    const dx = p.x - px.cx;
+    const dy = p.y - px.cy;
+    const s = dx * u.x + dy * u.y;
+    const t = dx * v.x + dy * v.y;
+    const margin = HIT_MARGIN * px.h;
+    if (Math.abs(s) > px.w / 2 + margin || Math.abs(t) > px.h / 2 + margin) continue;
+    // Where the margins of two close values overlap, the one whose own box is nearest wins.
+    const distance = (s / Math.max(px.w / 2, 1e-9)) ** 2 + (t / Math.max(px.h / 2, 1e-9)) ** 2;
+    if (distance < bestDistance) {
+      best = d;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { templatePdf, framedPng } from "./support/files";
-import { db, deleteSheetsOf } from "./support/db";
+import { admin, deleteSheetsOf } from "./support/db";
 import { staffId } from "./support/account";
 
 async function openUpload(page: Page) {
@@ -14,13 +14,9 @@ async function choose(page: Page, name: string, mimeType: string, buffer: Buffer
 }
 
 async function rowsNamed(name: string) {
-  const sql = db();
-  try {
-    return await sql<{ id: string; page_px_w: number; page_px_h: number }[]>`
-      select id, page_px_w, page_px_h from public.spec_sheets where name = ${name} and created_by = ${await staffId()}`;
-  } finally {
-    await sql.end();
-  }
+  const { data, error } = await admin().from("spec_sheets").select("id, page_px_w, page_px_h").eq("name", name).eq("created_by", await staffId());
+  if (error) throw new Error(`sheets not read: ${error.message}`);
+  return data;
 }
 
 test("TC-08 a matching PDF becomes a 3300 × 2550 sheet and sheet.upload is logged", async ({ page }) => {
@@ -30,13 +26,9 @@ test("TC-08 a matching PDF becomes a 3300 × 2550 sheet and sheet.upload is logg
   await page.waitForURL(/\/sheets\/[0-9a-f-]{36}$/);
   const [row] = await rowsNamed("tc08-sheet");
   expect(row).toMatchObject({ page_px_w: 3300, page_px_h: 2550 });
-  const sql = db();
-  try {
-    const audit = await sql`select 1 from public.audit_log where action = 'sheet.upload' and target_id = ${row.id}`;
-    expect(audit.length).toBe(1);
-  } finally {
-    await sql.end();
-  }
+  const { count, error } = await admin().from("audit_log").select("id", { count: "exact", head: true }).eq("action", "sheet.upload").eq("target_id", row.id);
+  if (error) throw new Error(`audit log not read: ${error.message}`);
+  expect(count).toBe(1);
 });
 
 test("TC-09 a 1135 × 877 PNG is accepted with a low-resolution warning", async ({ page }) => {

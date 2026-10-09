@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Quad } from "@/lib/ocr/geometry";
 import {
-  axes, boxCorners, boxFromQuad, centreInDrawingArea, drawingAreaPx, panelOf, readingOrder, roundAngle, roundBox,
-  sameSize, toBox, toPx,
+  axes, boxCorners, boxForDrawnRect, boxFromQuad, centreInDrawingArea, detectionAt, drawingAreaPx, panelOf,
+  pointInDrawingArea, readingOrder, rectFromDrag, rectInDrawingArea, roundAngle, roundBox, sameSize, toBox, toPx,
 } from "@/editor/geometry";
 
 const close = (a: number, b: number, eps = 1e-9) => expect(Math.abs(a - b)).toBeLessThanOrEqual(eps);
@@ -98,5 +98,67 @@ describe("sameSize", () => {
     expect(sameSize(3302, 2549, 3300, 2550)).toBe(true);
     expect(sameSize(3303, 2550, 3300, 2550)).toBe(false);
     expect(sameSize(3300, 2547, 3300, 2550)).toBe(false);
+  });
+});
+
+describe("drawn boxes (UC-07)", () => {
+  it("turns a drag in any direction into a rectangle", () => {
+    expect(rectFromDrag({ x: 300, y: 200 }, { x: 260, y: 230 })).toEqual({ x: 260, y: 200, w: 40, h: 30 });
+  });
+
+  it("accepts a rectangle only when every corner is inside the four panels", () => {
+    expect(rectInDrawingArea({ x: 400, y: 600, w: 80, h: 30 }, 3300, 2550)).toBe(true);
+    expect(rectInDrawingArea({ x: 2180, y: 600, w: 80, h: 30 }, 3300, 2550)).toBe(false); // runs into the right-hand table
+    expect(rectInDrawingArea({ x: 400, y: 320, w: 80, h: 30 }, 3300, 2550)).toBe(false); // starts in the header band
+  });
+
+  it("knows whether a click lies inside the drawing", () => {
+    expect(pointInDrawingArea({ x: 400, y: 600 }, 3300, 2550)).toBe(true);
+    expect(pointInDrawingArea({ x: 2700, y: 600 }, 3300, 2550)).toBe(false);
+  });
+
+  it("takes the drawn rectangle as the text box for the chosen angle", () => {
+    const rect = { x: 100, y: 200, w: 60, h: 20 };
+    expect(boxForDrawnRect(rect, 0)).toEqual({ cx: 130, cy: 210, w: 60, h: 20, angle: 0 });
+    const up = boxForDrawnRect({ x: 100, y: 200, w: 20, h: 60 }, -90);
+    close(up.w, 60);
+    close(up.h, 20);
+    expect(up.angle).toBe(-90);
+    const turned = boxForDrawnRect(rect, 58);
+    const c = Math.cos((58 * Math.PI) / 180);
+    const s = Math.sin((58 * Math.PI) / 180);
+    close(turned.w, 60 * c + 20 * s);
+    close(turned.h, 60 * s + 20 * c);
+    expect(turned.angle).toBe(58);
+  });
+});
+
+describe("detectionAt", () => {
+  const det = (id: string, cx: number, cy: number, angle = 0) => ({
+    id, box: { cx, cy, w: 0.02, h: 0.01 }, angle, readValue: "2.50", confidence: 90, source: "ocr" as const,
+  });
+
+  it("finds the value whose box holds the point, with a small margin", () => {
+    const list = [det("a", 0.2, 0.3), det("b", 0.4, 0.3, -90)];
+    expect(detectionAt(list, { x: 0.2 * 3300 + 20, y: 0.3 * 2550 }, 3300, 2550)?.id).toBe("a");
+    expect(detectionAt(list, { x: 0.4 * 3300, y: 0.3 * 2550 + 25 }, 3300, 2550)?.id).toBe("b"); // along a vertical text
+    expect(detectionAt(list, { x: 0.3 * 3300, y: 0.3 * 2550 }, 3300, 2550)).toBeNull();
+  });
+
+  it("reaches half the digit height beyond the box, and no further", () => {
+    // "a" is 66 × 33 px: half-width 33, margin 16.5 along the text and across it.
+    const list = [det("a", 0.2, 0.3), det("b", 0.4, 0.3, -90)];
+    const a = { x: 0.2 * 3300, y: 0.3 * 2550 };
+    expect(detectionAt(list, { x: a.x + 33 + 10, y: a.y }, 3300, 2550)?.id).toBe("a");
+    expect(detectionAt(list, { x: a.x + 33 + 17, y: a.y }, 3300, 2550)).toBeNull();
+    // across the vertical "b" (x is across its text): half-height 16.5 + margin 16.5
+    const b = { x: 0.4 * 3300, y: 0.3 * 2550 };
+    expect(detectionAt(list, { x: b.x + 30, y: b.y }, 3300, 2550)?.id).toBe("b");
+    expect(detectionAt(list, { x: b.x + 34, y: b.y }, 3300, 2550)).toBeNull();
+  });
+
+  it("picks the nearer of two values whose margins overlap", () => {
+    const list = [det("c", 0.2, 0.3), det("d", 0.2 + 70 / 3300, 0.3)];
+    expect(detectionAt(list, { x: 0.2 * 3300 + 40, y: 0.3 * 2550 }, 3300, 2550)?.id).toBe("d");
   });
 });

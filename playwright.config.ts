@@ -6,7 +6,7 @@ export default defineConfig({
   testMatch: "**/*.spec.ts",
   timeout: 90_000,
   expect: { timeout: 15_000 },
-  globalTimeout: 15 * 60_000,
+  globalTimeout: 25 * 60_000,
   workers: 1,
   retries: 0,
   reporter: [["list"]],

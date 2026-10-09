@@ -1,24 +1,22 @@
 import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { staffId } from "./support/account";
-import { db, deleteSheetsOf } from "./support/db";
+import { admin, deleteSheetsOf } from "./support/db";
 
 async function seed(count: number, prefix: string): Promise<string[]> {
-  const sql = db();
   const owner = await staffId();
-  try {
-    const rows = Array.from({ length: count }, (_, i) => {
-      const id = randomUUID();
-      return {
-        id, name: `${prefix} ${String(i).padStart(4, "0")}`, source_type: "png", source_path: `${id}/source.png`,
-        thumb_path: `${id}/thumb.jpg`, page_px_w: 1135, page_px_h: 877, created_by: owner, updated_by: owner,
-      };
-    });
-    for (let i = 0; i < rows.length; i += 500) await sql`insert into public.spec_sheets ${sql(rows.slice(i, i + 500))}`;
-    return rows.map((r) => r.id);
-  } finally {
-    await sql.end();
+  const rows = Array.from({ length: count }, (_, i) => {
+    const id = randomUUID();
+    return {
+      id, name: `${prefix} ${String(i).padStart(4, "0")}`, source_type: "png", source_path: `${id}/source.png`,
+      thumb_path: `${id}/thumb.jpg`, page_px_w: 1135, page_px_h: 877, created_by: owner, updated_by: owner,
+    };
+  });
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await admin().from("spec_sheets").insert(rows.slice(i, i + 500));
+    if (error) throw new Error(`test sheets not inserted: ${error.message}`);
   }
+  return rows.map((r) => r.id);
 }
 
 test("TC-48 Staff trash a sheet and restore it; two audit entries", async ({ page }) => {
@@ -32,13 +30,9 @@ test("TC-48 Staff trash a sheet and restore it; two audit entries", async ({ pag
   await page.getByRole("tab", { name: /Thùng rác|Trash/ }).click();
   await page.locator("li", { hasText: `tc48-${tag}` }).getByRole("button", { name: /Khôi phục|Restore/ }).click();
   await expect(page.getByRole("status")).toContainText(/khôi phục|restored/i);
-  const sql = db();
-  try {
-    const audit = await sql<{ action: string }[]>`select action from public.audit_log where target_id = ${id} and action in ('sheet.trash', 'sheet.restore') order by id`;
-    expect(audit.map((a) => a.action)).toEqual(["sheet.trash", "sheet.restore"]);
-  } finally {
-    await sql.end();
-  }
+  const { data: audit, error } = await admin().from("audit_log").select("action").eq("target_id", id).in("action", ["sheet.trash", "sheet.restore"]).order("id");
+  if (error) throw new Error(`audit log not read: ${error.message}`);
+  expect(audit.map((a) => a.action)).toEqual(["sheet.trash", "sheet.restore"]);
 });
 
 test("TC-52 more than 1,000 sheets: all 1,120 are reachable by scrolling", async ({ page }) => {

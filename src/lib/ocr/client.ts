@@ -1,5 +1,5 @@
 import type { Point, Rect } from "./geometry";
-import type { InitOptions, InitResult, OcrRequest, OcrResponse, ReadResult, ScanResult } from "./protocol";
+import { OcrFailure, type InitOptions, type InitResult, type OcrRequest, type OcrResponse, type ReadResult, type ScanResult } from "./protocol";
 import type { Raster } from "./raster";
 
 export const OCR_WORKER_URL = "/ocr/ocr-worker.js";
@@ -11,7 +11,7 @@ export const DEFAULT_MODELS = {
 } as const;
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
-type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void };
+type Pending = { resolve: (value: unknown) => void; reject: (error: OcrFailure) => void };
 
 /** Main-thread handle on the OCR Worker: one promise per request, answered in order. */
 export class OcrClient {
@@ -19,9 +19,9 @@ export class OcrClient {
   private readonly pending = new Map<number, Pending>();
   private nextId = 1;
   /** Set once the Worker failed or was stopped; every later request rejects with it. */
-  private failure: Error | null = null;
+  private failure: OcrFailure | null = null;
 
-  private fail(error: Error): void {
+  private fail(error: OcrFailure): void {
     this.failure ??= error;
     for (const waiting of this.pending.values()) waiting.reject(error);
     this.pending.clear();
@@ -35,10 +35,10 @@ export class OcrClient {
       if (!waiting) return;
       this.pending.delete(response.id);
       if (response.ok) waiting.resolve(response.result);
-      else waiting.reject(new Error(response.error));
+      else waiting.reject(new OcrFailure(response.code ?? "failed", response.error));
     };
-    this.worker.onerror = (event) => this.fail(new Error(event.message || "The OCR worker stopped."));
-    this.worker.onmessageerror = () => this.fail(new Error("The OCR worker sent a message that could not be read."));
+    this.worker.onerror = (event) => this.fail(new OcrFailure("failed", event.message || "The OCR worker stopped."));
+    this.worker.onmessageerror = () => this.fail(new OcrFailure("failed", "The OCR worker sent a message that could not be read."));
   }
 
   protected call<T>(request: DistributiveOmit<OcrRequest, "id">, transfer: Transferable[] = []): Promise<T> {
@@ -50,7 +50,7 @@ export class OcrClient {
         this.worker.postMessage({ ...request, id }, transfer);
       } catch (error) {
         this.pending.delete(id);
-        reject(error instanceof Error ? error : new Error(String(error)));
+        reject(new OcrFailure("failed", error instanceof Error ? error.message : String(error)));
       }
     });
   }
@@ -82,6 +82,6 @@ export class OcrClient {
    */
   dispose(): void {
     this.worker.terminate();
-    this.fail(new Error("The OCR worker was stopped."));
+    this.fail(new OcrFailure("failed", "The OCR worker was stopped."));
   }
 }

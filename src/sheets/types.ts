@@ -48,4 +48,4 @@ export type SaveResult =
   | { error: "trashed" }
   | { error: "invalid" | "unknown" };
 
-export type EditorState = { version: number; detections: Detection[]; edits: Edit[]; deleted: boolean };
+export type EditorState = { version: number; name: string; detections: Detection[]; edits: Edit[]; deleted: boolean };

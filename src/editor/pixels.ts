@@ -4,10 +4,16 @@ import type { PxBox } from "./types";
 
 /** How far beyond the box to look, as a share of its height (at least 2 px). */
 export const GROW = 0.25;
-/** The ink colour is the per-channel median of the darkest share of the pixels inside the box. */
-export const DARK_SHARE = 0.1;
+/** The ink floor is the luminance at this share of the box's pixels, sorted dark to light, so a few dark specks do not count. */
+export const INK_FLOOR = 0.02;
+/** The ink is the per-channel median of the pixels no lighter than this share of the way from the floor to the paper. */
+export const INK_BAND = 0.25;
 /** Below this luminance difference between paper and ink the box holds no text. */
 export const MIN_CONTRAST = 40;
+/** Fewer pixels clearly darker than paper than this inside the box: no text, only specks. */
+export const MIN_INK_PIXELS = 8;
+/** The ink floor also lies within the darkest tenth of the inky pixels themselves. */
+export const INK_FLOOR_OF_INK = 0.1;
 
 export type BoxAnalysis = { tight: PxBox; textColor: string; bgColor: string };
 
@@ -69,8 +75,16 @@ export function analyseBox(raster: Raster, box: PxBox): BoxAnalysis | null {
   const byLum = [...region].sort((a, b) => a.lum - b.lum);
   const paper = medianColour(byLum.slice(Math.floor(byLum.length / 2)));
   const innerByLum = [...inner].sort((a, b) => a.lum - b.lum);
-  const ink = medianColour(innerByLum.slice(0, Math.max(1, Math.ceil(inner.length * DARK_SHARE))));
   const paperLum = luminance(...paper);
+  // Pixels clearly darker than paper; the floor is taken among them, so ink that covers less than
+  // INK_FLOOR of a large drawn box still sets it (and a few specks alone are no text).
+  const inky = innerByLum.findIndex((p) => p.lum >= paperLum - MIN_CONTRAST);
+  const inkyCount = inky < 0 ? innerByLum.length : inky;
+  if (inkyCount < MIN_INK_PIXELS) return null;
+  const floorIndex = Math.min(Math.floor(innerByLum.length * INK_FLOOR), Math.floor(inkyCount * INK_FLOOR_OF_INK));
+  const floorLum = innerByLum[floorIndex].lum;
+  const limit = floorLum + INK_BAND * (paperLum - floorLum);
+  const ink = medianColour(innerByLum.filter((p) => p.lum <= limit));
   const inkLum = luminance(...ink);
   if (paperLum - inkLum < MIN_CONTRAST) return null;
   const threshold = (paperLum + inkLum) / 2;

@@ -95,20 +95,20 @@ export async function createSheet(input: { id: string; name: string; sourceType:
 type SaveRow = { saved: boolean; new_version: number | null; is_deleted: boolean | null; by_name: string | null; saved_at: string | null };
 
 /**
- * UC-08: store the value list and the edits when the version still matches (BR-10). The name is not
- * changed here (rename is F-06). A sheet in the Trash or saved by someone else in the meantime is
+ * UC-08: store the value list and the edits when the version still matches (BR-10). The name travels with
+ * every save (the trigger logs sheet.save only when it changed). A sheet in the Trash or saved by someone else in the meantime is
  * reported, never overwritten.
  */
-export async function saveSheet(input: { id: string; version: number; detections: Detection[]; edits: Edit[] }): Promise<SaveResult> {
+export async function saveSheet(input: { id: string; version: number; name: string; detections: Detection[]; edits: Edit[] }): Promise<SaveResult> {
   await requireUser("/sheets");
   const parsed = saveInputSchema.safeParse({
-    id: input?.id, version: input?.version, data: { detections: input?.detections, edits: input?.edits },
+    id: input?.id, version: input?.version, name: input?.name, data: { detections: input?.detections, edits: input?.edits },
   });
   if (!parsed.success) return { error: "invalid" };
-  const { id, version, data } = parsed.data;
+  const { id, version, name, data } = parsed.data;
   const supabase = await createSupabaseServer();
   const { data: rows, error } = await supabase.rpc("save_sheet", {
-    p_id: id, p_version: version, p_name: null, p_detections: data.detections, p_edits: data.edits,
+    p_id: id, p_version: version, p_name: name, p_detections: data.detections, p_edits: data.edits,
   });
   if (error) {
     console.error("saveSheet failed:", error.message);
@@ -130,9 +130,9 @@ export async function loadEditorState(id: string): Promise<EditorState | { error
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
     .from("spec_sheets")
-    .select("version, detections, edits, deleted_at")
+    .select("version, name, detections, edits, deleted_at")
     .eq("id", id)
-    .maybeSingle<{ version: number; detections: unknown; edits: unknown; deleted_at: string | null }>();
+    .maybeSingle<{ version: number; name: string; detections: unknown; edits: unknown; deleted_at: string | null }>();
   if (error) {
     console.error("loadEditorState failed:", error.message);
     return { error: "unknown" };
@@ -140,5 +140,5 @@ export async function loadEditorState(id: string): Promise<EditorState | { error
   if (!data) return { error: "gone" };
   const parsed = sheetDataSchema.safeParse({ detections: data.detections, edits: data.edits });
   if (!parsed.success) return { error: "unknown" };
-  return { version: data.version, detections: parsed.data.detections, edits: parsed.data.edits, deleted: data.deleted_at !== null };
+  return { version: data.version, name: data.name, detections: parsed.data.detections, edits: parsed.data.edits, deleted: data.deleted_at !== null };
 }

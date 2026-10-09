@@ -113,16 +113,33 @@ to the stored detection on the office PC; the text-layer PDF finds all 11 withou
 reopen (NFR-01) is to be confirmed on a production build in M7; the development server measured
 3.1–4.4 s for a cold reopen.
 
-### Carried into M4b and later from M4a
+### M4b result (2026-10-09)
 
-- Box and colour sampling: the ink colour is the median of the darkest 10% of pixels, which drifts toward anti-aliased tones when ink is sparse; use the pixels darker than the paper by the minimum contrast. Prefer the run nearest the centre when two run counts are within 2x; do not let a single-pixel speck extend a run. State the half-pixel convention in the doc comment.
-- Detection: create the OCR client inside the `try` so a Worker constructor that throws is reported as an OCR load error; clamp confidence to 0–100; handle a dimension split over several text-layer runs.
+Commits `git log --oneline e9c017b..HEAD` on branch `feat/m4b-editor-tools`: read on click, Draw box
+(key `K`) with the angle choice, the offer to apply a change where the same value appears, renaming
+from the editor toolbar and saving the name, typed reader failures with their own messages, and the
+visual tests.
+
+Measured: unit tests 35 files, 213 tests passing; end-to-end 35 tests passing (full run 9.7 minutes on
+the office PC). The SQL suites were not run on this network (the Postgres pooler port is blocked), so
+no new SQL count is given; M4b added no migration. TC-24: a click is read 1.7 to 1.9 s from the reader
+being ready to the popover (limit 5 s). TC-30: 1235 pixels changed, 0 outside the mask, 0 on the
+dimension line. TC-36: a value marked at 58 degrees was redrawn at 56.2 degrees (tolerance 4 degrees).
+On a sheet whose values all come from the PDF text layer the reader is not warmed up in advance, so
+the first click there starts it; on other sheets the reader starts with the first detection or shortly
+after the page opens.
+
+### Carried into M5 and later from M4a and M4b
+
+- Box and colour sampling: prefer the run nearest the centre when two run counts are within 2x; state the half-pixel convention in the doc comment of the box helpers.
+- Detection: create the OCR client inside the `try` so a Worker constructor that throws is reported as an OCR load error; handle a dimension split over several text-layer runs.
 - Saving and loading: a stored value that fails the schema loads as unknown rather than broken; a refused save under a future RLS deny would read as a conflict; add tests for the schema bounds (confidence, angle, cx, string and array input, long ids) and for the save-result mapping.
-- Editor screen: the load effect resets the base state whenever it re-runs, so tie it to unmount or to the sheet id; Stay or `Esc` pressed in the conflict dialog while "Load latest" runs should be ignored or the load cancelled; the popover closes on `Esc` only from its form, and has no vertical clamp; focus returns to the marker, not the list row; the leave guard misses Back/Forward and server-action posts.
-- Copy: Vietnamese "detecting" text should say "up to a minute" naturally; review the wording of the "detected" state; the "no values" message needs its fix step (M4b).
-- Code: share the trim/replace of the dimension helpers; use `hourCycle: "h23"` in the clock helper; derive the baseline from the box height; the font check cannot tell Arimo from a same-metric fallback.
-- Tests: add cases for negative-zero guards, a 180° run, a 30° text line, a box off the page, a run pushed out by the trim offset, tightening to ink in the text layer, a vertical edit and OCR with no detections; compare floats with a tolerance; make the end-to-end version wait tolerate a skipped version; move the value that sits in the drawn frame (3.39) out of the frame.
-- M7: confirm the 3-second reopen on a production build.
+- Editor screen: the load effect resets the base state whenever it re-runs, so tie it to unmount or to the sheet id; Stay or `Esc` pressed in the conflict dialog while "Load latest" runs should be ignored or the load cancelled; the popover has no vertical clamp; focus returns to the marker, not the list row; the leave guard misses Back/Forward and server-action posts.
+- Reader and tools: the same alert shown twice in a row is announced once (key each notice); the reader hook ignores a changed `page` once it is starting; add unit tests for the reader's failure classification and the hook (needs a React test renderer; the end-to-end tests cover them for now); a click while a popover is open both closes it and reads, so keep that decision under test.
+- Tests: add cases for negative-zero guards, a 180° run, a 30° text line, a box off the page, a run pushed out by the trim offset, tightening to ink in the text layer, a vertical edit and OCR with no detections; compare floats with a tolerance; make the end-to-end version wait tolerate a skipped version; move the value that sits in the drawn frame (3.39) out of the frame; add exact-edge tests for the drawing-area checks and a corner-containment check for the 58-degree box; make the stale-prompt test and the TC-34, TC-35 and TC-32 assertions stricter (no popover, wait for absence, a tighter match for the value 1); read the canvas box once in the drag helpers; remove the console output beside the TC-24 timing.
+- Copy: Vietnamese wording of the detecting text ("up to a minute"), the "detected" state and the matching prompt (title, "this place only", the Draw box hint "Press Esc to cancel", one spelling of "huỷ/hủy").
+- Code: share the trim/replace of the dimension helpers; use `hourCycle: "h23"` in the clock helper; derive the baseline from the box height; the font check cannot tell Arimo from a same-metric fallback; the runtime is fetched inside the inference session creation, so an offline start reads as an init failure.
+- M7: confirm the 3-second reopen and the 5-second read on click on a production build.
 
 ### Carried into M3 and later from the M2 review
 

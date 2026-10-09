@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { paintSheet, type FontMetrics } from "@/editor/canvas";
-import { panelOf, readingOrder, toPx } from "@/editor/geometry";
+import { panelOf, readingOrder, rectFromDrag, toPx } from "@/editor/geometry";
 import type { Detection, Edit } from "@/editor/types";
 import { DRAWING_AREA } from "@/lib/form/template";
+import type { Point, Rect } from "@/lib/ocr/geometry";
 import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 
@@ -27,10 +28,15 @@ type Props = {
   scale: number;
   onFitScale: (scale: number) => void;
   onOpen: (id: string) => void;
+  onPageClick?: (p: Point) => void;
+  drawing: boolean;
+  /** A drawn box waiting for its direction: shown as the dashed outline of the drag. */
+  pendingRect?: Rect | null;
+  onDrawn: (rect: Rect) => void;
   children?: ReactNode;
 };
 
-export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edits, activeId, scale, onFitScale, onOpen, children }: Props) {
+export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edits, activeId, scale, onFitScale, onOpen, onPageClick, drawing, pendingRect = null, onDrawn, children }: Props) {
   const t = useMessages();
   const viewport = useRef<HTMLDivElement | null>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
@@ -72,7 +78,17 @@ export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edi
   const band = { top: `${a.y0 * 100}%`, height: `${(a.y1 - a.y0) * 100}%` };
   return (
     <div ref={viewport} tabIndex={0} role="region" aria-label={t.editor.viewport} className="h-full overflow-auto bg-sunk p-4">
-      <div className="relative mx-auto bg-white shadow" style={{ width: pageW * scale, height: pageH * scale }}>
+      <div
+        className="relative mx-auto bg-white shadow"
+        style={{ width: pageW * scale, height: pageH * scale }}
+        onClick={(e) => {
+          if (!onPageClick) return;
+          const target = e.target instanceof Element ? e.target : null;
+          if (target?.closest("[data-detection], [role='dialog'], form")) return; // markers and popovers handle their own clicks
+          const r = e.currentTarget.getBoundingClientRect();
+          onPageClick({ x: ((e.clientX - r.left) / r.width) * pageW, y: ((e.clientY - r.top) / r.height) * pageH });
+        }}
+      >
         <canvas ref={canvas} role="img" aria-label={fill(t.editor.canvas, { name })} className="absolute inset-0 h-full w-full" />
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0" style={{ height: `${a.y0 * 100}%`, backgroundImage: HATCH }} />
         <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${(1 - a.y1) * 100}%`, backgroundImage: HATCH }} />
@@ -114,8 +130,60 @@ export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edi
             </button>
           );
         })}
+        {pendingRect ? <DrawnOutline rect={pendingRect} scale={scale} /> : null}
+        {drawing ? <DrawLayer pageW={pageW} pageH={pageH} scale={scale} onDrawn={onDrawn} /> : null}
         {children}
       </div>
+    </div>
+  );
+}
+
+function DrawnOutline({ rect, scale }: { rect: Rect; scale: number }) {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute z-10 border-2 border-dashed border-mark bg-mark/10"
+      style={{ left: rect.x * scale, top: rect.y * scale, width: rect.w * scale, height: rect.h * scale }}
+    />
+  );
+}
+
+/** Draw mode (UC-07 step 1): a crosshair layer over the page; a drag gives a rectangle in page pixels. */
+function DrawLayer({ pageW, pageH, scale, onDrawn }: { pageW: number; pageH: number; scale: number; onDrawn: (rect: Rect) => void }) {
+  const [drag, setDrag] = useState<{ a: Point; b: Point } | null>(null);
+  const toPage = (e: React.PointerEvent<HTMLDivElement>): Point => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return { x: ((e.clientX - r.left) / r.width) * pageW, y: ((e.clientY - r.top) / r.height) * pageH };
+  };
+  const shown = drag ? rectFromDrag(drag.a, drag.b) : null;
+  return (
+    <div
+      aria-hidden
+      className="absolute inset-0 z-10 cursor-crosshair touch-none"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        const p = toPage(e);
+        setDrag({ a: p, b: p });
+      }}
+      onPointerMove={(e) => {
+        if (drag) setDrag({ a: drag.a, b: toPage(e) });
+      }}
+      onPointerCancel={() => setDrag(null)}
+      onLostPointerCapture={() => setDrag(null)}
+      onPointerUp={(e) => {
+        if (!drag) return;
+        const rect = rectFromDrag(drag.a, toPage(e));
+        setDrag(null);
+        onDrawn(rect);
+      }}
+    >
+      {shown ? (
+        <div
+          className="absolute border-2 border-dashed border-mark bg-mark/10"
+          style={{ left: shown.x * scale, top: shown.y * scale, width: shown.w * scale, height: shown.h * scale }}
+        />
+      ) : null}
     </div>
   );
 }

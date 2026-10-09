@@ -60,11 +60,37 @@ describe("analyseBox", () => {
     expect(result!.bgColor).toBe("#f2f2f2");
   });
 
+  it("keeps the ink colour when the digits cover under 2 % of a large drawn box", () => {
+    const r = createRaster(400, 300);
+    fill(r, 190, 140, 195, 159, INK); // a lone "1": 120 ink pixels in a 300 × 200 box (0.2 %)
+    const result = analyseBox(r, { cx: 200, cy: 150, w: 300, h: 200, angle: 0 });
+    expect(result?.textColor).toBe("#676672");
+    expect(result?.tight.w).toBe(6);
+    expect(result?.tight.h).toBe(20);
+  });
+
+  it("treats a few specks as no text", () => {
+    const r = createRaster(300, 150);
+    fill(r, 120, 60, 121, 61, INK); // 4 dark pixels
+    expect(analyseBox(r, { cx: 129, cy: 64, w: 80, h: 30, angle: 0 })).toBeNull();
+  });
+
   it("finds no text in a blank box", () => {
     expect(analyseBox(createRaster(300, 150), { cx: 150, cy: 75, w: 60, h: 20, angle: 0 })).toBeNull();
   });
 
   it("copes with a box that runs off the page", () => {
     expect(() => analyseBox(scene(), { cx: 5, cy: 5, w: 60, h: 30, angle: 30 })).not.toThrow();
+  });
+
+  it("keeps the ink colour of thin digits that cover little of the box", () => {
+    const r = createRaster(300, 150);
+    // four 1-pixel strokes, 20 px tall (about 3 % of the box), each with anti-aliased grey on both sides
+    for (const x of [104, 118, 138, 152]) {
+      fill(r, x - 1, 50, x - 1, 69, [0xb0, 0xb0, 0xb6]);
+      fill(r, x + 1, 50, x + 1, 69, [0xb0, 0xb0, 0xb6]);
+      fill(r, x, 50, x, 69, INK);
+    }
+    expect(analyseBox(r, { cx: 129, cy: 64, w: 80, h: 30, angle: 0 })?.textColor).toBe("#676672");
   });
 });

@@ -5,18 +5,19 @@ import type { Detection, Edit } from "@/editor/types";
 import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 
-export type DetectState = "idle" | "running" | "none" | "ocr_load" | "ocr_scan";
+export type DetectState = "idle" | "running" | "none" | "ocr_load" | "ocr_unsupported" | "ocr_scan";
 
 type Props = {
   detections: readonly Detection[];
   edits: readonly Edit[];
   activeId: string | null;
   detect: DetectState;
+  showHint?: boolean;
   onOpen: (id: string) => void;
 };
 
 /** The side list (Figure 8.1): every value in reading order, with its state. Keyboard users use the markers. */
-export function ValueList({ detections, edits, activeId, detect, onOpen }: Props) {
+export function ValueList({ detections, edits, activeId, detect, showHint, onOpen }: Props) {
   const t = useMessages();
   const v = t.editor.values;
   const byId = new Map(edits.map((e) => [e.detectionId, e]));
@@ -30,9 +31,9 @@ export function ValueList({ detections, edits, activeId, detect, onOpen }: Props
         {detect === "running" ? <p className="px-3 py-2 text-ink-2">{t.editor.detecting}</p> : null}
         {detect === "none" ? <p className="px-3 py-2">{t.editor.noValues}</p> : null}
       </div>
-      {detect === "ocr_load" || detect === "ocr_scan" ? (
+      {detect === "ocr_load" || detect === "ocr_unsupported" || detect === "ocr_scan" ? (
         <p role="alert" className="mx-3 my-2 rounded-md bg-danger-soft px-3 py-2 text-sm">
-          {detect === "ocr_load" ? t.editor.ocrLoad : t.editor.ocrScan}
+          {detect === "ocr_load" ? t.editor.ocrLoad : detect === "ocr_unsupported" ? t.editor.ocrUnsupported : t.editor.ocrScan}
         </p>
       ) : null}
       <ul className="flex-1 overflow-auto py-1">
@@ -57,6 +58,7 @@ export function ValueList({ detections, edits, activeId, detect, onOpen }: Props
           );
         })}
       </ul>
+      {showHint ? <p className="border-t border-line px-3 py-2 text-xs text-ink-2">{t.editor.missingHint}</p> : null}
     </aside>
   );
 }
