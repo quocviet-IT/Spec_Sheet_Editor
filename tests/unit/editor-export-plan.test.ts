@@ -15,8 +15,8 @@ describe("exportFileName (TC-46)", () => {
   });
 
   it("replaces bidirectional marks and C1 controls, which can hide what a name ends in", () => {
-    expect(exportFileName("report‮fdp.exe", "png")).toBe("report-fdp.exe-edited.png");
-    expect(exportFileName("a‎b‏c⁦d⁩e", "pdf")).toBe("a-b-c-d-e-edited.pdf");
+    expect(exportFileName("report\u202efdp.exe", "png")).toBe("report-fdp.exe-edited.png");
+    expect(exportFileName("a\u200eb\u200fc\u2066d\u2069e", "pdf")).toBe("a-b-c-d-e-edited.pdf");
     expect(exportFileName("x\u0085y\u009Fz", "png")).toBe("x-y-z-edited.png");
   });
 

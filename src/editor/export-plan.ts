@@ -9,12 +9,12 @@ const MAX_STEM = 150;
  */
 export function exportFileName(name: string, ext: "png" | "pdf"): string {
   const safe = name
-    .replace(/[\\/:*?"<>|\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, "-")
+    .replace(/[\\/:*?"<>|\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "-")
     .replace(/ {2,}/g, " ")
-    .trim()
-    .slice(0, MAX_STEM)
-    .replace(/[. ]+$/, "");
-  return `${safe.replace(/^[. ]+$/, "") || "sheet"}-edited.${ext}`;
+    .trim();
+  // Cut by characters, not UTF-16 units, so a character outside the basic plane is never split.
+  const stem = Array.from(safe).slice(0, MAX_STEM).join("").replace(/[. ]+$/, "");
+  return `${stem.replace(/^[. ]+$/, "") || "sheet"}-edited.${ext}`;
 }
 
 /** Where the trimmed page sits in the original PDF page (in render pixels), or an image sheet. */
