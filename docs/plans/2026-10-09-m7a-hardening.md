@@ -584,6 +584,8 @@ describe("findLeaks (TC-77)", () => {
 
 ### Task 7: The user guide (VI/EN) with screenshots
 
+> Note (2026-10-10): the screenshots no longer live in `public/guide`. They are in `src/app/(app)/guide/shots/<locale>/`, so each image is served once (imported by the page and not also copied to `public/`). The task text below is kept as it was written.
+
 **Files:**
 - Create:
   - `src/app/(app)/guide/page.tsx` (and small components beside it if needed)

@@ -159,7 +159,8 @@ Windows and macOS) stays with M7, because it needs a macOS machine.
 
 - Export rendering: check the canvas height as well as the width after rendering, and turn any error thrown while painting or encoding into the "file could not be rendered" message; replace C1 control characters and bidirectional marks in file names, and cap the name stem at about 150 characters; add a test for two edits that share an old value but have different new values.
 - Export dialog: paint the "Preparing the file" text before the rendering starts (wait one animation frame); do not open the read-on-click popover while an export is running, so it cannot appear behind the dialog; the dialog's `Esc` handling should ignore keys already handled by another layer; check that `Shift+Tab` from the dialog's first control behaves like `Tab` from its last; add a test that "Apply there too" in the dialog also skips values that were edited.
-- M7: TC-47 on macOS; confirm the 5-second PDF export on a production build.
+- M7: TC-47 on macOS (still open: needs a macOS machine). Confirm the 5-second PDF export on a production build: **Resolved in M7a** (1265 ms; see the M7a result).
+- Also in this list: the export dialog's `Shift+Tab` from the first control behaves like `Tab` from the last: **Resolved in M7a** (`e2e/export.spec.ts`, Shift+Tab test).
 
 ### M6 result (2026-10-09)
 
@@ -189,18 +190,62 @@ Decisions taken during M6 (also in the design, UC-14, UC-16 and UC-17):
 
 ### Carried into M7 from the M6 admin work
 
-- Desktop notice: below 1024 px the notice is only hidden by style; the server still reads the page's data on a phone. Skip the reads for narrow windows, or accept the cost and note it.
-- Copy: the English wording of the unknown-error message on the users page.
+- Desktop notice (**Resolved in M7a**: decision 2026-10-09, the reads stay; see the M7a result): below 1024 px the notice is only hidden by style; the server still reads the page's data on a phone. Skip the reads for narrow windows, or accept the cost and note it.
+- Copy (**Resolved in M7a**: closed without a change, see the M7a result): the English wording of the unknown-error message on the users page.
 - Orphan clean-up: when a batch of deletions fails midway, log the folders that were actually removed; when nothing was removed, say "none" instead of "Cleaned up 0"; show 1048575 bytes as "1.0 MB" and not "1024.0 KB".
-- Permanent deletion: remove the unreachable "forbidden" branch in the error mapping; move focus sensibly after a successful deletion (the row is gone) and when the orphan confirmation dialog closes; confirm there are tests for the accent-composed (NFC) name match and for the restore-at-the-same-moment case.
-- End-to-end run: the whole run now takes 18.8 minutes against a 25-minute limit in `playwright.config.ts`; raise the limit before the suite grows further.
+- Permanent deletion (the unreachable "forbidden" branch: **Resolved in M7a**, commit 9d6829d): remove the unreachable "forbidden" branch in the error mapping; move focus sensibly after a successful deletion (the row is gone) and when the orphan confirmation dialog closes; confirm there are tests for the accent-composed (NFC) name match and for the restore-at-the-same-moment case.
+- End-to-end run (**Resolved in M7a**: `globalTimeout` is now 40 minutes): the whole run now takes 18.8 minutes against a 25-minute limit in `playwright.config.ts`; raise the limit before the suite grows further.
 - SQL: run the SQL suites for the Admin functions (TC-56 to TC-61, TC-65, TC-69 to TC-71, TC-73) from a network that reaches the pooler port.
 
-### M7a result
+### M7a result (2026-10-10)
 
-Decisions taken during M7a:
+Commits `git log --oneline 1c3a455..HEAD` on branch `feat/m7a-hardening`:
+
+- security: the Content-Security-Policy with a per-request script nonce (70c3b87);
+- release: the production-build test mode with the NFR-01 timings, and the build check that the secret key is not in the bundle (e51632d);
+- editor: load once per sheet, ask before Back, Forward or Sign out, steady focus, notices and outside clicks (74f0516, 99bd7c6, dec83a3);
+- editor: a value split in the text layer is read as one, and the run nearest the centre wins a close call; edge tests (d035420, c5b0420);
+- Admin: the unreachable "forbidden" result removed, every error message says what to do next, and the design records the Admin-window decision (9d6829d, 7e03e4f, 269793d);
+- tests: restores in the Admin tests, sign-in return, sign-out and Back, narrow screens, expired links, TC-60 (4efefc8 to f6b91aa);
+- guide: an in-app user guide in Vietnamese and English with screenshots (db1c61f to cd03f77);
+- accessibility: WCAG 2.2 AA scans in both themes and a keyboard-only journey, with the contrast fixes they found (a25e3b7 to 1b0030e);
+- this task: the test-case status, the dependency audit and the documentation.
+
+Measured: unit tests 45 files, 295 tests passing; end-to-end 89 tests on the production build (88 passed in
+the full run of 20.5 minutes; one test failed because of a mistake in the test and passed after its fix,
+with the whole `admin` spec, 9 tests, 3.1 minutes, passing again). The SQL suites were not run on this
+network (the Postgres pooler port is blocked); TC-60 is new and has never run, so it must run on the
+office network before the merge. Timings on the production build (NFR-01):
+
+```
+[timing] reopen-1 1857 ms
+[timing] reopen-2 1848 ms
+[timing] reopen-3 2372 ms
+[timing] read-on-click 916 ms
+[timing] export-pdf 1265 ms
+```
+
+Status of every test case: [`docs/testing/test-case-status.md`](../testing/test-case-status.md).
+
+Decisions taken during M7a (also in the design):
 
 - The Admin area hides itself below 1024 px with a notice, but its server reads still run on a narrow window, by decision 2026-10-09. Admins are few, every read is paged, and RLS applies. No code change.
+- The CSP lives in `src/lib/security/csp.ts` and is set by `src/proxy.ts` with a new nonce for each request.
+- Sign out ends only the session on that computer (`scope: "local"`), not every session of the person.
+- pdf.js 6 has no `isEvalSupported` option and no `new Function` probe, so nothing needed switching off.
+- The guide's images live in `src/app/(app)/guide/shots/<locale>/`, so each image is served once.
+
+Carried items closed without a change:
+
+- The reader keeps its first page once it is starting, by design (documented in `use-value-reader.ts`).
+- The reader hook has no unit test: the end-to-end tests cover it, and no React test renderer was added.
+- Three items had no clear wording to act on: the "stale prompt" test, the "detected" and matching prompt copy, and the English unknown-error message on the users page. Kept as they are, for the owner to reword if wanted.
+- A read on click while the export dialog is open: the dialog is modal and covers the canvas.
+
+Left for M7b: the release (TC-54, the first Admin on production), TC-47 on a macOS machine, running the SQL
+suites (TC-60 above all) from a network that reaches the pooler port, the Google sign-in cases TC-01, TC-02
+and TC-64 once Google is switched on, and small open items such as a value like `2. 50` that pdf.js still
+reads as two pieces.
 
 ### Carried into M3 and later from the M2 review
 
@@ -209,7 +254,7 @@ Decisions taken during M7a:
 - M3/M4: Worker errors carry a typed code (model download, runtime download, init failed) mapped to dictionary strings (TC-25); time clicks on the main thread for TC-24; do not send clicks while a scan runs (or stop the scan by disposing the client).
 - M4: tighten boxes to the digits before masking (UC-04 step 5); draw at the reading's `angle` along its `quad`.
 - M4: `quad` keeps the detector's corner order, not the text's (for a tall or upside-down read its first edge is the text's height); derive the design's `{cx, cy, w, h}` from `quad` and `angle` with one tested helper. Cancelling a scan means disposing the client and starting a new one (models reload in about 2 s from cache).
-- M7: the nonce-based CSP must allow the Blob-URL runtime (`worker-src 'self' blob:`, `script-src blob:`, `'wasm-unsafe-eval'`); serve the runtime from a versioned folder with an immutable cache; ship the Apache-2.0 licence text with the models; gate `/dev/*` with `requireAdmin()` if ENABLE_DEV_PAGES is ever set in production; note that Safari (no COEP credentialless) runs OCR on one thread.
+- M7 (the CSP part is **Resolved in M7a**, commit 70c3b87; the licence-text and Safari notes stay for M7b): the nonce-based CSP must allow the Blob-URL runtime (`worker-src 'self' blob:`, `script-src blob:`, `'wasm-unsafe-eval'`); serve the runtime from a versioned folder with an immutable cache; ship the Apache-2.0 licence text with the models; gate `/dev/*` with `requireAdmin()` if ENABLE_DEV_PAGES is ever set in production; note that Safari (no COEP credentialless) runs OCR on one thread.
 
 ### Prerequisites carried into M2
 

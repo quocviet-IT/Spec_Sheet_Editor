@@ -121,7 +121,7 @@ test("TC-62 / TC-63 a suspended person is stopped at the next save, cannot sign 
     // TC-63: signing in again is refused with the same message.
     const password = await resetPassword(STAFF_B_EMAIL);
     await other.goto("/login"); // a fresh form: the "suspended" notice of the redirect above must not be what the check reads
-    await expect(other.getByRole("alert")).toHaveCount(0);
+    await expect(other.getByRole("alert").filter({ hasText: /đã bị khoá|has been suspended/ })).toHaveCount(0); // the production build also keeps an empty route announcer with role alert
     await other.locator("#email").fill(STAFF_B_EMAIL);
     await other.locator("#password").fill(password);
     const signInButton = other.locator("form", { has: other.locator("#password") }).locator('button[type="submit"]');
