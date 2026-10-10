@@ -13,6 +13,7 @@ export function AppHeader({ me, t }: { me: Profile; t: Messages }) {
         </Link>
         <nav className="flex items-center gap-3 text-sm text-ink-2">
           <Link href="/sheets" className="hover:text-ink">{t.common.sheets}</Link>
+          <Link href="/guide" className="hover:text-ink">{t.common.guide}</Link>
           {me.role === "admin" && (
             <Link href="/admin" className="hover:text-ink">{t.common.admin}</Link>
           )}

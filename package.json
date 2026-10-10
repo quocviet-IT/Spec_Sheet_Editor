@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
+    "guide:shots": "playwright test -c playwright.guide.config.ts",
     "e2e:prod": "playwright test -c playwright.prod.config.ts",
     "db:migrate": "tsx scripts/migrate.mts",
     "admin:create": "tsx scripts/create-admin.mts",
