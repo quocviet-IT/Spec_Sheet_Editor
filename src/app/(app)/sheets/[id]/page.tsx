@@ -8,9 +8,14 @@ import { Editor } from "./editor";
 
 export default async function SheetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const validId = z.uuid().safeParse(id).success;
+  // Start the read while the access check runs. RLS still gates the row, and the result is only used after
+  // requireUser() resolves; if the check redirects or throws, the read's own failure is swallowed here.
+  const sheetRead = validId ? fetchEditorSheet(id) : null;
+  sheetRead?.catch(() => undefined);
   await requireUser(`/sheets/${id}`);
-  if (!z.uuid().safeParse(id).success) notFound();
-  const sheet = await fetchEditorSheet(id);
+  if (!sheetRead) notFound();
+  const sheet = await sheetRead;
   if (!sheet) notFound();
   const t = await getMessages();
   if (sheet.deleted || sheet.broken || !sheet.sourceUrl) {
