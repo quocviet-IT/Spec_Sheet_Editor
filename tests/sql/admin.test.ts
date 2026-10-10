@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { actAs, actAsOwner, closeDb, expectError, hasDb, insertSheet, makeUser, rollback, staffEmail } from "./harness";
+import { actAs, actAsOwner, closeDb, committed, connect, expectError, hasDb, insertSheet, makeUser, rollback, rollbackOn, staffEmail } from "./harness";
 
 afterAll(closeDb);
 
@@ -75,5 +75,50 @@ describe.skipIf(!hasDb)("admin functions", () => {
       await expectError(tx, (sp) => sp`select public.add_allowed('bogus', 'x@ctyhp.vn', null)`, "invalid_kind");
       await expectError(tx, (sp) => sp`select public.remove_allowed('bogus', 'ctyhp.vn')`, "invalid_kind");
     });
+  });
+
+  it("TC-60 two Admins demoting each other at once are serialised and nothing is left behind", async () => {
+    // The two Admins must be visible to both connections, so they are committed and deleted at the end. Both
+    // demotions are rolled back: a committed role change writes an audit row that pins the account forever.
+    const [x, y] = await committed(async (tx) => [await makeUser(tx, staffEmail(), "admin"), await makeUser(tx, staffEmail(), "admin")]);
+    const one = connect();
+    const two = connect();
+    try {
+      let releaseFirst!: () => void;
+      const firstHolds = new Promise<void>((r) => (releaseFirst = r));
+      let firstDemoted!: () => void;
+      const firstIn = new Promise<void>((r) => (firstDemoted = r));
+
+      // X demotes Y and keeps the transaction open, holding the guard's lock.
+      const first = rollbackOn(one, async (tx) => {
+        await actAs(tx, x);
+        await tx`select public.set_user_role(${y.id}, 'user')`;
+        firstDemoted();
+        await firstHolds;
+      });
+      await firstIn;
+
+      // Y demotes X at the same moment: it must wait for the lock, not run beside the first.
+      let secondSettled = false;
+      const second = rollbackOn(two, async (tx) => {
+        await actAs(tx, y);
+        await tx`select public.set_user_role(${x.id}, 'user')`;
+      }).finally(() => (secondSettled = true));
+      await new Promise((r) => setTimeout(r, 1500));
+      expect(secondSettled, "the second demotion must wait while the first holds the lock").toBe(false);
+
+      releaseFirst();
+      const results = await Promise.allSettled([first, second]);
+      // With the first rolled back the second goes through; either way neither is left half done.
+      expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+    } finally {
+      await one.end();
+      await two.end();
+      await committed(async (tx) => {
+        const [left] = await tx<{ n: string }[]>`select count(*) as n from public.profiles where id in (${x.id}, ${y.id}) and role = 'admin' and status = 'active'`;
+        await tx`delete from auth.users where id in (${x.id}, ${y.id})`;
+        expect(Number(left.n), "both rolled back: both are still active Admins").toBe(2);
+      });
+    }
   });
 });
