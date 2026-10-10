@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { staffId } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
-import { PDF_VALUES, valuesPdf } from "./support/files";
+import { marginedValuesPdf, PDF_VALUES, valuesPdf } from "./support/files";
 import { auditCount, drawValuesPng, markers, storedSheet, unmatchedValues, uploadSheet, waitForVersion, watchOcrRequests } from "./support/sheets";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -22,6 +22,17 @@ test("TC-21 / TC-23 a PDF text layer gives all 11 values with their angles, noth
   expect(detections.map((d) => d.readValue)).not.toContain("5.75");
   expect(detections.map((d) => d.readValue)).not.toContain("3.39");
   expect(await auditCount(id, "sheet.detect")).toBe(1);
+  expect(ocr).toEqual([]);
+});
+
+test("a margined sheet placed on an A4 portrait PDF page is accepted and its 11 values are found inside the drawing", async ({ page }) => {
+  const ocr = watchOcrRequests(page);
+  const { id } = await uploadSheet(page, `a4-${Date.now()}.pdf`, "application/pdf", await marginedValuesPdf({ onA4Portrait: true }));
+  await expect(markers(page)).toHaveCount(11, { timeout: 30_000 });
+  await waitForVersion(id, 2);
+  const { detections } = await storedSheet(id);
+  expect(detections).toHaveLength(11);
+  expect(detections.every((d) => d.source === "pdf-text")).toBe(true);
   expect(ocr).toEqual([]);
 });
 

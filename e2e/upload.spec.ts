@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { templatePdf, framedPng } from "./support/files";
+import { templatePdf, framedPng, marginedPng } from "./support/files";
 import { admin, deleteSheetsOf } from "./support/db";
 import { staffId } from "./support/account";
 
@@ -38,6 +38,17 @@ test("TC-09 a 1135 × 877 PNG is accepted with a low-resolution warning", async 
   await dialog.getByRole("button", { name: /^(Tải lên|Upload)$/ }).click();
   await page.waitForURL(/\/sheets\/[0-9a-f-]{36}$/);
   expect((await rowsNamed("tc09-lowres")).length).toBe(1);
+});
+
+test("a sheet with its own white margins is accepted and keeps the whole image as its page", async ({ page }) => {
+  const dialog = await openUpload(page);
+  await choose(page, "margined-sheet.png", "image/png", marginedPng(1135, 877));
+  await dialog.getByRole("button", { name: /^(Tải lên|Upload)$/ }).click();
+  await page.waitForURL(/\/sheets\/[0-9a-f-]{36}$/);
+  const [row] = await rowsNamed("margined-sheet");
+  // The page is rebuilt from the sheet's content and the template margins, so it is within a pixel or two of the image.
+  expect(Math.abs(row.page_px_w - 1135)).toBeLessThanOrEqual(2);
+  expect(Math.abs(row.page_px_h - 877)).toBeLessThanOrEqual(2);
 });
 
 test("TC-12 a drawing-only crop is refused", async ({ page }) => {
