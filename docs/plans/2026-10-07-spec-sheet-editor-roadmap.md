@@ -211,18 +211,21 @@ Commits `git log --oneline 1c3a455..HEAD` on branch `feat/m7a-hardening`:
 - accessibility: WCAG 2.2 AA scans in both themes and a keyboard-only journey, with the contrast fixes they found (a25e3b7 to 1b0030e);
 - this task: the test-case status, the dependency audit and the documentation.
 
-Measured: unit tests 45 files, 295 tests passing; end-to-end 89 tests on the production build (88 passed in
-the full run of 20.5 minutes; one test failed because of a mistake in the test and passed after its fix,
-with the whole `admin` spec, 9 tests, 3.1 minutes, passing again). The SQL suites were not run on this
+Measured (final run 2026-10-10): unit tests 46 files, 298 tests passing; end-to-end 89 tests on the production
+build (56 passed in the full run of 18.2 minutes, then the production server stopped answering and the 33
+remaining tests failed at page load; the same 8 specs run again passed 37 of 37 in 7.8 minutes, so a flake).
+The server document was the largest phase of a reopen: each Supabase call takes about 135 ms from the office
+PC and a reopen made six dependent calls; it now makes four (one Auth check per request, the sheet read started
+with the access check). Production on Vercel `sin1` sits in the same region as Supabase. The SQL suites were not run on this
 network (the Postgres pooler port is blocked); TC-60 is new and has never run, so it must run on the
 office network before the merge. Timings on the production build (NFR-01):
 
 ```
-[timing] reopen-1 1857 ms
-[timing] reopen-2 1848 ms
-[timing] reopen-3 2372 ms
-[timing] read-on-click 916 ms
-[timing] export-pdf 1265 ms
+[timing] reopen-1 1623 ms
+[timing] reopen-2 1555 ms
+[timing] reopen-3 1455 ms
+[timing] read-on-click 912 ms
+[timing] export-pdf 1330 ms
 ```
 
 Status of every test case: [`docs/testing/test-case-status.md`](../testing/test-case-status.md).

@@ -6,9 +6,10 @@ Status of the 77 test cases of the design (section 8) and of NFR-01 to NFR-10, a
 Sources:
 
 - End-to-end: the full run `npm run e2e:prod` against a production build (`next build` + `next start`):
-  88 passed and 1 failed (20.5 minutes); the one failure was a mistake in the test and, after the fix,
-  the whole `admin` spec passed again alone (9 tests, 3.1 minutes). Section "Full run" gives the detail.
-- Unit: `npx vitest run tests/unit`: 45 files, 295 tests, all passing.
+  the final run of 2026-10-10: 56 passed, then the production server stopped answering and the 33 remaining
+  tests failed with connection errors; the same 8 specs run again passed, 37 of 37 (7.8 minutes), so all
+  89 tests passed. Section "Full run" gives the detail.
+- Unit: `npx vitest run tests/unit`: 46 files, 298 tests, all passing.
 - SQL: `tests/sql/` needs the Postgres pooler port, which the network used for this run blocks. These
   suites are written and type-checked but were not run here. TC-60 is new in M7a and has never run.
 
@@ -103,7 +104,7 @@ error mapping is unit-tested).
 
 | Id | Evidence | Status |
 |---|---|---|
-| NFR-01 Performance | `e2e/perf.spec.ts` on the production build. Opening a saved sheet: `[timing] reopen-1 1857 ms`, `reopen-2 1848 ms`, `reopen-3 2372 ms` (limit 3 s). Read on click: `[timing] read-on-click 916 ms` (limit 5 s). PDF export: `[timing] export-pdf 1265 ms` (limit 5 s). The first scan of an image (60 s) was measured in M2 and the editor's OCR path runs in `e2e/detect.spec.ts`. | Pass (2026-10-10, e2e:prod) |
+| NFR-01 Performance | `e2e/perf.spec.ts` on the production build. Opening a saved sheet: `[timing] reopen-1 1623 ms`, `reopen-2 1555 ms`, `reopen-3 1455 ms` (limit 3 s). Read on click: `[timing] read-on-click 912 ms` (limit 5 s). PDF export: `[timing] export-pdf 1330 ms` (limit 5 s). Each Supabase call takes about 135 ms from the office PC, and production on Vercel `sin1` sits in the same region as Supabase; the server document was a chain of six dependent calls, now four (one Auth check per request, the sheet read started with the access check). The first scan of an image (60 s) was measured in M2 and the editor's OCR path runs in `e2e/detect.spec.ts`. | Pass (2026-10-10, e2e:prod) |
 | NFR-02 Security | RLS and the three layers: SQL suites (not run on this network) and `e2e/admin.spec.ts` TC-55. Content-Security-Policy with a per-request nonce: `tests/unit/csp.test.ts` and `e2e/csp.spec.ts` (5 tests: header with a fresh nonce on every load, a missing page, the thumbnail, OCR detection with PNG and PDF export, the Admin pages; no violation). | Pass (unit, e2e:prod); SQL written, not run on this network |
 | NFR-03 Privacy | `e2e/csp.spec.ts`: `connect-src` and `img-src` name only the app and the Supabase project, so an image cannot be sent anywhere else; OCR runs in the browser (`e2e/detect.spec.ts`). | Pass (2026-10-10, e2e:prod) |
 | NFR-04 Integrity | `tests/sql/access.test.ts` TC-49 (not run on this network); permanent deletion only through the server job: `e2e/admin.spec.ts` TC-74 and `tests/unit/admin-purge.test.ts`. | Pass for the server job; SQL written, not run on this network |
@@ -117,12 +118,16 @@ error mapping is unit-tested).
 ## Full run
 
 Command: `npm run e2e:prod` (a production build served by `next start`; the dev server on port 3000 must
-be stopped first). Result of the first run: 88 passed, 1 failed, 20.5 minutes.
+be stopped first). Final run of 2026-10-10 (after the two performance changes): 56 passed in 18.2 minutes,
+then the production server stopped answering at `e2e/guide.spec.ts` (first `ERR_CONNECTION_RESET`, then
+`ERR_CONNECTION_REFUSED`) and the remaining 33 tests failed at their first page load. The same 8 specs
+(guide, keyboard, list, perf, pixels, session, tools, upload) run again passed: 37 of 37, 7.8 minutes. A pass
+alone is recorded as a flake: the server log of the first run held `Error: The destination stream closed early`
+once, at the audit CSV download in `admin.spec.ts`, and no error text for the stop itself.
 
-The failure was `e2e/admin.spec.ts` TC-62 / TC-63. The test checked that the login page had no element with
-role `alert`, but the production build keeps an empty route announcer with that role on every page. The
-failure repeated when the spec ran alone, so it was not a flake. The check now looks for an alert with
-the suspension text. After the change the whole `admin` spec passed on the production build (9 tests, 3.1 minutes).
+Earlier run (before the performance changes): 88 passed, 1 failed, 20.5 minutes. The failure was
+`e2e/admin.spec.ts` TC-62 / TC-63, a mistake in the test (the production build keeps an empty route announcer
+with role `alert`), fixed; the whole `admin` spec then passed.
 
 During the run the server logged `logExport failed: sheet_not_found` twice. That is the export log call
 of a sheet that the test had already deleted; no test failed because of it.
