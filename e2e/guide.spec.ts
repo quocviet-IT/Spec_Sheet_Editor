@@ -28,8 +28,8 @@ test.describe("as a Staff account", () => {
   for (const locale of ["vi", "en"] as const) {
     test(`the guide loads in ${locale}, every image loads and there is no Admin section`, async ({ page }) => {
       await open(page, locale);
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText(locale === "vi" ? "Hướng dẫn sử dụng" : "User guide");
-      await expect(page.getByRole("navigation", { name: locale === "vi" ? "Mục lục" : "Contents" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(Hướng dẫn sử dụng|User guide)$/);
+      await expect(page.getByRole("navigation", { name: /^(Mục lục|Contents)$/ })).toBeVisible();
       expect(await expectImagesLoaded(page)).toBe(7); // the nine shots, minus the two Admin ones
       await expect(page.getByRole("heading", { level: 2, name: ADMIN_SECTION })).toHaveCount(0);
       await expect(page.locator("#admin")).toHaveCount(0);

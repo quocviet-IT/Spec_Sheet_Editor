@@ -30,7 +30,7 @@ export async function signInWithPassword(_prev: SignInState, form: FormData): Pr
 
   const { data: status, error: statusError } = await supabase.rpc("my_access_status");
   if (statusError || status === "signed_out") {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     return { error: "unknown", email };
   }
   if (status === "must_change_password") redirect(`/account/password?next=${encodeURIComponent(next)}`);
@@ -42,7 +42,7 @@ export async function signInWithPassword(_prev: SignInState, form: FormData): Pr
 
   const { error: touchError } = await supabase.rpc("touch_profile");
   if (touchError) {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     return { error: "unknown", email };
   }
   redirect(next);

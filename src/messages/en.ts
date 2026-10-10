@@ -66,6 +66,7 @@ export const en: Messages = {
     search: "Search sheet names",
     columns: { name: "Sheet name", edits: "Edits", saved: "Last saved", trashed: "Moved to Trash" },
     edits: "{n} values edited",
+    editsOne: "1 value edited",
     noEdits: "No edits",
     empty: "No sheets yet.",
     emptyTrash: "The Trash is empty.",

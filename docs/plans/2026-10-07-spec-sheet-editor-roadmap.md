@@ -194,7 +194,7 @@ Decisions taken during M6 (also in the design, UC-14, UC-16 and UC-17):
 - Copy (**Resolved in M7a**: closed without a change, see the M7a result): the English wording of the unknown-error message on the users page.
 - Orphan clean-up: when a batch of deletions fails midway, log the folders that were actually removed; when nothing was removed, say "none" instead of "Cleaned up 0"; show 1048575 bytes as "1.0 MB" and not "1024.0 KB".
 - Permanent deletion (the unreachable "forbidden" branch: **Resolved in M7a**, commit 9d6829d): remove the unreachable "forbidden" branch in the error mapping; move focus sensibly after a successful deletion (the row is gone) and when the orphan confirmation dialog closes; confirm there are tests for the accent-composed (NFC) name match and for the restore-at-the-same-moment case.
-- End-to-end run (**Resolved in M7a**: `globalTimeout` is now 40 minutes): the whole run now takes 18.8 minutes against a 25-minute limit in `playwright.config.ts`; raise the limit before the suite grows further.
+- End-to-end run (**Resolved in M7a**: the 40-minute `globalTimeout` was already in `playwright.config.ts`; only the README still said 25 minutes, and M7a corrected it): the whole run now takes 18.8 minutes against a 25-minute limit in `playwright.config.ts`; raise the limit before the suite grows further.
 - SQL: run the SQL suites for the Admin functions (TC-56 to TC-61, TC-65, TC-69 to TC-71, TC-73) from a network that reaches the pooler port.
 
 ### M7a result (2026-10-10)

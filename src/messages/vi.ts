@@ -64,6 +64,7 @@ export const vi = {
     search: "Tìm theo tên phiếu",
     columns: { name: "Tên phiếu", edits: "Số đã sửa", saved: "Lưu lần cuối", trashed: "Đưa vào Thùng rác" },
     edits: "{n} số đã sửa",
+    editsOne: "1 số đã sửa",
     noEdits: "Chưa sửa",
     empty: "Chưa có phiếu nào.",
     emptyTrash: "Thùng rác trống.",
