@@ -50,7 +50,8 @@ async function trashFromList(page: Page, name: string): Promise<void> {
   await page.getByRole("searchbox").fill(name);
   await page.getByRole("button", { name: new RegExp(escape(name)) }).click(); // the row's menu
   await page.getByRole("menuitem", { name: /Đưa vào Thùng rác|Move to Trash/ }).click();
-  await expect(page.getByRole("status").filter({ hasText: /Thùng rác|Trash/ })).toBeVisible();
+  // The outcome, not the timed toast: the row leaves the active list. A cold dev server can take a while.
+  await expect(page.getByRole("button", { name: new RegExp(escape(name)) })).toHaveCount(0, { timeout: 60_000 });
 }
 
 test.describe("signed out", () => {
