@@ -770,6 +770,13 @@ Permissions are checked at three independent layers. No layer trusts the one bef
 
 **Content-Security-Policy (added in M7a).** `src/proxy.ts` sets a policy on every page response, built by `buildCsp` in `src/lib/security/csp.ts` with a fresh nonce for each request. Scripts run only with that nonce or when loaded by such a script (`'strict-dynamic'`); `default-src`, `font-src` and `base-uri` allow only the app's own origin; `connect-src` allows the app and the Supabase project; `img-src` adds `blob:`, `data:` and the Supabase project; `worker-src` allows `blob:` for the OCR runtime; `object-src 'none'`, `frame-ancestors 'none'`, and `form-action` allows the app, Supabase and Google sign-in. Styles keep `'unsafe-inline'` because the interface sets inline styles. `'unsafe-eval'` and `ws:` are added only in development. The policy was a deviation from the first design, which did not describe one; a new third-party origin must be added to `buildCsp` and covered by `e2e/csp.spec.ts`. The production build is also checked after `next build` by `scripts/check-bundle.mts`, which fails the build if a secret-key shape appears in the browser bundle (TC-77).
 
+**Session checks per request (changed in M7a).**
+- `src/proxy.ts` validates and refreshes the session with the Auth server (`getUser()`) once per request.
+- The server guards (`loadAccess` in `src/auth/session.ts`) then read the caller's identity with `getClaims()`. That call verifies the token's signature against the project's published keys without another Auth round trip, or makes a server call when the project signs with a shared secret.
+- `my_access_status()` in the database still runs on every request, so a suspended or removed account is refused at once (TC-62).
+- What the second Auth call used to catch is a session ended in another way, such as signing out elsewhere or a password reset. Such a session is now refused when its access token expires (at most one hour), when the proxy's refresh fails.
+- This saves one round trip to Supabase on every page and action, about 135 ms from the office network.
+
 **pdf.js.** pdf.js 6 has no `isEvalSupported` option and does not probe with `new Function`, so the strict policy needs no switch for it.
 
 ### 5.5 Source tree
