@@ -125,7 +125,7 @@ export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edi
               style={{ left: px.cx * scale - w / 2, top: px.cy * scale - h / 2, width: w, height: h, transform: `rotate(${d.angle}deg)` }}
             >
               {edit ? (
-                <span aria-hidden className="absolute -right-2 -top-2 grid size-4 place-items-center rounded-full bg-edit text-[10px] font-bold leading-none text-white">✓</span>
+                <span aria-hidden className="absolute -right-2 -top-2 grid size-4 place-items-center rounded-full bg-edit text-[10px] font-bold leading-none text-edit-ink">✓</span>
               ) : null}
             </button>
           );

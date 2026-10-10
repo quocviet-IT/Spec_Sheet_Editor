@@ -641,7 +641,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
           disabled={!loaded || detectRunning}
           className={"ml-auto rounded-md border px-3 py-2 text-sm " + (drawing ? "border-mark bg-mark/10 text-ink" : "border-line")}
         >
-          {t.editor.drawBox} <kbd aria-hidden className="ml-1 font-sans text-xs opacity-75">K</kbd>
+          {t.editor.drawBox} <kbd aria-hidden className="ml-1 font-sans text-xs">K</kbd>
         </button>
         <ExportMenu
           disabled={!loaded}
@@ -660,7 +660,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
           aria-keyshortcuts="Control+S"
           className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
         >
-          {t.editor.save} <kbd aria-hidden className="ml-1 font-sans text-xs opacity-75">Ctrl S</kbd>
+          {t.editor.save} <kbd aria-hidden className="ml-1 font-sans text-xs">Ctrl S</kbd>
         </button>
       </header>
       <div className="flex min-h-0 flex-1 gap-3">
