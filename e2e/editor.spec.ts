@@ -1,7 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { staffId } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
-import { BOTTOM_RIGHT, TOP_LEFT, TOP_RIGHT, auditCount, editValue, marker, markers, openValuesSheet, storedSheet, waitForVersion } from "./support/sheets";
+import { BOTTOM_RIGHT, TOP_LEFT, TOP_RIGHT, auditCount, dragBox, editValue, marker, markers, openValuesSheet, storedSheet, waitForVersion } from "./support/sheets";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -172,4 +172,110 @@ test("TC-41 saving a sheet someone moved to the Trash says so", async ({ page, c
   await page.keyboard.press("Control+s");
   await expect(page.getByText(/khôi phục rồi lưu lại|Restore it, then save again/)).toBeVisible();
   expect((await storedSheet(id)).edits).toEqual([]);
+});
+
+const discard = /chưa lưu|unsaved/i;
+
+/** Answers the next confirm and returns what it asked. */
+function answerNext(page: Page, accept: boolean): { message: () => string } {
+  let message = "";
+  page.once("dialog", (d) => {
+    message = d.message();
+    void (accept ? d.accept() : d.dismiss());
+  });
+  return { message: () => message };
+}
+
+const languageGroup = (page: Page) => page.getByRole("group", { name: /Ngôn ngữ|Language/ });
+
+test("a language switch re-renders the page but keeps the edit, does not request the source file again, and saves it", async ({ page }) => {
+  const { id } = await openValuesSheet(page, "langkeep");
+  const sourceRequests: string[] = [];
+  page.on("request", (r) => {
+    const path = new URL(r.url()).pathname;
+    if (path.includes("/storage/v1/object/sign/") && /source\.[a-z]+$/.test(path)) sourceRequests.push(path);
+  });
+  await page.reload();
+  await expect(markers(page)).toHaveCount(11, { timeout: 15_000 });
+  // The development server runs React in strict mode, which starts the load twice (the first is aborted).
+  const afterOpen = sourceRequests.length;
+  expect(afterOpen).toBeGreaterThanOrEqual(1);
+  expect(afterOpen).toBeLessThanOrEqual(2);
+  await editValue(page, "6.90", TOP_LEFT, "7.1");
+  const was = (await languageGroup(page).locator("button[aria-current]").textContent())!.trim();
+  await languageGroup(page).locator("button:not([aria-current])").click();
+  await expect(languageGroup(page).locator("button[aria-current]")).not.toHaveText(was); // the page was re-rendered in the other language
+  await expect(marker(page, "6.90", TOP_LEFT)).toHaveAccessibleName(/(đã sửa thành|edited to) 7\.10/);
+  await expect(page.getByText(/● (Chưa lưu|Unsaved)/)).toBeVisible(); // still unsaved, and no question was asked
+  await page.keyboard.press("Control+s");
+  await waitForVersion(id, 3);
+  expect((await storedSheet(id)).edits[0]).toMatchObject({ oldValue: "6.90", newValue: "7.10" });
+  await page.waitForTimeout(500);
+  expect(sourceRequests).toHaveLength(afterOpen); // the language switch and the save asked for no second copy
+});
+
+test("Back with unsaved changes asks first; staying keeps the edit, leaving goes back", async ({ page }) => {
+  const { id } = await openValuesSheet(page, "goback");
+  await editValue(page, "6.90", TOP_LEFT, "7.1"); // a real click in the page, so the traversal can be cancelled
+  const stay = answerNext(page, false);
+  await page.goBack({ timeout: 5_000 }).catch(() => null);
+  await expect.poll(() => stay.message()).toMatch(discard);
+  await expect(page).toHaveURL(new RegExp(`/sheets/${id}$`));
+  await expect(marker(page, "6.90", TOP_LEFT)).toHaveAccessibleName(/(đã sửa thành|edited to) 7\.10/);
+  const leave = answerNext(page, true);
+  await page.goBack({ timeout: 5_000 }).catch(() => null); // the traversal is a same-document one: no load event to wait for
+  await expect.poll(() => leave.message()).toMatch(discard);
+  await expect(page).toHaveURL(/\/sheets$/);
+});
+
+test("Back with nothing unsaved goes back without a question", async ({ page }) => {
+  await openValuesSheet(page, "gobackclean");
+  let asked = false;
+  page.on("dialog", (d) => {
+    asked = true;
+    void d.dismiss();
+  });
+  await page.goBack();
+  await expect(page).toHaveURL(/\/sheets$/);
+  expect(asked).toBe(false);
+});
+
+test("Sign out with unsaved changes asks first", async ({ page }) => {
+  const { id } = await openValuesSheet(page, "signout");
+  await editValue(page, "6.90", TOP_LEFT, "7.1");
+  const asked = answerNext(page, false);
+  await page.getByRole("button", { name: /^(Đăng xuất|Sign out)$/ }).click();
+  await expect.poll(() => asked.message()).toMatch(discard);
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(new RegExp(`/sheets/${id}$`)); // still signed in, still here
+  await expect(marker(page, "6.90", TOP_LEFT)).toHaveAccessibleName(/(đã sửa thành|edited to) 7\.10/);
+});
+
+test("closing the edit popover returns focus to the list row that opened it", async ({ page }) => {
+  await openValuesSheet(page, "rowfocus");
+  const row = page.locator("[data-value-row]").filter({ hasText: "6.90" });
+  await row.focus();
+  await page.keyboard.press("Enter");
+  const popover = page.getByRole("dialog", { name: /Sửa kích thước|Edit dimension/ });
+  await expect(popover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(popover).toBeHidden();
+  await expect(row).toBeFocused();
+  // Opened from the marker, focus returns to the marker, as before.
+  await marker(page, "6.90", TOP_LEFT).click();
+  await expect(popover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(marker(page, "6.90", TOP_LEFT)).toBeFocused();
+});
+
+test("a notice that is showing changes language with the page", async ({ page }) => {
+  await openValuesSheet(page, "noticelang");
+  await page.getByRole("button", { name: /^(Vẽ khung|Draw box)/ }).click();
+  await dragBox(page, 0.6, 0.3, 0.75, 0.33);
+  const alert = page.getByRole("alert").first();
+  await expect(alert).toBeVisible();
+  const before = (await alert.textContent())!;
+  await languageGroup(page).locator("button:not([aria-current])").click();
+  await expect.poll(async () => (await page.getByRole("alert").first().textContent()) !== before).toBe(true);
+  await expect(page.getByRole("alert").first()).toContainText(/four drawing panels|bốn ô hình vẽ/);
 });

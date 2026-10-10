@@ -181,7 +181,7 @@ export function UploadDialog({ settings, onClose }: { settings: UploadSettings; 
   const lowRes = prepared && prepared.width < settings.lowresWarnPx;
 
   return (
-    <div className="fixed inset-0 z-30 flex overflow-y-auto bg-ink/50 px-4 py-6">
+    <div className="fixed inset-0 z-30 flex overflow-y-auto bg-black/50 px-4 py-6">
       <section ref={dialog} onKeyDown={onKeyDown} role="dialog" aria-modal="true" aria-labelledby="upload-title" className="m-auto w-full max-w-xl space-y-4 rounded-xl bg-surface p-6 shadow-xl">
         <div className="flex items-center justify-between gap-3">
           <h2 id="upload-title" ref={heading} tabIndex={-1} className="text-xl font-bold">{u.title}</h2>

@@ -121,21 +121,30 @@ export async function textPng(page: Page, text: string): Promise<{ png: Buffer; 
   return { png: Buffer.from(out.base64, "base64"), width: out.width, height: out.height };
 }
 
-/** The viewport point for a page fraction, after scrolling the canvas into view. */
-export async function canvasPoint(page: Page, fx: number, fy: number): Promise<{ x: number; y: number }> {
+/** The canvas's box in the viewport, after scrolling it into view. */
+async function canvasRect(page: Page): Promise<{ x: number; y: number; width: number; height: number }> {
   const canvas = page.getByRole("img", { name: /^(Phiếu|Sheet) / });
   await canvas.scrollIntoViewIfNeeded();
-  const box = (await canvas.boundingBox())!;
+  return (await canvas.boundingBox())!;
+}
+
+function pointIn(page: Page, box: { x: number; y: number; width: number; height: number }, fx: number, fy: number): { x: number; y: number } {
   const point = { x: box.x + fx * box.width, y: box.y + fy * box.height };
   const view = page.viewportSize()!;
   expect(point.x >= 0 && point.x <= view.width && point.y >= 0 && point.y <= view.height, `point ${point.x},${point.y} should be inside the viewport`).toBe(true);
   return point;
 }
 
+/** The viewport point for a page fraction, after scrolling the canvas into view. */
+export async function canvasPoint(page: Page, fx: number, fy: number): Promise<{ x: number; y: number }> {
+  return pointIn(page, await canvasRect(page), fx, fy);
+}
+
 /** Drags a box between two page fractions. */
 export async function dragBox(page: Page, fx0: number, fy0: number, fx1: number, fy1: number): Promise<void> {
-  const a = await canvasPoint(page, fx0, fy0);
-  const b = await canvasPoint(page, fx1, fy1);
+  const rect = await canvasRect(page); // read once: both ends of the drag use the same box
+  const a = pointIn(page, rect, fx0, fy0);
+  const b = pointIn(page, rect, fx1, fy1);
   await page.mouse.move(a.x, a.y);
   await page.mouse.down();
   await page.mouse.move(b.x, b.y, { steps: 8 });
@@ -148,6 +157,16 @@ export async function openValuesSheet(page: Page, tag: string): Promise<{ id: st
   await expect(markers(page)).toHaveCount(11, { timeout: 30_000 });
   await waitForVersion(sheet.id, 2);
   return sheet;
+}
+
+/** TC-24 setup: a PDF whose 1.70 is a picture (missing from the text layer), stored at version 2. The reader is not warm yet. */
+export async function openSheetWithImageValue(page: Page, tag: string): Promise<{ id: string; name: string; target: PlacedValue }> {
+  await page.goto("/sheets");
+  const image = await textPng(page, "1.70");
+  const sheet = await uploadSheet(page, `${tag}-${Date.now()}.pdf`, "application/pdf", await valuesPdf({ asImage: { value: "1.70", ...image } }));
+  await expect(markers(page)).toHaveCount(10, { timeout: 30_000 });
+  await waitForVersion(sheet.id, 2);
+  return { ...sheet, target: PDF_VALUES.find((v) => v.value === "1.70")! };
 }
 
 export async function editValue(page: Page, value: string, panel: RegExp, next: string, confirmedOld?: string): Promise<void> {

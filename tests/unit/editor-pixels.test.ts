@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createRaster, rotate90cw, type Raster } from "@/lib/ocr/raster";
+import { axes } from "@/editor/geometry";
 import { analyseBox } from "@/editor/pixels";
 
 function fill(r: Raster, x0: number, y0: number, x1: number, y1: number, rgb: [number, number, number]) {
@@ -92,5 +93,68 @@ describe("analyseBox", () => {
       fill(r, x, 50, x, 69, INK);
     }
     expect(analyseBox(r, { cx: 129, cy: 64, w: 80, h: 30, angle: 0 })?.textColor).toBe("#676672");
+  });
+});
+
+describe("analyseBox: which run is the digits", () => {
+  const box = { cx: 100, cy: 50, w: 80, h: 30, angle: 0 };
+
+  function twoRuns(edgeRows: number, middleRows: number, middleWidth: number): Raster {
+    const r = createRaster(200, 100);
+    fill(r, 70, 36, 129, 36 + edgeRows - 1, INK); // at the top edge of the box (t = -14 ...)
+    fill(r, 80, 48, 80 + middleWidth - 1, 48 + middleRows - 1, INK); // across the middle (t = -2 ...)
+    return r;
+  }
+
+  it("takes the run nearer the centre when the two biggest are less than twice apart", () => {
+    // edge 5 x 60 = 300 dark pixels, middle 4 x 50 = 200: 1.5 times
+    const result = analyseBox(twoRuns(5, 4, 50), box);
+    expect(result!.tight.h).toBe(4);
+    near(result!.tight.cy, 49.5);
+  });
+
+  it("still takes the edge run when it is more than twice as strong", () => {
+    // edge 5 x 60 = 300 dark pixels, middle 2 x 40 = 80
+    const result = analyseBox(twoRuns(5, 2, 40), box);
+    expect(result!.tight.h).toBe(5);
+    near(result!.tight.cy, 38);
+  });
+});
+
+describe("analyseBox: other angles", () => {
+  /** Ink wherever a pixel lies inside the rotated rectangle (s along the text, t across it). */
+  function line(angle: number, cx: number, cy: number, halfW: number, halfH: number): Raster {
+    const r = createRaster(300, 200);
+    const { u, v } = axes(angle);
+    for (let y = 0; y < r.height; y++) {
+      for (let x = 0; x < r.width; x++) {
+        const s = (x - cx) * u.x + (y - cy) * u.y;
+        const t = (x - cx) * v.x + (y - cy) * v.y;
+        if (Math.abs(s) <= halfW && Math.abs(t) <= halfH) fill(r, x, y, x, y, INK);
+      }
+    }
+    return r;
+  }
+
+  it("tightens a text line read upside-down (180°)", () => {
+    const turned = rotate90cw(rotate90cw(scene())); // (x, y) moves to (299 - x, 149 - y)
+    const result = analyseBox(turned, { cx: 170, cy: 85, w: 80, h: 30, angle: 180 });
+    expect(result).not.toBeNull();
+    near(result!.tight.cx, 170);
+    near(result!.tight.cy, 89.5);
+    expect(result!.tight.w).toBe(59);
+    expect(result!.tight.h).toBe(20);
+    expect(result!.tight.angle).toBe(180);
+  });
+
+  it("tightens a real 30° text line, and leaves the box angle alone", () => {
+    const result = analyseBox(line(30, 150, 100, 30, 6), { cx: 150, cy: 100, w: 90, h: 30, angle: 30 });
+    expect(result).not.toBeNull();
+    const { tight } = result!;
+    near(tight.cx, 150, 1);
+    near(tight.cy, 100, 1);
+    near(tight.w, 61, 2);
+    near(tight.h, 13, 2);
+    expect(tight.angle).toBe(30);
   });
 });

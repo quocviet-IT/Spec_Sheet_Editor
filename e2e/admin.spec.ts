@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ADMIN_EMAIL, STAFF_B_EMAIL, adminId, resetPassword, restoreStaff, staffBId, staffId } from "./support/account";
+import { ADMIN_EMAIL, STAFF_B_EMAIL, adminId, resetPassword, resign, restoreAll, restoreStaff, staffBId, staffId } from "./support/account";
 import { admin, deleteSheetsOf } from "./support/db";
 import { framedPng, valuesPdf } from "./support/files";
 import { TOP_LEFT, editValue, exportSheet, markers, openValuesSheet, storedSheet, uploadSheet, waitForVersion } from "./support/sheets";
@@ -21,27 +21,8 @@ async function contextAs(browser: Browser, state: string): Promise<BrowserContex
   return context;
 }
 
-/**
- * Signs Staff B in again with a fresh password and saves the session, so the saved file is valid for the other specs
- * whatever a test did to the account or its session.
- */
-async function resignStaffB(browser: Browser): Promise<void> {
-  const password = await resetPassword(STAFF_B_EMAIL);
-  const context = await browser.newContext({ baseURL: "http://localhost:3000", viewport: VIEWPORT });
-  try {
-    context.setDefaultTimeout(15_000);
-    context.setDefaultNavigationTimeout(30_000);
-    const page = await context.newPage();
-    await page.goto("/login");
-    await page.locator("#email").fill(STAFF_B_EMAIL);
-    await page.locator("#password").fill(password);
-    await page.locator("form", { has: page.locator("#password") }).locator('button[type="submit"]').click();
-    await page.waitForURL("**/sheets");
-    await context.storageState({ path: STAFF_B_STATE });
-  } finally {
-    await context.close();
-  }
-}
+/** Staff B signed in again with a fresh password, saved for the other specs (see `resign`). */
+const resignStaffB = (browser: Browser) => resign(browser, STAFF_B_EMAIL, STAFF_B_STATE);
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const SAVED = /^(Đã lưu\.|Saved\.)$/;
@@ -140,7 +121,7 @@ test("TC-62 / TC-63 a suspended person is stopped at the next save, cannot sign 
     // TC-63: signing in again is refused with the same message.
     const password = await resetPassword(STAFF_B_EMAIL);
     await other.goto("/login"); // a fresh form: the "suspended" notice of the redirect above must not be what the check reads
-    await expect(other.getByRole("alert")).toHaveCount(0);
+    await expect(other.getByRole("alert").filter({ hasText: /đã bị khoá|has been suspended/ })).toHaveCount(0); // the production build also keeps an empty route announcer with role alert
     await other.locator("#email").fill(STAFF_B_EMAIL);
     await other.locator("#password").fill(password);
     const signInButton = other.locator("form", { has: other.locator("#password") }).locator('button[type="submit"]');
@@ -155,11 +136,18 @@ test("TC-62 / TC-63 a suspended person is stopped at the next save, cannot sign 
     await other.locator("form", { has: other.locator("#password") }).locator('button[type="submit"]').click();
     await other.waitForURL("**/sheets");
   } finally {
-    await staff.close();
-    await staffB.close();
-    await restoreStaff(STAFF_B_EMAIL);
-    await resignStaffB(browser); // always, so the saved session is valid for the other specs
-    await deleteSheetsOf(await staffId());
+    // Independent: a failing step must not skip the others (the saved session and the sheets matter most).
+    await restoreAll([
+      () => staff.close(),
+      () => staffB.close(),
+      // One step, in order: a suspended account cannot sign in again, so restore it first. Always runs, so the
+      // saved session is valid for the other specs.
+      async () => {
+        await restoreStaff(STAFF_B_EMAIL);
+        await resignStaffB(browser);
+      },
+      async () => deleteSheetsOf(await staffId()),
+    ]);
   }
 });
 
@@ -440,8 +428,7 @@ test("TC-68 / TC-72 every Admin action is audited once, and the CSV matches the 
     for (const r of rows.slice(1)) expect(r[1]).toBe(ADMIN_EMAIL);
     expect(bytes.toString("utf8")).toContain("Nhẫn thử");
   } finally {
-    await restoreStaff(STAFF_B_EMAIL);
-    await deleteSheetsOf(await adminId());
+    await restoreAll([() => restoreStaff(STAFF_B_EMAIL), async () => deleteSheetsOf(await adminId())]);
   }
 });
 

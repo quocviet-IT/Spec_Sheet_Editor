@@ -92,8 +92,9 @@ export const DIMENSION_LINE_PX = {
 };
 
 /** The template with every value of PDF_VALUES and OUTSIDE_VALUES as real text, and an order number.
- *  With `asImage`, that one value (from PDF_VALUES) is drawn as the given 300-DPI image instead of text. */
-export async function valuesPdf(options: { asImage?: { value: string; png: Buffer; width: number; height: number } } = {}): Promise<Buffer> {
+ *  With `asImage`, that one value (from PDF_VALUES) is drawn as the given 300-DPI image instead of text.
+ *  `extra` values are drawn as text as well. */
+export async function valuesPdf(options: { asImage?: { value: string; png: Buffer; width: number; height: number }; extra?: readonly PlacedValue[] } = {}): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const page = doc.addPage([792, 612]);
@@ -108,7 +109,7 @@ export async function valuesPdf(options: { asImage?: { value: string; png: Buffe
   const asImage = options.asImage;
   const imageValue = asImage ? PDF_VALUES.find((v) => v.value === asImage.value) : undefined;
   if (asImage && !imageValue) throw new Error(`${asImage.value} is not one of PDF_VALUES`);
-  for (const v of [...PDF_VALUES, ...OUTSIDE_VALUES]) if (v !== imageValue) drawValue(page, font, v);
+  for (const v of [...PDF_VALUES, ...OUTSIDE_VALUES, ...(options.extra ?? [])]) if (v !== imageValue) drawValue(page, font, v);
   if (asImage && imageValue) {
     const image = await doc.embedPng(asImage.png);
     const w = (asImage.width * 72) / 300;

@@ -2,10 +2,16 @@ import { DRAWING_AREA } from "@/lib/form/template";
 import { normalizeAngle, type Point, type Quad, type Rect } from "@/lib/ocr/geometry";
 import type { Box, Detection, Panel, PxBox } from "./types";
 
+/**
+ * Pixels to fractions of the trimmed page. A pure scaling: no half-pixel shift is added or removed, so the
+ * same numbers are read as pixel-centre units by `analyseBox` (pixel i at i, box edges on pixel edges)
+ * and as continuous page coordinates by the text layer (pixel i spans i to i + 1).
+ */
 export function toBox(px: PxBox, pageW: number, pageH: number): Box {
   return { cx: px.cx / pageW, cy: px.cy / pageH, w: px.w / pageW, h: px.h / pageW };
 }
 
+/** Fractions of the trimmed page back to pixels: the exact inverse of `toBox`, with the same (absent) half-pixel shift. */
 export function toPx(box: Box, angle: number, pageW: number, pageH: number): PxBox {
   return { cx: box.cx * pageW, cy: box.cy * pageH, w: box.w * pageW, h: box.h * pageW, angle };
 }
@@ -34,7 +40,9 @@ export function axes(angle: number): { u: Point; v: Point } {
 
 /**
  * The text's own box from a reading's quad and angle. The quad keeps the detector's corner order, not
- * the text's, so the sides are measured by projecting all four corners on the reading axes.
+ * the text's, so the sides are measured by projecting all four corners on the reading axes. The corners
+ * are taken as points, with no half-pixel adjustment: the box edges run exactly through the corner
+ * coordinates, so the width and height are distances between corners, not counts of pixels.
  */
 export function boxFromQuad(quad: Quad, angle: number): PxBox {
   const a = normalizeAngle(angle);

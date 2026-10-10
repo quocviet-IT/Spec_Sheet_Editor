@@ -8,7 +8,7 @@ const folder = (name: string, hoursAgo: number): StorageFolder => ({
 });
 
 describe("findOrphans (UC-18, TC-76)", () => {
-  it("lists folders with no record that are older than 24 hours", () => {
+  it("TC-75 lists folders with no record that are older than 24 hours (what the clean-up removes later)", () => {
     const folders = [folder(ID(1), 30), folder(ID(2), 2), folder(ID(3), 30)];
     expect(findOrphans(folders, new Set([ID(3)]), NOW).map((f) => f.name)).toEqual([ID(1)]);
   });

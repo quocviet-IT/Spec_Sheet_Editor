@@ -40,7 +40,13 @@ export function hex(rgb: readonly [number, number, number]): string {
  * holds no text. Pixels darker than halfway between paper and ink are text. Across the text, rows group
  * into runs separated by at least one empty row; the run holding the most dark pixels is the digits, so
  * a dimension line running under the value with a gap is left out. Along the text only the box's own
- * width is searched. A line touching the digits cannot be told apart and stays in the box.
+ * width is searched. A line touching the digits cannot be told apart and stays in the box. When the two
+ * biggest runs are less than twice apart in dark pixels, the one whose centre is nearer the box centre wins.
+ *
+ * Half-pixel convention: a pixel (x, y) is sampled at the coordinates (x, y), so box coordinates are in
+ * pixel-centre units: pixel i lies at i, and a box edge lies half a pixel beyond the outermost pixel
+ * centre, on a pixel edge. The tight box therefore has an integer width and height (pixels counted, "+ 1")
+ * and a centre that is a whole or half number. No further half-pixel shift is applied.
  */
 export function analyseBox(raster: Raster, box: PxBox): BoxAnalysis | null {
   const { width, height, data } = raster;
@@ -95,19 +101,23 @@ export function analyseBox(raster: Raster, box: PxBox): BoxAnalysis | null {
     const k = Math.round(p.t);
     rows.set(k, (rows.get(k) ?? 0) + 1);
   }
-  let best: { from: number; to: number; count: number } | null = null;
-  let run: { from: number; to: number; count: number } | null = null;
-  for (const k of [...rows.keys()].sort((a, b) => a - b)) {
+  const runs: { from: number; to: number; count: number }[] = [];
+  for (const k of [...rows.keys()].sort((x, y) => x - y)) {
     const n = rows.get(k)!;
-    if (run && k === run.to + 1) {
-      run.to = k;
-      run.count += n;
+    const last = runs[runs.length - 1];
+    if (last && k === last.to + 1) {
+      last.to = k;
+      last.count += n;
     } else {
-      run = { from: k, to: k, count: n };
+      runs.push({ from: k, to: k, count: n });
     }
-    if (!best || run.count > best.count) best = { ...run };
   }
-  if (!best) return null;
+  if (runs.length === 0) return null;
+  const [first, second] = [...runs].sort((x, y) => y.count - x.count);
+  // The strongest run is the digits, unless a second run is nearly as strong (under 2x apart): then the
+  // run nearer the middle of the box wins, since a box is drawn around the value, not around its edge.
+  const centreOf = (r: { from: number; to: number }) => Math.abs((r.from + r.to) / 2);
+  const best = second && first.count < 2 * second.count && centreOf(second) < centreOf(first) ? second : first;
   const { from, to } = best;
 
   let s0 = Infinity;

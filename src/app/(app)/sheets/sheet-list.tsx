@@ -280,7 +280,7 @@ export function SheetList({
               </div>
               <div className="w-40 text-sm">
                 {tab === "live"
-                  ? row.editCount > 0 ? fill(s.edits, { n: row.editCount }) : <span className="text-ink-2">{s.noEdits}</span>
+                  ? row.editCount > 0 ? (row.editCount === 1 ? s.editsOne : fill(s.edits, { n: row.editCount })) : <span className="text-ink-2">{s.noEdits}</span>
                   : <span className="text-ink-2">{row.deletedByName}</span>}
               </div>
               <div className="w-48 text-sm">

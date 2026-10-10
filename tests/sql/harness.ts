@@ -24,6 +24,28 @@ export async function rollback(fn: (tx: Tx) => Promise<void>): Promise<void> {
   }
 }
 
+/** Runs fn in a transaction that is COMMITTED. Only for fixtures that a second connection must see; the caller deletes them. */
+export async function committed<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return (await sql!.begin(async (tx) => fn(tx))) as T;
+}
+
+/** A separate connection (its own session and transactions), for tests that need two things to happen at once. */
+export function connect() {
+  return postgres(process.env.DATABASE_URL!, { max: 1, prepare: false, onnotice: () => {} });
+}
+
+/** Like `rollback`, on the given connection; `fn` gets the transaction and always ends in a rollback. */
+export async function rollbackOn(conn: ReturnType<typeof connect>, fn: (tx: Tx) => Promise<void>): Promise<void> {
+  try {
+    await conn.begin(async (tx) => {
+      await fn(tx);
+      throw ROLLBACK;
+    });
+  } catch (e) {
+    if (e !== ROLLBACK) throw e;
+  }
+}
+
 /** Creates an auth user and its profile as the table owner (bypassing RLS). */
 export async function makeUser(tx: Tx, email: string, role: "user" | "admin" = "user"): Promise<TestUser> {
   const id = randomUUID();

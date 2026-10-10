@@ -6,9 +6,17 @@ function paths(obj: unknown, prefix = ""): string[] {
   return Object.entries(obj as Record<string, unknown>).flatMap(([k, v]) => paths(v, prefix ? `${prefix}.${k}` : k));
 }
 
+function entries(obj: unknown, prefix = ""): [string, string][] {
+  if (typeof obj === "string") return [[prefix, obj]];
+  return Object.entries(obj as Record<string, unknown>).flatMap(([k, v]) => entries(v, prefix ? `${prefix}.${k}` : k));
+}
+
 function leaves(obj: unknown): string[] {
-  if (typeof obj === "string") return [obj];
-  return Object.values(obj as Record<string, unknown>).flatMap(leaves);
+  return entries(obj).map(([, v]) => v);
+}
+
+function placeholders(s: string): string[] {
+  return [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 }
 
 describe("message dictionaries", () => {
@@ -18,5 +26,12 @@ describe("message dictionaries", () => {
 
   it("have no empty strings", () => {
     for (const s of [...leaves(vi), ...leaves(en)]) expect(s.trim()).not.toBe("");
+  });
+
+  it("use the same placeholders in both languages for every key", () => {
+    const viByKey = new Map(entries(vi));
+    for (const [key, text] of entries(en)) {
+      expect({ key, placeholders: placeholders(viByKey.get(key) ?? "") }).toEqual({ key, placeholders: placeholders(text) });
+    }
   });
 });

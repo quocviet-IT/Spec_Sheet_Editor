@@ -11,11 +11,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
+    "guide:shots": "playwright test -c playwright.guide.config.ts",
+    "e2e:prod": "playwright test -c playwright.prod.config.ts",
     "db:migrate": "tsx scripts/migrate.mts",
     "admin:create": "tsx scripts/create-admin.mts",
     "ocr:build": "tsx scripts/build-ocr-worker.mts",
     "predev": "npm run ocr:build",
-    "prebuild": "npm run ocr:build"
+    "prebuild": "npm run ocr:build",
+    "postbuild": "tsx scripts/check-bundle.mts"
   },
   "dependencies": {
     "@fontsource/arimo": "5.3.0",
@@ -31,6 +34,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^22",

@@ -9,7 +9,7 @@ type Props = {
   byName: string | null;
   savedAt: string | null;
   loading: boolean;
-  failed: boolean;
+  failed: "load" | "broken" | null;
   onLoad: () => void;
   onStay: () => void;
 };
@@ -88,7 +88,7 @@ export function ConflictDialog({ byName, savedAt, loading, failed, onLoad, onSta
           <p>{fill(c.body, { name: byName ?? c.someone, time: savedAt ? clockTime(savedAt, locale) : "—" })}</p>
           <p className="text-ink-2">{c.note}</p>
         </div>
-        {failed ? <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{c.loadFailed}</p> : null}
+        {failed ? <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{failed === "broken" ? t.editor.dataBroken : c.loadFailed}</p> : null}
         <div className="flex justify-end gap-2">
           <button ref={stay} type="button" onClick={onStay} disabled={loading} className="rounded-md border border-line px-3 py-2 text-sm disabled:opacity-50">{c.stay}</button>
           <button ref={load} type="button" onClick={onLoad} disabled={loading} aria-busy={loading} className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-ink disabled:opacity-50">{c.load}</button>

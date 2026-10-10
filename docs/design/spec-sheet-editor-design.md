@@ -263,11 +263,11 @@ Security requirements target the access-control risk category (Broken Access Con
 | ID | Category | Measurable requirement |
 |---|---|---|
 | NFR-01 | Performance | The first scan of an 1135-px image completes within 60 seconds on an office PC; read-on-click completes within 5 seconds once the reader is ready (on a sheet whose values all come from the PDF text layer the reader is not warmed up, so the first click there also starts it); a saved sheet opens within 3 seconds; PDF export completes within 5 seconds. |
-| NFR-02 | Security | RLS on every table; private file storage; permissions checked at three layers: interface, server and database (section 5.4). |
+| NFR-02 | Security | RLS on every table; private file storage; permissions checked at three layers: interface, server and database (section 5.4). Pages carry a Content-Security-Policy with a per-request script nonce (section 5.4). |
 | NFR-03 | Privacy | Sheet images travel only between the browser and the company's file storage; they are never sent to a third-party service. |
 | NFR-04 | Integrity | Users have no right to overwrite or delete files in storage; only the Admin permanent-deletion job, running on the server, can delete them. |
 | NFR-05 | Consistency | The same original page and the same edits render to exactly the same image on any machine (the Arimo font ships with the app). |
-| NFR-06 | Compatibility | Current Chrome and Edge. The editor and the Admin area need a window at least 1024 px wide; the sheet list works from 360 px. |
+| NFR-06 | Compatibility | Current Chrome and Edge. The editor and the Admin area need a window at least 1024 px wide; the sheet list works from 360 px. The Admin area hides itself below 1024 px with a notice; its server reads still run, by decision 2026-10-09 (Admins are few, every read is paged, and RLS applies). |
 | NFR-07 | Usability | Contrast meets WCAG 2.2 AA; fully operable by keyboard; every error message states the cause and how to fix it. |
 | NFR-08 | Test data | Real sheets never enter the repository; the `samples/` folder is listed in `.gitignore`. |
 | NFR-09 | Traceability | Every data change and administrative action has one audit entry with actor, time and target; entries cannot be changed or deleted. |
@@ -556,7 +556,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 **Main flow:**
 
 1. The user chooses "Sign out" in the avatar menu; if there are unsaved changes, the system asks first.
-2. The system ends the session and goes to Sign in; the browser's back button does not show the list again.
+2. The system ends the session on this computer and goes to Sign in; the browser's back button does not show the list again. Sessions of the same person on other computers stay signed in (changed in M7a: sign-out uses `scope: "local"`, not every session).
 
 ### 4.4 Admin use case specifications
 
@@ -767,6 +767,17 @@ Permissions are checked at three independent layers. No layer trusts the one bef
 | Interface | Hides the Admin area and Admin buttons from Staff; locks the non-editable zones. | Convenience only, not a security barrier. |
 | Server | The `/admin` layout checks the role on every page load; Admin jobs check the role before using the service role; the callback checks BR-08. | Returns "Not found" or 403. |
 | Database | RLS with `is_allowed_user()` and `is_admin()` on every table and on storage; administrative functions check `is_admin()` themselves; triggers block revoking the last Admin and block audit-log edits (PostgreSQL Global Development Group, n.d.). | Queries return no rows or raise an error, even when the API is called directly. |
+
+**Content-Security-Policy (added in M7a).** `src/proxy.ts` sets a policy on every page response, built by `buildCsp` in `src/lib/security/csp.ts` with a fresh nonce for each request. Scripts run only with that nonce or when loaded by such a script (`'strict-dynamic'`); `default-src`, `font-src` and `base-uri` allow only the app's own origin; `connect-src` allows the app and the Supabase project; `img-src` adds `blob:`, `data:` and the Supabase project; `worker-src` allows `blob:` for the OCR runtime; `object-src 'none'`, `frame-ancestors 'none'`, and `form-action` allows the app, Supabase and Google sign-in. Styles keep `'unsafe-inline'` because the interface sets inline styles. `'unsafe-eval'` and `ws:` are added only in development. The policy was a deviation from the first design, which did not describe one; a new third-party origin must be added to `buildCsp` and covered by `e2e/csp.spec.ts`. The production build is also checked after `next build` by `scripts/check-bundle.mts`, which fails the build if a secret-key shape appears in the browser bundle (TC-77).
+
+**Session checks per request (changed in M7a).**
+- `src/proxy.ts` validates and refreshes the session with the Auth server (`getUser()`) once per request.
+- The server guards (`loadAccess` in `src/auth/session.ts`) then read the caller's identity with `getClaims()`. That call verifies the token's signature against the project's published keys without another Auth round trip, or makes a server call when the project signs with a shared secret.
+- `my_access_status()` in the database still runs on every request, so a suspended or removed account is refused at once (TC-62).
+- What the second Auth call used to catch is a session ended in another way, such as signing out elsewhere or a password reset. Such a session is now refused when its access token expires (at most one hour), when the proxy's refresh fails.
+- This saves one round trip to Supabase on every page and action, about 135 ms from the office network.
+
+**pdf.js.** pdf.js 6 has no `isEvalSupported` option and does not probe with `new Function`, so the strict policy needs no switch for it.
 
 ### 5.5 Source tree
 

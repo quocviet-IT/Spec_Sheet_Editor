@@ -44,13 +44,13 @@ describe("purgeSequence (UC-17)", () => {
     expect(s.removeFiles).not.toHaveBeenCalled();
   });
 
-  it("reports files_left when the files cannot be removed after two tries", async () => {
+  it("TC-75 reports files_left when the files cannot be removed after two tries", async () => {
     const s = steps({ removeFiles: vi.fn(async () => false) });
     expect(await purgeSequence(s, "id", "Ring 5")).toBe("files_left");
     expect(s.removeFiles).toHaveBeenCalledTimes(2);
   });
 
-  it("is ok when the second try removes the files", async () => {
+  it("TC-75 is ok when the second try removes the files", async () => {
     let calls = 0;
     const s = steps({ removeFiles: vi.fn(async () => ++calls > 1) });
     expect(await purgeSequence(s, "id", "Ring 5")).toBe("ok");

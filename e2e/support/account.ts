@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { Browser, Page } from "@playwright/test";
 import { admin } from "./db";
 
 // These three addresses are reserved for tests; their passwords are reset at every run.
@@ -114,4 +115,39 @@ export async function suspendAdmin(): Promise<void> {
     await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
   }
   throw new Error(`test Admin not suspended: ${message}`);
+}
+
+/** Fills the password sign-in form on the page and submits it (not the language switch forms); the caller waits for the landing page. */
+export async function submitSignIn(page: Page, email: string, password: string): Promise<void> {
+  await page.locator("#email").fill(email);
+  await page.locator("#password").fill(password);
+  await page.locator("form", { has: page.locator("#password") }).locator('button[type="submit"]').click();
+}
+
+/**
+ * Signs a reserved account in again with a fresh password and saves the session to `statePath`. A new password ends the
+ * account's saved sessions, so every test that resets one calls this afterwards, whatever else happened, to keep the
+ * shared file valid for the other specs.
+ */
+export async function resign(browser: Browser, email: string, statePath: string, viewport = { width: 1440, height: 900 }): Promise<void> {
+  const password = await resetPassword(email);
+  const context = await browser.newContext({ baseURL: "http://localhost:3000", viewport });
+  try {
+    context.setDefaultTimeout(15_000);
+    context.setDefaultNavigationTimeout(30_000);
+    const page = await context.newPage();
+    await page.goto("/login");
+    await submitSignIn(page, email, password);
+    await page.waitForURL("**/sheets");
+    await context.storageState({ path: statePath });
+  } finally {
+    await context.close();
+  }
+}
+
+/** Runs every restore even when one fails, then reports all the failures together. */
+export async function restoreAll(steps: (() => Promise<unknown>)[]): Promise<void> {
+  const results = await Promise.allSettled(steps.map((step) => step()));
+  const failures = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
+  if (failures.length > 0) throw new AggregateError(failures, `${failures.length} of ${steps.length} restores failed`);
 }

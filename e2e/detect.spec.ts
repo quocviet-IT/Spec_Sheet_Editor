@@ -78,3 +78,16 @@ test("TC-25 when the value reader cannot be downloaded the editor says so and no
   expect((await storedSheet(id)).version).toBe(1);
   expect(await auditCount(id, "sheet.detect")).toBe(0);
 });
+
+test("a failed download of the reader's .wasm file says the reader could not be loaded, not that the browser cannot run it", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.context().route("**/ort-wasm-simd-threaded.wasm", (route) => route.abort());
+  await page.goto("/sheets");
+  const png = await drawValuesPng(page);
+  const { id } = await uploadSheet(page, `wasm-${Date.now()}.png`, "image/png", png);
+  const alert = page.getByRole("alert").filter({ hasText: /bộ đọc số|value reader/ });
+  await expect(alert).toBeVisible({ timeout: 60_000 });
+  await expect(alert).toContainText(/Không tải được|could not be loaded/);
+  await expect(alert).not.toContainText(/không khởi động được|could not start/);
+  expect((await storedSheet(id)).version).toBe(1);
+});

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { admin } from "./db";
 
 /** Where global setup keeps the shared settings while a run is going (the folder is git-ignored). */
@@ -27,7 +27,10 @@ async function writeBack(rows: Row[]): Promise<void> {
 export async function snapshotSettings(): Promise<void> {
   await mkdir("e2e/.auth", { recursive: true });
   if (existsSync(SETTINGS_SNAPSHOT)) await restoreSettingsSnapshot();
-  await writeFile(SETTINGS_SNAPSHOT, JSON.stringify(await readAll()), "utf8");
+  // Written beside the final name and renamed, so a run killed mid-write never leaves half a file that would be read as the snapshot.
+  const temporary = `${SETTINGS_SNAPSHOT}.tmp`;
+  await writeFile(temporary, JSON.stringify(await readAll()), "utf8");
+  await rename(temporary, SETTINGS_SNAPSHOT);
 }
 
 /** Called by global teardown: writes the snapshot back and deletes the file. A missing file means nothing to restore. */

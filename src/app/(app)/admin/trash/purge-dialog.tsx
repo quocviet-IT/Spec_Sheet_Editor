@@ -71,7 +71,6 @@ export function PurgeDialog({ row, onClose, onDone }: { row: TrashRow; onClose: 
       e === "not_in_trash" ? a.errors.notInTrash
         : e === "not_found" ? a.errors.notFound
         : e === "name_mismatch" ? a.errors.mismatch
-        : e === "forbidden" ? t.admin.users.errors.forbidden
         : a.errors.failed,
     );
   }
@@ -120,7 +119,7 @@ export function PurgeDialog({ row, onClose, onDone }: { row: TrashRow; onClose: 
             onClick={() => void submit()}
             disabled={!matches || tooLong || busy}
             aria-busy={busy}
-            className="rounded-md bg-danger px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded-md bg-danger px-3 py-2 text-sm font-medium text-danger-ink disabled:opacity-50"
           >
             {busy ? a.deleting : a.deleteForever}
           </button>

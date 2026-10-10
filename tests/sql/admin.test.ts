@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { actAs, actAsOwner, closeDb, expectError, hasDb, insertSheet, makeUser, rollback, staffEmail } from "./harness";
+import { actAs, actAsOwner, closeDb, connect, expectError, hasDb, insertSheet, makeUser, rollback, rollbackOn, staffEmail } from "./harness";
 
 afterAll(closeDb);
 
@@ -76,4 +76,79 @@ describe.skipIf(!hasDb)("admin functions", () => {
       await expectError(tx, (sp) => sp`select public.remove_allowed('bogus', 'ctyhp.vn')`, "invalid_kind");
     });
   });
+
+  // Proves that demotions are serialised by the guard's global advisory lock (trg_profile_guard in 0001_init.sql),
+  // so two Admins demoting each other cannot both pass the last-admin check. It does not run the full
+  // "exactly one Admin remains" outcome: that needs a commit, and the shared database holds real Admins, so the
+  // last-admin check would not fire anyway. TC-59 covers the single-session outcome. Everything here lives in
+  // transactions that are rolled back; nothing is committed.
+  it("TC-60 demotions by two Admins at once are serialised by the guard lock (rolled back, nothing committed)", async () => {
+    const one = connect();
+    const two = connect();
+    const observer = connect(); // read-only; neither A nor B, so it can look while both hold their transactions open
+    const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const within = <T>(p: Promise<T>, ms: number, what: string) =>
+      Promise.race([p, wait(ms).then(() => Promise.reject(new Error(`timed out waiting for ${what}`)))]);
+    let release!: () => void;
+    const released = new Promise<void>((r) => (release = r));
+    let holding!: () => void;
+    const holdingP = new Promise<void>((r) => (holding = r));
+    let waiterSeen = false;
+    let pidA = 0;
+    let pidB = 0;
+    let secondSettled = false;
+    let results: PromiseSettledResult<void>[] = [];
+    try {
+      // Connection A: its own Admin pair; X demotes Y and keeps the transaction open, holding the lock.
+      const first = rollbackOn(one, async (tx) => {
+        const [x, y] = [await makeUser(tx, staffEmail(), "admin"), await makeUser(tx, staffEmail(), "admin")];
+        await actAs(tx, x);
+        await tx`select public.set_user_role(${y.id}, 'user')`;
+        await actAsOwner(tx);
+        const [me] = await tx<{ pid: number }[]>`select pg_backend_pid() as pid`;
+        pidA = me.pid;
+        holding();
+        // stay idle in the transaction, holding the lock, until told to let go
+        await released;
+      });
+      first.catch(() => {});
+      await within(Promise.race([holdingP, first]), 15_000, "connection A to take the lock");
+
+      // Connection B: its own pair, the same call; it must queue behind A instead of running beside it.
+      const second = rollbackOn(two, async (tx) => {
+        const [me] = await tx<{ pid: number }[]>`select pg_backend_pid() as pid`;
+        pidB = me.pid;
+        const [p, q] = [await makeUser(tx, staffEmail(), "admin"), await makeUser(tx, staffEmail(), "admin")];
+        await actAs(tx, p);
+        await tx`select public.set_user_role(${q.id}, 'user')`;
+      }).finally(() => (secondSettled = true));
+      second.catch(() => {});
+      // B is waiting on A itself when Postgres lists A's backend among the sessions blocking B's backend.
+      await within(
+        (async () => {
+          while (!waiterSeen) {
+            if (pidB) {
+              const [w] = await observer<{ n: boolean }[]>`select pg_blocking_pids(${pidB}) @> array[${pidA}::int] as n`;
+              waiterSeen = w.n;
+            }
+            if (!waiterSeen) await wait(50);
+          }
+        })(),
+        10_000,
+        "B to be blocked by A",
+      );
+      await wait(500);
+      const pendingWhileHeld = !secondSettled;
+
+      // Roll A back first: the lock holder is released before waiting on B.
+      release();
+      results = await within(Promise.allSettled([first, second]), 20_000, "both transactions to finish");
+      expect(pendingWhileHeld, "the second demotion must wait while the first holds the lock").toBe(true);
+      expect(waiterSeen, "B was blocked by A's backend on the guard lock").toBe(true);
+      expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+    } finally {
+      release();
+      await Promise.allSettled([one.end({ timeout: 5 }), two.end({ timeout: 5 }), observer.end({ timeout: 5 })]);
+    }
+  }, 60_000);
 });

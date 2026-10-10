@@ -4,8 +4,10 @@ import { z } from "zod";
 import { requireUser } from "@/auth/session";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { fetchSheetPage } from "./queries";
-import { saveInputSchema, sheetDataSchema } from "@/editor/schema";
+import { saveInputSchema } from "@/editor/schema";
 import type { Detection, Edit } from "@/editor/types";
+import { saveResult, type SaveRow } from "./save-result";
+import { readStoredData } from "./stored-data";
 import type { EditorState, SaveResult, SheetPage, SheetTab } from "./types";
 
 const loadInput = z.object({
@@ -92,8 +94,6 @@ export async function createSheet(input: { id: string; name: string; sourceType:
   return { ok: true, id };
 }
 
-type SaveRow = { saved: boolean; new_version: number | null; is_deleted: boolean | null; by_name: string | null; saved_at: string | null };
-
 /**
  * UC-08: store the value list and the edits when the version still matches (BR-10). The name travels with
  * every save (the trigger logs sheet.save only when it changed). A sheet in the Trash or saved by someone else in the meantime is
@@ -116,15 +116,11 @@ export async function saveSheet(input: { id: string; version: number; name: stri
   }
   const row = (Array.isArray(rows) ? rows[0] : rows) as SaveRow | undefined;
   if (!row) return { error: "unknown" }; // the sheet is gone or hidden
-  if (row.saved) {
-    return row.new_version !== null && row.saved_at ? { ok: true, version: row.new_version, savedAt: row.saved_at } : { error: "unknown" };
-  }
-  if (row.is_deleted) return { error: "trashed" };
-  return { error: "conflict", byName: row.by_name, savedAt: row.saved_at };
+  return saveResult(row, version);
 }
 
 /** UC-08 extension 3a, "Load latest version": the stored lists and version. */
-export async function loadEditorState(id: string): Promise<EditorState | { error: "gone" | "unknown" }> {
+export async function loadEditorState(id: string): Promise<EditorState | { error: "gone" | "broken" | "unknown" }> {
   await requireUser("/sheets");
   if (!z.uuid().safeParse(id).success) return { error: "gone" };
   const supabase = await createSupabaseServer();
@@ -138,9 +134,12 @@ export async function loadEditorState(id: string): Promise<EditorState | { error
     return { error: "unknown" };
   }
   if (!data) return { error: "gone" };
-  const parsed = sheetDataSchema.safeParse({ detections: data.detections, edits: data.edits });
-  if (!parsed.success) return { error: "unknown" };
-  return { version: data.version, name: data.name, detections: parsed.data.detections, edits: parsed.data.edits, deleted: data.deleted_at !== null };
+  const stored = readStoredData(data.detections, data.edits);
+  if (!stored.ok) {
+    console.error(`Sheet ${id}: stored detections or edits do not match the schema at ${stored.paths.join(", ")}`);
+    return { error: "broken" };
+  }
+  return { version: data.version, name: data.name, detections: stored.detections, edits: stored.edits, deleted: data.deleted_at !== null };
 }
 
 const exportInput = z.object({
