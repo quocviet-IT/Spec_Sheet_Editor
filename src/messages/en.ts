@@ -389,6 +389,7 @@ export const en: Messages = {
     lead: "Everything you need to upload a Product Specifications sheet, correct its dimension numbers, save the work and export the result.",
     toc: "Contents",
     stepsLabel: "Steps",
+    openFull: "Open the full-size screenshot in a new tab",
     screenshot: "Screenshot",
     sections: {
       signin: { title: "Sign in and language", lead: "Use the email and the one-time password an administrator gave you. You set your own password the first time." },
@@ -474,7 +475,7 @@ export const en: Messages = {
     shortcuts: {
       keyCol: "Keys",
       doCol: "What it does",
-      note: "On a Mac use the ⌘ key where the table says Ctrl. The editor shortcuts are ignored while you type in a field.",
+      note: "On a Mac use the ⌘ key where the table says Ctrl. While you type in a field only Ctrl+S works; the other editor shortcuts are ignored.",
       rows: {
         save: "Save the sheet (also while renaming it)",
         draw: "Start or stop Draw box",
@@ -491,7 +492,6 @@ export const en: Messages = {
     trouble: {
       message: "What you see",
       fix: "What to do",
-      tooLargeExample: "25",
       fixes: {
         template: "Upload the whole sheet as a PDF, or as an image exported from a computer. Photos of paper taken with a phone do not match the template.",
         tooLarge: "Export the sheet again with a smaller size, or ask an administrator to raise the limit.",

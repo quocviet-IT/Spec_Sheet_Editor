@@ -8,13 +8,13 @@ const LOCALES = ["vi", "en"] as const;
 type Points = Record<string, { n: number; x: number; y: number }[]>;
 
 function points(locale: string): Points {
-  return JSON.parse(readFileSync(join("public/guide", locale, "points.json"), "utf8")) as Points;
+  return JSON.parse(readFileSync(join("src/app/(app)/guide/shots", locale, "points.json"), "utf8")) as Points;
 }
 
 describe("the user guide", () => {
   it.each(LOCALES)("has every shot as an image in %s, each under 250 KB", (locale) => {
     for (const shot of SHOTS) {
-      const path = join("public/guide", locale, `${shot}.jpg`);
+      const path = join("src/app/(app)/guide/shots", locale, `${shot}.jpg`);
       expect(existsSync(path), `${path} should exist`).toBe(true);
       expect(statSync(path).size, `${path} should be under 250 KB`).toBeLessThan(250 * 1024);
     }

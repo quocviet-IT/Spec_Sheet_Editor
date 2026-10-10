@@ -18,7 +18,7 @@ const ADMIN_STATE = "e2e/.auth/admin.json";
 const LOCALES = ["vi", "en"] as const;
 type Locale = (typeof LOCALES)[number];
 type Clip = { x: number; y: number; width: number; height: number };
-/** A target whose circle goes on its right (the page draws circles left of a point), for a button standing right beside another. */
+/** A target whose circle goes on its right (the default is its left), for a button standing right beside another. */
 class Right {
   constructor(readonly locator: Locator) {}
 }
@@ -26,7 +26,15 @@ class Right {
 class Above {
   constructor(readonly locator: Locator) {}
 }
-const CIRCLE_PX = 29; // circle width plus its gap, as drawn by the page
+/**
+ * The circle as the page draws it at the widest: 24 CSS px across, with the image shown at most 880 px wide. The page shrinks the
+ * circle on narrow screens, so a circle placed clear of its control here is clear of it at any width.
+ */
+const COLUMN_PX = 880;
+const CIRCLE_CSS_PX = 24;
+const GAP_CSS_PX = 6;
+/** Controls a circle must never cover. */
+const CONTROLS = 'button, input, textarea, select, a[href], [role="tab"], [role="radio"], [role="menuitem"]';
 
 type Point = { n: number; x: number; y: number };
 
@@ -49,28 +57,54 @@ class Shots {
     await page.mouse.move(VIEWPORT.width - 4, VIEWPORT.height - 4); // no stray hover state
     await page.waitForTimeout(250);
     const area = clip ?? { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height };
-    const dir = `public/guide/${this.locale}`;
+    const dir = `src/app/(app)/guide/shots/${this.locale}`;
     await mkdir(dir, { recursive: true });
     await page.screenshot({ path: `${dir}/${name}.jpg`, type: "jpeg", quality: 80, clip: area, style: "nextjs-portal { display: none !important }" });
+    const scale = Math.min(1, COLUMN_PX / area.width);
+    const diameter = CIRCLE_CSS_PX / scale; // in page px, which are image px
+    const offset = diameter / 2 + GAP_CSS_PX / scale;
+    const controls: { x: number; y: number; width: number; height: number }[] = [];
+    for (const control of await page.locator(CONTROLS).all()) {
+      const box = await control.boundingBox({ timeout: 1000 }).catch(() => null); // a control may go away while we read
+      if (box && box.width > 0 && box.height > 0) controls.push(box);
+    }
     const points: Point[] = [];
     for (const [i, item] of targets.entries()) {
-      const right = item instanceof Right;
-      const above = item instanceof Above;
       const target = item instanceof Right || item instanceof Above ? item.locator : item;
       await expect(target, `target ${i + 1} of ${name}`).toBeVisible();
       const box = await target.boundingBox();
       if (!box) throw new Error(`target ${i + 1} of ${name} has no box`);
-      const x = ((box.x + (right ? box.width + CIRCLE_PX : above ? box.width / 2 + CIRCLE_PX / 2 : 0) - area.x) / area.width) * 100;
-      const y = ((box.y + (above ? -CIRCLE_PX / 2 : box.height / 2) - area.y) / area.height) * 100;
-      if (x < 0 || x > 100 || y < 0 || y > 100) throw new Error(`target ${i + 1} of ${name} is outside the picture (${x}, ${y})`);
-      points.push({ n: i + 1, x: round1(x), y: round1(y) });
+      // The point is the CENTRE of the circle, clear of its control.
+      let cx = box.x - offset;
+      let cy = box.y + box.height / 2;
+      if (item instanceof Right) cx = box.x + box.width + offset;
+      if (item instanceof Above) {
+        cx = box.x + box.width / 2;
+        cy = box.y - offset;
+      }
+      const r = diameter / 2;
+      if (cx - r < area.x || cx + r > area.x + area.width || cy - r < area.y || cy + r > area.y + area.height) {
+        throw new Error(`callout ${i + 1} of ${name} would leave the picture (${Math.round(cx)}, ${Math.round(cy)})`);
+      }
+      const hit = controls.find((c) => cx + r > c.x && cx - r < c.x + c.width && cy + r > c.y && cy - r < c.y + c.height);
+      if (hit) throw new Error(`callout ${i + 1} of ${name} would cover a control at ${Math.round(hit.x)}, ${Math.round(hit.y)} (${Math.round(hit.width)} x ${Math.round(hit.height)})`);
+      points.push({ n: i + 1, x: round1(((cx - area.x) / area.width) * 100), y: round1(((cy - area.y) / area.height) * 100) });
+    }
+    // On a phone (a 328 px column) the circles are 16 px: they must not touch each other even there.
+    const phoneDiameter = (16 * area.width) / 328;
+    for (const [i, a] of points.entries()) {
+      for (const b of points.slice(i + 1)) {
+        const dx = ((a.x - b.x) / 100) * area.width;
+        const dy = ((a.y - b.y) / 100) * area.height;
+        if (Math.hypot(dx, dy) < phoneDiameter) throw new Error(`callouts ${a.n} and ${b.n} of ${name} would overlap on a phone`);
+      }
     }
     this.points[name] = points;
   }
 
   async save(): Promise<void> {
     const ordered = Object.fromEntries(Object.entries(this.points));
-    await writeFile(`public/guide/${this.locale}/points.json`, JSON.stringify(ordered, null, 2) + "\n", "utf8");
+    await writeFile(`src/app/(app)/guide/shots/${this.locale}/points.json`, JSON.stringify(ordered, null, 2) + "\n", "utf8");
   }
 }
 
@@ -134,7 +168,7 @@ for (const locale of LOCALES) {
           staff,
           "upload",
           [
-            dialog.getByText(/Kiểm tra mẫu phiếu|Check the sheet template/),
+            new Right(dialog.getByText(/Kiểm tra mẫu phiếu|Check the sheet template/)),
             dialog.getByText(/Ring-RG-1042.pdf/),
             nameField,
             new Right(dialog.getByRole("button", { name: /^(Tải lên|Upload)$/ })),
@@ -155,9 +189,9 @@ for (const locale of LOCALES) {
         await staff.locator(":focus").blur(); // no focus ring on the marker just edited
         await shots.take(staff, "editor", [
           marker(staff, "16.30", /./),
-          staff.locator("#values-title"),
+          staff.locator("#values-title").locator("xpath=following::li[1]"),
           button(staff, /^(Vẽ khung|Draw box)/),
-          staff.getByText(/Thu phóng \d+%|Zoom \d+%/),
+          new Above(staff.getByText(/Thu phóng \d+%|Zoom \d+%/)),
         ]);
       }
       {
@@ -207,7 +241,7 @@ for (const locale of LOCALES) {
           staff,
           "export-check",
           [
-            dialog.getByRole("listitem").first(),
+            new Right(dialog.getByText(/^(Đã sửa|Edited) 6.90/)),
             dialog.getByText(/Bảng bên phải không đổi|The table on the right does not change/),
             new Right(dialog.getByRole("button", { name: /^(Xuất|Export) PDF$/ })),
             dialog.getByRole("button", { name: /Quay lại sửa|Back to editing/ }),
@@ -224,9 +258,9 @@ for (const locale of LOCALES) {
         const row = staff.getByRole("link", { name: "Ring RG-1042" }).or(staff.getByText("Ring RG-1042")).first();
         await expect(row).toBeVisible();
         await shots.take(staff, "list", [
-          button(staff, /Tải phiếu lên|Upload sheet/).first(),
+          new Above(button(staff, /Tải phiếu lên|Upload sheet/).first()),
           staff.getByRole("searchbox", { name: /Tìm theo tên phiếu|Search sheet names/ }),
-          staff.getByRole("tab", { name: /Thùng rác|Trash/ }),
+          new Right(staff.getByRole("tab", { name: /Thùng rác|Trash/ })),
           button(staff, /^(Thao tác với|Actions for) Ring RG-1042$/),
         ], { x: 100, y: 0, width: 1240, height: 420 });
       }
@@ -242,11 +276,14 @@ for (const locale of LOCALES) {
         await expect(row).toHaveCount(1);
         await page.mouse.click(1000, 700); // takes focus off the search box
         await shots.take(page, "admin-users", [
-          button(page, /^(Tạo tài khoản|Create account)$/),
+          new Above(button(page, /^(Tạo tài khoản|Create account)$/)),
           page.getByRole("searchbox", { name: /Tìm theo tên hoặc email|Search by name or email/ }),
           new Above(row.getByRole("button", { name: /^(Đặt làm quản trị viên|Make Admin): / })),
           new Above(row.getByRole("button", { name: /^(Đình chỉ|Suspend): / })),
-          new Above(row.getByRole("button", { name: /^(Cấp lại mật khẩu|Issue new password): / })),
+          // In Vietnamese the buttons wrap and this one starts a new line: its left is free there.
+          locale === "vi"
+            ? row.getByRole("button", { name: /^Cấp lại mật khẩu: / })
+            : new Above(row.getByRole("button", { name: /^Issue new password: / })),
         ], { x: 100, y: 0, width: 1240, height: 640 });
 
         // A sheet in the Trash, made by the reserved Admin and removed again below.
@@ -267,8 +304,16 @@ for (const locale of LOCALES) {
 
       await shots.save();
     } finally {
-      await Promise.allSettled([staffCtx.close(), adminCtx.close(), anonCtx.close()]);
-      await Promise.allSettled([staffId().then(deleteSheetsOf), adminId().then(deleteSheetsOf)]);
+      // Every clean-up step runs; a step that fails is reported after all of them have run.
+      const results = await Promise.allSettled([
+        staffCtx.close(),
+        adminCtx.close(),
+        anonCtx.close(),
+        staffId().then(deleteSheetsOf),
+        adminId().then(deleteSheetsOf),
+      ]);
+      const failed = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
+      if (failed.length > 0) throw new AggregateError(failed, `clean-up failed (${failed.length} step(s)); sheets may be left behind`);
     }
   });
 }

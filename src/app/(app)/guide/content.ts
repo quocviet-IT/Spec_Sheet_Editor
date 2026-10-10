@@ -1,6 +1,6 @@
 import type { Messages } from "@/messages";
 
-/** The screenshots, in page order. Each exists as public/guide/<locale>/<name>.jpg with callout points in points.json. */
+/** The screenshots, in page order. Each exists as shots/<locale>/<name>.jpg with callout points in points.json. */
 export const SHOTS = ["login", "list", "upload", "editor", "popover", "draw-box", "export-check", "admin-users", "admin-trash"] as const;
 export type ShotName = (typeof SHOTS)[number];
 

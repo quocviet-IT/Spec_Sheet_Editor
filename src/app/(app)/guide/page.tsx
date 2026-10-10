@@ -2,8 +2,8 @@ import { requireUser } from "@/auth/session";
 import { fill } from "@/messages/format";
 import { getLocale, getMessages } from "@/messages/server";
 import { fetchUploadSettings } from "@/sheets/queries";
-import viPoints from "../../../../public/guide/vi/points.json";
-import enPoints from "../../../../public/guide/en/points.json";
+import viPoints from "./shots/vi/points.json";
+import enPoints from "./shots/en/points.json";
 import {
   BLOCKS,
   SECTION_IDS,
@@ -28,11 +28,13 @@ export default async function GuidePage() {
   const sections = SECTION_IDS.filter((id) => id !== "admin" || me.role === "admin");
   const values = { max: settings.maxFileMb, px: settings.lowresWarnPx };
   const steps = g.steps as Record<string, string>;
+  /** The first screenshot of the page is its largest paint: it loads eagerly, the others lazily. */
+  const firstShot = sections.flatMap((id) => BLOCKS[id]).find((b) => b.shot)?.shot;
 
   function troubleText(id: TroubleId): string {
     switch (id) {
       case "template": return t.upload.errors.wrongTemplate;
-      case "tooLarge": return fill(t.upload.errors.tooLarge, { n: g.trouble.tooLargeExample, max: settings.maxFileMb });
+      case "tooLarge": return fill(t.upload.errors.tooLarge, { n: settings.maxFileMb + 5, max: settings.maxFileMb });
       case "reader": return t.editor.ocrLoad;
       case "conflict": return t.editor.conflict.title;
       case "suspended": return t.login.errors.suspended;
@@ -41,9 +43,10 @@ export default async function GuidePage() {
 
   function renderBlock(block: Block, index: number) {
     const shot: ShotName | undefined = block.shot;
+    const eager = shot !== undefined && shot === firstShot;
     return (
       <div key={index} className="space-y-4">
-        {shot && <Figure image={IMAGES[locale][shot]} alt={g.alt[shot]} points={points[shot] ?? []} />}
+        {shot && <Figure image={IMAGES[locale][shot]} alt={g.alt[shot]} openLabel={g.openFull} eager={eager} points={points[shot] ?? []} />}
         <ol aria-label={g.stepsLabel} className="space-y-3">
           {block.steps.map((s) => (
             <li key={s.key} className="flex gap-3 leading-relaxed text-ink-2">

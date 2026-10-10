@@ -387,6 +387,7 @@ export const vi = {
     lead: "Mọi thứ cần biết để tải một phiếu Product Specifications lên, sửa các số kích thước, lưu lại và xuất kết quả.",
     toc: "Mục lục",
     stepsLabel: "Các bước",
+    openFull: "Mở ảnh chụp kích thước đầy đủ trong thẻ mới",
     screenshot: "Ảnh minh hoạ",
     sections: {
       signin: { title: "Đăng nhập và ngôn ngữ", lead: "Dùng email và mật khẩu một lần mà quản trị viên đã cấp. Lần đầu bạn tự đặt mật khẩu của mình." },
@@ -472,7 +473,7 @@ export const vi = {
     shortcuts: {
       keyCol: "Phím",
       doCol: "Tác dụng",
-      note: "Trên máy Mac, dùng phím ⌘ ở chỗ bảng ghi Ctrl. Phím tắt của trình sửa số bị bỏ qua khi bạn đang gõ trong một ô nhập.",
+      note: "Trên máy Mac, dùng phím ⌘ ở chỗ bảng ghi Ctrl. Khi bạn đang gõ trong một ô nhập, chỉ Ctrl+S còn hoạt động; các phím tắt khác của trình sửa số bị bỏ qua.",
       rows: {
         save: "Lưu phiếu (cả khi đang đổi tên phiếu)",
         draw: "Bắt đầu hoặc dừng Vẽ khung",
@@ -489,7 +490,6 @@ export const vi = {
     trouble: {
       message: "Thông báo bạn thấy",
       fix: "Cách xử lý",
-      tooLargeExample: "25",
       fixes: {
         template: "Tải cả phiếu dưới dạng PDF, hoặc ảnh xuất từ máy tính. Ảnh chụp phiếu giấy bằng điện thoại không khớp mẫu.",
         tooLarge: "Xuất lại phiếu với dung lượng nhỏ hơn, hoặc nhờ quản trị viên nâng giới hạn.",
