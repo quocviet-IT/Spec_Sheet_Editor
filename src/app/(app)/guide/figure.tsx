@@ -38,7 +38,8 @@ export function Figure({
           <span
             key={p.n}
             aria-hidden
-            className="pointer-events-none absolute grid size-[var(--d)] place-items-center rounded-full bg-accent text-[length:calc(var(--d)*0.5)] font-bold leading-none text-accent-ink shadow-[0_0_0_1.5px_#fff,0_1px_4px_rgba(0,0,0,0.35)]"
+            // Fixed colours: the screenshots stay light in every theme, so the callout must too.
+            className="pointer-events-none absolute grid size-[var(--d)] place-items-center rounded-full bg-[#1d6b4b] text-[length:calc(var(--d)*0.5)] font-bold leading-none text-white shadow-[0_0_0_1.5px_#fff,0_0_0_2.5px_#16201b]"
             style={{
               left: `clamp(calc(var(--d) / 2), ${p.x}%, calc(100% - var(--d) / 2))`,
               top: `clamp(calc(var(--d) / 2), ${p.y}%, calc(100% - var(--d) / 2))`,
