@@ -71,7 +71,6 @@ export function PurgeDialog({ row, onClose, onDone }: { row: TrashRow; onClose: 
       e === "not_in_trash" ? a.errors.notInTrash
         : e === "not_found" ? a.errors.notFound
         : e === "name_mismatch" ? a.errors.mismatch
-        : e === "forbidden" ? t.admin.users.errors.forbidden
         : a.errors.failed,
     );
   }

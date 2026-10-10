@@ -25,7 +25,7 @@ function has(message: string, word: string): boolean {
 export async function purgeTrashed(input: {
   id: string;
   typedName: string;
-}): Promise<{ ok: true; name: string } | { error: Exclude<PurgeResult, "ok"> | "forbidden" }> {
+}): Promise<{ ok: true; name: string } | { error: Exclude<PurgeResult, "ok"> }> {
   await requireAdmin("/admin/trash");
   const id = idSchema.safeParse(input?.id);
   if (!id.success) return { error: "not_found" };
@@ -59,7 +59,6 @@ export async function purgeTrashed(input: {
           const { error } = await supabase.rpc("purge_sheet", { p_id: sheetId });
           if (!error) return "ok";
           if (has(error.message, "not_in_trash")) return "not_in_trash";
-          if (has(error.message, "forbidden")) return "forbidden";
           return "failed";
         },
       },

@@ -1,10 +1,10 @@
 export type PurgeSteps = {
   load(id: string): Promise<{ name: string; paths: string[]; inTrash: boolean } | null>;
   removeFiles(paths: string[]): Promise<boolean>;
-  purgeRecord(id: string): Promise<"ok" | "not_in_trash" | "forbidden" | "failed">;
+  purgeRecord(id: string): Promise<"ok" | "not_in_trash" | "failed">;
 };
 
-export type PurgeResult = "ok" | "not_found" | "not_in_trash" | "name_mismatch" | "files_left" | "forbidden" | "failed";
+export type PurgeResult = "ok" | "not_found" | "not_in_trash" | "name_mismatch" | "files_left" | "failed";
 
 /**
  * UC-17 step 3 (BR-16): only a sheet in the Trash, only with its exact name retyped. The record goes first:
