@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { actAs, actAsOwner, closeDb, committed, connect, expectError, hasDb, insertSheet, makeUser, rollback, rollbackOn, staffEmail } from "./harness";
+import { actAs, actAsOwner, closeDb, connect, expectError, hasDb, insertSheet, makeUser, rollback, rollbackOn, staffEmail } from "./harness";
 
 afterAll(closeDb);
 
@@ -77,48 +77,62 @@ describe.skipIf(!hasDb)("admin functions", () => {
     });
   });
 
-  it("TC-60 two Admins demoting each other at once are serialised and nothing is left behind", async () => {
-    // The two Admins must be visible to both connections, so they are committed and deleted at the end. Both
-    // demotions are rolled back: a committed role change writes an audit row that pins the account forever.
-    const [x, y] = await committed(async (tx) => [await makeUser(tx, staffEmail(), "admin"), await makeUser(tx, staffEmail(), "admin")]);
+  // Proves that demotions are serialised by the guard's global advisory lock (trg_profile_guard in 0001_init.sql),
+  // so two Admins demoting each other cannot both pass the last-admin check. It does not run the full
+  // "exactly one Admin remains" outcome: that needs a commit, and the shared database holds real Admins, so the
+  // last-admin check would not fire anyway. TC-59 covers the single-session outcome. Everything here lives in
+  // transactions that are rolled back; nothing is committed.
+  it("TC-60 demotions by two Admins at once are serialised by the guard lock (rolled back, nothing committed)", async () => {
     const one = connect();
     const two = connect();
+    const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const within = <T>(p: Promise<T>, ms: number, what: string) =>
+      Promise.race([p, wait(ms).then(() => Promise.reject(new Error(`timed out waiting for ${what}`)))]);
+    let release!: () => void;
+    const released = new Promise<void>((r) => (release = r));
+    let holding!: () => void;
+    const holdingP = new Promise<void>((r) => (holding = r));
+    let waiterSeen = false;
+    let secondSettled = false;
+    let results: PromiseSettledResult<void>[] = [];
     try {
-      let releaseFirst!: () => void;
-      const firstHolds = new Promise<void>((r) => (releaseFirst = r));
-      let firstDemoted!: () => void;
-      const firstIn = new Promise<void>((r) => (firstDemoted = r));
-
-      // X demotes Y and keeps the transaction open, holding the guard's lock.
+      // Connection A: its own Admin pair; X demotes Y and keeps the transaction open, holding the lock.
       const first = rollbackOn(one, async (tx) => {
+        const [x, y] = [await makeUser(tx, staffEmail(), "admin"), await makeUser(tx, staffEmail(), "admin")];
         await actAs(tx, x);
         await tx`select public.set_user_role(${y.id}, 'user')`;
-        firstDemoted();
-        await firstHolds;
+        await actAsOwner(tx);
+        holding();
+        // wait until the other connection is queued on an advisory lock, then until told to let go
+        for (let i = 0; i < 100 && !waiterSeen; i++) {
+          const [w] = await tx<{ n: string }[]>`select count(*) as n from pg_locks where locktype = 'advisory' and not granted`;
+          waiterSeen = Number(w.n) > 0;
+          if (!waiterSeen) await wait(100);
+        }
+        await released;
       });
-      await firstIn;
+      await within(Promise.race([holdingP, first]), 15_000, "connection A to take the lock");
 
-      // Y demotes X at the same moment: it must wait for the lock, not run beside the first.
-      let secondSettled = false;
+      // Connection B: its own pair, the same call; it must queue behind A instead of running beside it.
       const second = rollbackOn(two, async (tx) => {
-        await actAs(tx, y);
-        await tx`select public.set_user_role(${x.id}, 'user')`;
+        const [p, q] = [await makeUser(tx, staffEmail(), "admin"), await makeUser(tx, staffEmail(), "admin")];
+        await actAs(tx, p);
+        await tx`select public.set_user_role(${q.id}, 'user')`;
       }).finally(() => (secondSettled = true));
-      await new Promise((r) => setTimeout(r, 1500));
-      expect(secondSettled, "the second demotion must wait while the first holds the lock").toBe(false);
+      second.catch(() => {});
+      await within((async () => { while (!waiterSeen) await wait(50); })(), 10_000, "B to queue on the lock");
+      await wait(500);
+      const pendingWhileHeld = !secondSettled;
 
-      releaseFirst();
-      const results = await Promise.allSettled([first, second]);
-      // With the first rolled back the second goes through; either way neither is left half done.
+      // Roll A back first: the lock holder is released before waiting on B.
+      release();
+      results = await within(Promise.allSettled([first, second]), 20_000, "both transactions to finish");
+      expect(pendingWhileHeld, "the second demotion must wait while the first holds the lock").toBe(true);
+      expect(waiterSeen, "a waiter was queued on the advisory lock").toBe(true);
       expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
     } finally {
-      await one.end();
-      await two.end();
-      await committed(async (tx) => {
-        const [left] = await tx<{ n: string }[]>`select count(*) as n from public.profiles where id in (${x.id}, ${y.id}) and role = 'admin' and status = 'active'`;
-        await tx`delete from auth.users where id in (${x.id}, ${y.id})`;
-        expect(Number(left.n), "both rolled back: both are still active Admins").toBe(2);
-      });
+      release();
+      await Promise.allSettled([one.end({ timeout: 5 }), two.end({ timeout: 5 })]);
     }
-  });
+  }, 60_000);
 });
