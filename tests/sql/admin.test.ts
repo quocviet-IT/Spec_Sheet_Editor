@@ -85,6 +85,7 @@ describe.skipIf(!hasDb)("admin functions", () => {
   it("TC-60 demotions by two Admins at once are serialised by the guard lock (rolled back, nothing committed)", async () => {
     const one = connect();
     const two = connect();
+    const observer = connect(); // read-only; neither A nor B, so it can look while both hold their transactions open
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     const within = <T>(p: Promise<T>, ms: number, what: string) =>
       Promise.race([p, wait(ms).then(() => Promise.reject(new Error(`timed out waiting for ${what}`)))]);
@@ -93,6 +94,8 @@ describe.skipIf(!hasDb)("admin functions", () => {
     let holding!: () => void;
     const holdingP = new Promise<void>((r) => (holding = r));
     let waiterSeen = false;
+    let pidA = 0;
+    let pidB = 0;
     let secondSettled = false;
     let results: PromiseSettledResult<void>[] = [];
     try {
@@ -102,25 +105,38 @@ describe.skipIf(!hasDb)("admin functions", () => {
         await actAs(tx, x);
         await tx`select public.set_user_role(${y.id}, 'user')`;
         await actAsOwner(tx);
+        const [me] = await tx<{ pid: number }[]>`select pg_backend_pid() as pid`;
+        pidA = me.pid;
         holding();
-        // wait until the other connection is queued on an advisory lock, then until told to let go
-        for (let i = 0; i < 100 && !waiterSeen; i++) {
-          const [w] = await tx<{ n: string }[]>`select count(*) as n from pg_locks where locktype = 'advisory' and not granted`;
-          waiterSeen = Number(w.n) > 0;
-          if (!waiterSeen) await wait(100);
-        }
+        // stay idle in the transaction, holding the lock, until told to let go
         await released;
       });
+      first.catch(() => {});
       await within(Promise.race([holdingP, first]), 15_000, "connection A to take the lock");
 
       // Connection B: its own pair, the same call; it must queue behind A instead of running beside it.
       const second = rollbackOn(two, async (tx) => {
+        const [me] = await tx<{ pid: number }[]>`select pg_backend_pid() as pid`;
+        pidB = me.pid;
         const [p, q] = [await makeUser(tx, staffEmail(), "admin"), await makeUser(tx, staffEmail(), "admin")];
         await actAs(tx, p);
         await tx`select public.set_user_role(${q.id}, 'user')`;
       }).finally(() => (secondSettled = true));
       second.catch(() => {});
-      await within((async () => { while (!waiterSeen) await wait(50); })(), 10_000, "B to queue on the lock");
+      // B is waiting on A itself when Postgres lists A's backend among the sessions blocking B's backend.
+      await within(
+        (async () => {
+          while (!waiterSeen) {
+            if (pidB) {
+              const [w] = await observer<{ n: boolean }[]>`select pg_blocking_pids(${pidB}) @> array[${pidA}::int] as n`;
+              waiterSeen = w.n;
+            }
+            if (!waiterSeen) await wait(50);
+          }
+        })(),
+        10_000,
+        "B to be blocked by A",
+      );
       await wait(500);
       const pendingWhileHeld = !secondSettled;
 
@@ -128,11 +144,11 @@ describe.skipIf(!hasDb)("admin functions", () => {
       release();
       results = await within(Promise.allSettled([first, second]), 20_000, "both transactions to finish");
       expect(pendingWhileHeld, "the second demotion must wait while the first holds the lock").toBe(true);
-      expect(waiterSeen, "a waiter was queued on the advisory lock").toBe(true);
+      expect(waiterSeen, "B was blocked by A's backend on the guard lock").toBe(true);
       expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
     } finally {
       release();
-      await Promise.allSettled([one.end({ timeout: 5 }), two.end({ timeout: 5 })]);
+      await Promise.allSettled([one.end({ timeout: 5 }), two.end({ timeout: 5 }), observer.end({ timeout: 5 })]);
     }
   }, 60_000);
 });
