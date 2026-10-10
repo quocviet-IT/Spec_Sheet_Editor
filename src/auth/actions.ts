@@ -69,7 +69,8 @@ export async function signInWithGoogle(form: FormData): Promise<void> {
 
 export async function signOut(): Promise<void> {
   const supabase = await createSupabaseServer();
-  await supabase.auth.signOut();
+  // "local": ends this browser's session only. The default ("global") would sign the person out of every computer.
+  await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }
 
