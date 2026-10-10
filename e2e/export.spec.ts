@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { staffId } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
-import { framedPng, PDF_VALUES, readPdf, readPng, valuesPdf } from "./support/files";
+import { framedPng, marginedValuesPdf, PDF_VALUES, readPdf, readPng, valuesPdf } from "./support/files";
 import {
   BOTTOM_LEFT, TOP_LEFT, TOP_RIGHT, auditCount, canvasHash, editValue, exportSheet, openExportCheck, openValuesSheet, pressExport,
   marker, markers, storedSheet, uploadSheet, waitForVersion,
@@ -57,6 +57,18 @@ test("TC-43 a PDF from an image sheet is one 792 × 612 pt page with no text", a
   expect(Math.abs(pdf.height - 612)).toBeLessThanOrEqual(0.5);
   expect(pdf.textItems).toBe(0);
   await expect.poll(() => auditCount(id, "sheet.export_pdf")).toBe(1);
+});
+
+test("a PDF exported from a sheet on an A4 portrait page keeps the A4 portrait page size", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  await uploadSheet(page, `a4-export-${Date.now()}.pdf`, "application/pdf", await marginedValuesPdf({ onA4Portrait: true }));
+  await expect(markers(page)).toHaveCount(11, { timeout: 30_000 });
+  await editValue(page, "6.90", TOP_LEFT, "7.1");
+  const file = await exportSheet(page, "pdf", testInfo);
+  const pdf = await readPdf(file.path);
+  expect(pdf.pages).toBe(1);
+  expect(Math.abs(pdf.width - 595)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(pdf.height - 842)).toBeLessThanOrEqual(0.5);
 });
 
 test("TC-44 PNG sizes follow the sheet and the pixels equal the edited editor canvas", async ({ page }, testInfo) => {

@@ -35,6 +35,29 @@ export function framedPng(width: number, height: number): Buffer {
   return PNG.sync.write(png);
 }
 
+/**
+ * A synthetic PNG shaped like a real workshop sheet: a 1.294 page whose ink starts inside white margins
+ * of about 4.4 % (left), 7.6 % (top), 3.5 % (right) and 8.1 % (bottom). Cropping it would give about 1.41.
+ */
+export function marginedPng(width = 1135, height = 877): Buffer {
+  const left = Math.round(width * 0.044);
+  const right = Math.round(width * 0.035);
+  const top = Math.round(height * 0.076);
+  const bottom = Math.round(height * 0.081);
+  const png = new PNG({ width, height });
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const inside = x >= left && x < width - right && y >= top && y < height - bottom;
+      const edge = inside && (x < left + 2 || y < top + 2 || x >= width - right - 2 || y >= height - bottom - 2);
+      const i = (y * width + x) * 4;
+      const v = edge ? 30 : 255;
+      png.data[i] = png.data[i + 1] = png.data[i + 2] = v;
+      png.data[i + 3] = 255;
+    }
+  }
+  return PNG.sync.write(png);
+}
+
 /** A value printed on a synthetic sheet: its digits' centre as page fractions, read at `angle` (app convention). */
 export type PlacedValue = { value: string; cx: number; cy: number; angle: number };
 
@@ -116,6 +139,32 @@ export async function valuesPdf(options: { asImage?: { value: string; png: Buffe
     const h = (asImage.height * 72) / 300;
     page.drawImage(image, { x: imageValue.cx * 792 - w / 2, y: 612 - imageValue.cy * 612 - h / 2, width: w, height: h });
   }
+  return Buffer.from(await doc.save());
+}
+
+/** Margins of a real workshop sheet as fractions of the page, as measured on 2026-10-10 (same as the app's). */
+const SHEET_MARGINS = { left: 0.0441, top: 0.0756, right: 0.0354, bottom: 0.0812 };
+
+/**
+ * `valuesPdf` shrunk into a white-margined US Letter landscape page, like a real workshop sheet; with
+ * `onA4Portrait` that sheet fills the width of an A4 portrait page (595 x 842 pt) with white bands above and below.
+ * Everything is drawn here; the values keep their meaning (their page fractions move with the margins).
+ */
+export async function marginedValuesPdf(options: { onA4Portrait?: boolean } = {}): Promise<Buffer> {
+  const inner = await PDFDocument.load(await valuesPdf());
+  const sheet = await PDFDocument.create();
+  const sheetPage = sheet.addPage([792, 612]);
+  const embedded = await sheet.embedPage(inner.getPage(0));
+  const m = SHEET_MARGINS;
+  const w = 792 * (1 - m.left - m.right);
+  const h = 612 * (1 - m.top - m.bottom);
+  sheetPage.drawPage(embedded, { x: 792 * m.left, y: 612 * m.bottom, width: w, height: h });
+  if (!options.onA4Portrait) return Buffer.from(await sheet.save());
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  const whole = await doc.embedPage((await PDFDocument.load(await sheet.save())).getPage(0));
+  const height = (595 * 612) / 792;
+  page.drawPage(whole, { x: 0, y: (842 - height) / 2, width: 595, height });
   return Buffer.from(await doc.save());
 }
 

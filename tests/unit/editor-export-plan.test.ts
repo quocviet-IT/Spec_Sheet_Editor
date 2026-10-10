@@ -46,6 +46,14 @@ describe("pdfLayout (UC-09 step 4)", () => {
     expect(l.y).toBeCloseTo(612 - 4.8 - 607.2, 6); // PDF y counts up from the bottom
   });
 
+  it("places a page that reaches past the original page at a negative position, keeping the page size", () => {
+    const l = pdfLayout(1300, 1000, { kind: "pdf", pageWidthPt: 595, pageHeightPt: 842, pxPerPt, offsetX: -20, offsetY: -10 });
+    expect(l.pageWidth).toBe(595);
+    expect(l.pageHeight).toBe(842);
+    expect(l.x).toBeCloseTo(-4.8, 6);
+    expect(l.y).toBeCloseTo(842 + 2.4 - 240, 6);
+  });
+
   it("fits an image on US Letter landscape without distortion, centred", () => {
     const l = pdfLayout(1135, 877, { kind: "image" });
     expect(l.pageWidth).toBe(792);
