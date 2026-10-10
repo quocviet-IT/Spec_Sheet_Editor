@@ -59,6 +59,47 @@ export function trimBounds(raster: Raster, threshold = NEAR_WHITE): { x: number;
   return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
 }
 
+/** The top of the tolerance setting's 0.5-5 % range; see `pageBox`. */
+export const PAGE_CHOICE_TOLERANCE_PCT = 5;
+
+/**
+ * The white margins a workshop sheet keeps around its content, as fractions of the page. Measured on
+ * two real sheets on 2026-10-10 (left 4.41 %, top 7.64 / 7.47 %, right 3.52 / 3.57 %, bottom 8.10 / 8.13 %).
+ */
+export const TEMPLATE_MARGINS = { left: 0.0441, top: 0.0756, right: 0.0354, bottom: 0.0812 } as const;
+
+/** Width ÷ height of a sheet's content box (the page without its margins); about 1.413. */
+export const CONTENT_RATIO =
+  (TEMPLATE_RATIO * (1 - TEMPLATE_MARGINS.left - TEMPLATE_MARGINS.right)) / (1 - TEMPLATE_MARGINS.top - TEMPLATE_MARGINS.bottom);
+
+const withinPct = (ratio: number, target: number, pct: number) => Math.abs(ratio / target - 1) <= pct / 100;
+
+/**
+ * The page rectangle inside a rendered image (it may reach outside the image). The content is whatever
+ * ink `trimBounds` finds:
+ * - if its ratio already matches the template within PAGE_CHOICE_TOLERANCE_PCT, the content is the page,
+ *   so every sheet accepted before keeps exactly the same frame;
+ * - else if its ratio matches a sheet's content box (CONTENT_RATIO) within the same tolerance, the page is
+ *   rebuilt around it from TEMPLATE_MARGINS, because the sheet's own white margins belong to it. This also
+ *   finds a sheet placed on a larger page, such as an A4 portrait PDF with white bands, or one cropped
+ *   tightly to its content (the box then extends past the image);
+ * - otherwise the whole image, which the ratio check then refuses.
+ * The choice never depends on a setting an Admin can change: the editor recomputes the frame each time a
+ * sheet opens, and stored detection coordinates are fractions of that frame.
+ */
+export function pageBox(raster: Raster): { x: number; y: number; w: number; h: number } {
+  const b = trimBounds(raster);
+  const ratio = b.w / b.h;
+  if (withinPct(ratio, TEMPLATE_RATIO, PAGE_CHOICE_TOLERANCE_PCT)) return b;
+  if (withinPct(ratio, CONTENT_RATIO, PAGE_CHOICE_TOLERANCE_PCT)) {
+    const m = TEMPLATE_MARGINS;
+    const w = b.w / (1 - m.left - m.right);
+    const h = b.h / (1 - m.top - m.bottom);
+    return { x: Math.round(b.x - m.left * w), y: Math.round(b.y - m.top * h), w: Math.round(w), h: Math.round(h) };
+  }
+  return { x: 0, y: 0, w: raster.width, h: raster.height };
+}
+
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /**

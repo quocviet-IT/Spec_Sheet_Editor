@@ -170,7 +170,7 @@ Editable and locked zones are fixed by position on the template. Coordinates wer
 
 | ID | Rule | Reason |
 |---|---|---|
-| BR-01 | Only sheets that match the template are accepted: after trimming white borders, the width-to-height ratio is 1.294 within the allowed tolerance (default ±2%); the file is a PDF, PNG or JPG no larger than the maximum size (default 20 MB). Admins can change both limits (UC-15). | Editable and locked zones are defined by position on the template. |
+| BR-01 | Only sheets that match the template are accepted: for the page chosen as in UC-03 step 4 (the cropped content, or the page rebuilt from the sheet's own white margins; changed 2026-10-10), the width-to-height ratio is 1.294 within the allowed tolerance (default ±2%); the file is a PDF, PNG or JPG no larger than the maximum size (default 20 MB). Admins can change both limits (UC-15). | Editable and locked zones are defined by position on the template. |
 | BR-02 | Only dimension values inside the four drawing panels can be edited. Text callouts, the specification table, the stone chart, the three bottom boxes and the header cannot. | User requirement. |
 | BR-03 | The original file is never changed. Edits are an overlay applied when the page is rendered and are stored separately as data. The original is only removed when an Admin permanently deletes the sheet (BR-16). | The original value can always be restored, and a reopened sheet can be edited further. |
 | BR-04 | An old value read by the machine must be confirmed or corrected by the user before a new value is entered. | The machine read 2.50 as "2.59" with 90–96% confidence (section 7.3). |
@@ -394,7 +394,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 1. The user clicks "Upload sheet" and chooses or drops a file.
 2. The system checks file type and size against the current settings.
 3. The system renders the page: page 1 at 300 DPI for a PDF; for an image, EXIF rotation is applied and transparent areas are placed on white.
-4. The system trims near-white borders (luminance ≥ 250) and checks the template ratio (BR-01).
+4. The system trims near-white borders (luminance ≥ 250) and checks the template ratio (BR-01). The page is chosen from the cropped content by its ratio, within 5 % (not the Admin tolerance, because the editor recomputes the frame on every open): (a) if the content already matches the template ratio, it is the page; (b) if it matches a sheet's content box (about 1.413), the page is rebuilt around it from the template's white margins (left 4.41 %, top 7.56 %, right 3.54 %, bottom 8.12 %, measured on two real workshop sheets), which also finds a sheet placed on a larger page such as A4 portrait, and the page may then reach past the image (white is added, offsets can be negative); (c) otherwise the whole image. *Changed 2026-10-10, after real workshop sheets were refused.*
 5. The system creates a 480-px-wide JPEG thumbnail and generates the sheet id.
 6. The system uploads the original and thumbnail to `spec-sheets/<id>/`, then creates the sheet record.
 7. The system opens the editor; UC-04 runs there the first time the sheet is opened (not inside the upload dialog).

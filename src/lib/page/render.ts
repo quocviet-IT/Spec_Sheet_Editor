@@ -1,7 +1,7 @@
 "use client";
 
 import { crop, type Raster } from "@/lib/ocr/raster";
-import { trimBounds, type SourceType } from "@/lib/form/template";
+import { pageBox, type SourceType } from "@/lib/form/template";
 import { flattenOnWhite } from "./flatten";
 import { needsOwnRotation, orientationMatrix, orientedSize, readJpegOrientation, readJpegSize } from "./orientation";
 import { pdfErrorCode, pdfScale, type PdfError } from "./pdf-errors";
@@ -111,9 +111,12 @@ export function renderSource(file: Blob, sourceType: SourceType): Promise<Render
   return sourceType === "pdf" ? renderPdf(file) : renderImage(file, sourceType);
 }
 
-/** The page with its near-white borders removed (UC-03 step 4), and where it sat in the rendered page. */
+/**
+ * The page (UC-03 step 4, see `pageBox`) and where it sat in the rendered image. The offsets are negative
+ * when the page reaches past the image; `crop` then fills the missing part with white.
+ */
 export function trimPage(page: RenderedPage): TrimmedPage {
-  const b = trimBounds(page.raster);
+  const b = pageBox(page.raster);
   if (b.x === 0 && b.y === 0 && b.w === page.raster.width && b.h === page.raster.height) {
     return { raster: page.raster, offsetX: 0, offsetY: 0 };
   }
