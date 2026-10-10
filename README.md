@@ -39,7 +39,9 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
    Admin → Users.
 
    There is no self-service "forgot password": an Admin issues a new one-time password
-   (Admin → Users). If `createUser` reports the email already exists (a stray sign-up from when
+   (Admin → Users). When the only Admin cannot sign in, run
+   `npm run admin:reset-password -- you@ctyhp.vn` in your own terminal. It needs only HTTPS, prints a new
+   one-time password once, ends that account's sessions and writes the audit entry. If `createUser` reports the email already exists (a stray sign-up from when
    sign-ups were on), delete that user under Authentication → Users first. The app offers no email
    change; keep "Secure email change" on in Supabase.
 
@@ -56,6 +58,7 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 | `npm run guide:shots` | Captures the screenshots of the user guide into `src/app/(app)/guide/shots/<locale>/` (Vietnamese and English); rerun it after a screen that the guide shows changes, and look at the images before committing |
 | `npm run db:migrate` | Apply pending migrations |
 | `npm run admin:create` | Create the first Admin (once) |
+| `npm run admin:reset-password` | New one-time password for an Admin who cannot sign in |
 
 ## End-to-end tests
 

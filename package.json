@@ -15,6 +15,7 @@
     "e2e:prod": "playwright test -c playwright.prod.config.ts",
     "db:migrate": "tsx scripts/migrate.mts",
     "admin:create": "tsx scripts/create-admin.mts",
+    "admin:reset-password": "tsx scripts/reset-admin-password.mts",
     "ocr:build": "tsx scripts/build-ocr-worker.mts",
     "predev": "npm run ocr:build",
     "prebuild": "npm run ocr:build",
