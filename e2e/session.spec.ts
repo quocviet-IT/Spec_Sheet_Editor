@@ -62,6 +62,13 @@ test("TC-07 after signing out, Back does not show the sheet list", async ({ brow
     const page = context.pages()[0];
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
+    // Playwright's Chromium cannot show a back-forward cache restore, so check what keeps the page out of it:
+    // on the production build the signed-in page must be sent with no-store. (The dev server sends its own header.)
+    const document = await page.goto("/sheets");
+    if (test.info().config.metadata.production === true) {
+      expect(document?.headers()["cache-control"] ?? "").toContain("no-store");
+    }
+
     await page.getByRole("button", { name: /^(Đăng xuất|Sign out)$/ }).click();
     await page.waitForURL("**/login");
     await page.goBack();

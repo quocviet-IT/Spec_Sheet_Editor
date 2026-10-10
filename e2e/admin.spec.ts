@@ -140,8 +140,12 @@ test("TC-62 / TC-63 a suspended person is stopped at the next save, cannot sign 
     await restoreAll([
       () => staff.close(),
       () => staffB.close(),
-      () => restoreStaff(STAFF_B_EMAIL),
-      () => resignStaffB(browser), // always, so the saved session is valid for the other specs
+      // One step, in order: a suspended account cannot sign in again, so restore it first. Always runs, so the
+      // saved session is valid for the other specs.
+      async () => {
+        await restoreStaff(STAFF_B_EMAIL);
+        await resignStaffB(browser);
+      },
       async () => deleteSheetsOf(await staffId()),
     ]);
   }
