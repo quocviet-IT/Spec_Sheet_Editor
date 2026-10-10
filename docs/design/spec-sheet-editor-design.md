@@ -267,7 +267,7 @@ Security requirements target the access-control risk category (Broken Access Con
 | NFR-03 | Privacy | Sheet images travel only between the browser and the company's file storage; they are never sent to a third-party service. |
 | NFR-04 | Integrity | Users have no right to overwrite or delete files in storage; only the Admin permanent-deletion job, running on the server, can delete them. |
 | NFR-05 | Consistency | The same original page and the same edits render to exactly the same image on any machine (the Arimo font ships with the app). |
-| NFR-06 | Compatibility | Current Chrome and Edge. The editor and the Admin area need a window at least 1024 px wide; the sheet list works from 360 px. |
+| NFR-06 | Compatibility | Current Chrome and Edge. The editor and the Admin area need a window at least 1024 px wide; the sheet list works from 360 px. The Admin area hides itself below 1024 px with a notice; its server reads still run, by decision 2026-10-09 (Admins are few, every read is paged, and RLS applies). |
 | NFR-07 | Usability | Contrast meets WCAG 2.2 AA; fully operable by keyboard; every error message states the cause and how to fix it. |
 | NFR-08 | Test data | Real sheets never enter the repository; the `samples/` folder is listed in `.gitignore`. |
 | NFR-09 | Traceability | Every data change and administrative action has one audit entry with actor, time and target; entries cannot be changed or deleted. |

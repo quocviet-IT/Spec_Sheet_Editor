@@ -196,6 +196,12 @@ Decisions taken during M6 (also in the design, UC-14, UC-16 and UC-17):
 - End-to-end run: the whole run now takes 18.8 minutes against a 25-minute limit in `playwright.config.ts`; raise the limit before the suite grows further.
 - SQL: run the SQL suites for the Admin functions (TC-56 to TC-61, TC-65, TC-69 to TC-71, TC-73) from a network that reaches the pooler port.
 
+### M7a result
+
+Decisions taken during M7a:
+
+- The Admin area hides itself below 1024 px with a notice, but its server reads still run on a narrow window, by decision 2026-10-09. Admins are few, every read is paged, and RLS applies. No code change.
+
 ### Carried into M3 and later from the M2 review
 
 - M3 (sheet decode): composite transparency onto white before OCR; the Raster sent to the Worker is always opaque.
