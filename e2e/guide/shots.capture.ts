@@ -269,7 +269,7 @@ for (const locale of LOCALES) {
       {
         const page = await adminCtx.newPage();
         page.on("dialog", (d) => void d.accept());
-        await page.goto("/admin/users", { timeout: 120_000 });
+        await page.goto("/admin/users?show=test", { timeout: 120_000 });
         const email = "e2e-staff@ctyhp.vn";
         await page.getByRole("searchbox", { name: /Tìm theo tên hoặc email|Search by name or email/ }).fill(email);
         const row = page.getByRole("row").filter({ hasText: email });
