@@ -243,6 +243,17 @@ export const en: Messages = {
       cleanup: "Trash and clean-up",
     },
     desktopOnly: "The Admin area needs a desktop screen at least 1024 px wide.",
+    ui: {
+      breadcrumb: "Admin",
+      showing: "Showing {from}–{to} of {total}",
+      rowsPerPage: "Rows per page",
+      previous: "Previous page",
+      next: "Next page",
+      pageOf: "Page {page} of {pages}",
+      actionsFor: "Actions for {name}",
+      close: "Close",
+      apply: "Apply",
+    },
     nav: "Admin sections",
     areaLeads: {
       users: "Accounts, roles, suspension and passwords.",

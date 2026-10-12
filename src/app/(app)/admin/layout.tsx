@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { requireAdmin } from "@/auth/session";
 import { getMessages } from "@/messages/server";
-import { AdminNav } from "./admin-nav";
+import { AdminTabs } from "./ui/admin-tabs";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const next = (await headers()).get("x-pathname") ?? "/admin";
@@ -13,7 +13,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         {t.admin.desktopOnly}
       </p>
       <div className="hidden lg:block">
-        <AdminNav />
+        <AdminTabs />
         {children}
       </div>
     </>

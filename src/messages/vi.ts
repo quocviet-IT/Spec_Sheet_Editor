@@ -241,6 +241,17 @@ export const vi = {
       cleanup: "Thùng rác và dọn dẹp",
     },
     desktopOnly: "Khu quản trị cần màn hình máy tính rộng ít nhất 1024 px.",
+    ui: {
+      breadcrumb: "Quản trị",
+      showing: "Hiển thị {from}–{to} trong {total}",
+      rowsPerPage: "Số dòng mỗi trang",
+      previous: "Trang trước",
+      next: "Trang sau",
+      pageOf: "Trang {page}/{pages}",
+      actionsFor: "Thao tác cho {name}",
+      close: "Đóng",
+      apply: "Áp dụng",
+    },
     nav: "Các mục quản trị",
     areaLeads: {
       users: "Tài khoản, vai trò, đình chỉ và mật khẩu.",
