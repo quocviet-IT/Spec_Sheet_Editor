@@ -434,7 +434,7 @@ export const vi = {
     sections: {
       signin: { title: "Đăng nhập và ngôn ngữ", lead: "Dùng email và mật khẩu một lần mà quản trị viên đã cấp. Lần đầu bạn tự đặt mật khẩu của mình." },
       upload: { title: "Tải phiếu lên", lead: "Một phiếu bắt đầu từ tệp PDF, PNG hoặc JPG của cả trang Product Specifications. Trình sửa số đọc trang và tìm các số kích thước trên bốn ô hình vẽ." },
-      find: { title: "Tìm phiếu", lead: "Trang Phiếu liệt kê mọi phiếu, mới nhất trước. Danh sách chia thành các trang đánh số, mỗi trang 25 phiếu. Tìm theo tên, và đưa phiếu không cần nữa vào Thùng rác." },
+      find: { title: "Tìm phiếu", lead: "Trang Phiếu liệt kê mọi phiếu, mới nhất trước. Danh sách chia thành các trang đánh số, mặc định mỗi trang 25 phiếu (có thể chọn 10 hoặc 50). Tìm theo tên, và đưa phiếu không cần nữa vào Thùng rác." },
       edit: { title: "Sửa số", lead: "Sửa một số trên bản vẽ: chọn dấu của số đó, kiểm tra số máy đã đọc, nhập số mới. Chỉ bốn ô hình vẽ được sửa; phần còn lại của phiếu giữ nguyên như lúc tải lên." },
       save: { title: "Lưu", lead: "Các thay đổi chỉ nằm trên màn hình của bạn cho đến khi bạn lưu. Phiếu đã lưu là dùng chung: ai có quyền cũng thấy bản mới nhất." },
       export: { title: "Xuất", lead: "Xuất biến phiếu, cùng các số đã sửa, thành ảnh PNG hoặc tệp PDF. Hộp thoại kiểm tra hiện trước để không xuất nhầm." },
@@ -469,7 +469,7 @@ export const vi = {
       uploadStart: "Nhấn **Tải lên**. Xong thì trình sửa số mở ra với phiếu mới.",
       findUpload: "**Tải phiếu lên** bắt đầu một lần tải mới, như ở phần trên.",
       findSearch: "Gõ một phần tên vào ô tìm kiếm; danh sách thu hẹp ngay sau khi bạn ngừng gõ và quay lại trang 1.",
-      findPages: "Dưới danh sách, **Trang trước** và **Trang sau** chuyển giữa các trang, còn **Số dòng mỗi trang** chọn 10, 25 hoặc 50 phiếu một trang. Địa chỉ trang giữ thẻ, từ khoá tìm và số trang, nên bạn có thể đánh dấu trang hoặc quay lại bằng nút Back của trình duyệt.",
+      findPages: "Dưới danh sách, **Trang trước** và **Trang sau** chuyển giữa các trang, còn **Số dòng mỗi trang** chọn 10, 25 hoặc 50 phiếu một trang. Địa chỉ trang giữ thẻ, từ khoá tìm, số trang và số dòng mỗi trang, nên bạn có thể đánh dấu trang hoặc quay lại bằng nút Back của trình duyệt.",
       findTrash: "Thẻ **Thùng rác** cho thấy các phiếu đã bị đưa ra khỏi danh sách. Thẻ **Phiếu** là các phiếu đang dùng.",
       findMenu: "Menu thao tác của một dòng (dùng phím mũi tên để di chuyển) mở phiếu hoặc đưa phiếu vào Thùng rác. Nút **Hoàn tác** hiện vài giây sau khi chuyển.",
       findRestore: "Muốn đưa phiếu trở lại, mở thẻ **Thùng rác** và chọn **Khôi phục** trong menu thao tác của phiếu. Ai cũng khôi phục được; chỉ quản trị viên mới xoá hẳn được.",

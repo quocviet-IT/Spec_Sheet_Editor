@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { staffId } from "./support/account";
 import { admin, deleteSheetsOf } from "./support/db";
+import { searchSheets } from "./support/sheets";
 
 async function seed(count: number, prefix: string): Promise<string[]> {
   const owner = await staffId();
@@ -23,8 +24,7 @@ test("TC-48 Staff trash a sheet and restore it; two audit entries", async ({ pag
   const tag = randomUUID().slice(0, 8);
   const [id] = await seed(1, `tc48-${tag}`);
   await page.goto("/sheets");
-  await page.getByRole("searchbox").fill(`tc48-${tag}`);
-  await expect(page).toHaveURL(/[?&]q=/); // the address takes the search 300 ms after typing
+  await searchSheets(page, `tc48-${tag}`);
   await page.getByRole("button", { name: new RegExp(`tc48-${tag}`) }).click(); // the row's ⋯ menu
   await page.getByRole("menuitem", { name: /Đưa vào Thùng rác|Move to Trash/ }).click();
   await expect(page.getByRole("status")).toBeVisible();

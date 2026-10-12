@@ -4,7 +4,7 @@ import { expect, test, type Browser, type BrowserContext, type Locator, type Pag
 import { ADMIN_EMAIL, STAFF_B_EMAIL, adminId, resetPassword, resign, restoreAll, restoreStaff, staffBId, staffId } from "./support/account";
 import { admin, deleteSheetsOf } from "./support/db";
 import { framedPng, valuesPdf } from "./support/files";
-import { TOP_LEFT, editValue, exportSheet, markers, openValuesSheet, storedSheet, uploadSheet, waitForVersion } from "./support/sheets";
+import { TOP_LEFT, editValue, exportSheet, markers, openValuesSheet, searchSheets, storedSheet, uploadSheet, waitForVersion } from "./support/sheets";
 
 const ADMIN_STATE = "e2e/.auth/admin.json";
 const STAFF_STATE = "e2e/.auth/staff.json";
@@ -335,8 +335,7 @@ async function adminAuditToday(): Promise<Record<string, number>> {
 
 async function trashFromList(page: Page, name: string): Promise<void> {
   await page.goto("/sheets");
-  await page.getByRole("searchbox").fill(name);
-  await expect(page).toHaveURL(/[?&]q=/); // the address takes the search 300 ms after typing
+  await searchSheets(page, name);
   await page.getByRole("button", { name: new RegExp(escape(name)) }).click(); // the row's ⋯ menu
   await page.getByRole("menuitem", { name: /Đưa vào Thùng rác|Move to Trash/ }).click();
   await expect(page.getByRole("status").filter({ hasText: /Thùng rác|Trash/ })).toBeVisible();

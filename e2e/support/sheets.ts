@@ -328,3 +328,15 @@ export async function canvasHash(page: Page): Promise<string> {
     return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
   });
 }
+
+/**
+ * Types into the sheet list's search box and waits until the filtered list is on screen: the address has taken the
+ * search (it does so 300 ms after typing) AND the footer reads "Showing 1–n of n" for the test's own `total` rows
+ * (default 1). A URL change alone is not enough: the server render that follows can still detach a row's button.
+ */
+export async function searchSheets(page: Page, query: string, total = 1): Promise<void> {
+  await page.getByRole("searchbox").fill(query);
+  await expect(page).toHaveURL(/[?&]q=/);
+  await expect(page.getByText(new RegExp(`(Hiển thị|Showing) 1–${total} (trong|of) ${total}$`))).toBeVisible();
+  await expect(page.locator("#sheet-panel > ul > li")).toHaveCount(total);
+}

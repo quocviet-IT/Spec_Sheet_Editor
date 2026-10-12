@@ -53,8 +53,8 @@ class Shots {
   }
 
   /** Takes the picture, then measures every target (numbered 1, 2, 3 in order) against the clip. */
-  async take(page: Page, name: string, targets: (Locator | Right | Above)[], clip?: Clip): Promise<void> {
-    await hideOtherRows(page, name);
+  async take(page: Page, name: string, targets: (Locator | Right | Above)[], clip?: Clip, opts: { hideFooter?: boolean } = {}): Promise<void> {
+    await hideOtherRows(page, name, opts.hideFooter === true);
     try {
       await this.shoot(page, name, targets, clip);
     } finally {
@@ -125,7 +125,7 @@ const OWN_ROWS = /Ring RG-1042|Ring-RG-1042|Pendant PD-2210|Bracelet BR-7731|E2E
 const DATA_ROWS = "main #sheet-panel > ul > li, main li:has(a[href^='/sheets/']), main tbody tr";
 
 /** Hides every list or table row that is not the capture's own, before measuring and shooting; fails if one stays visible. */
-async function hideOtherRows(page: Page, name: string): Promise<void> {
+async function hideOtherRows(page: Page, name: string, hideFooter = false): Promise<void> {
   await page.locator(DATA_ROWS).evaluateAll((rows, own) => {
     const re = new RegExp(own);
     for (const row of rows as HTMLElement[]) {
@@ -139,6 +139,41 @@ async function hideOtherRows(page: Page, name: string): Promise<void> {
     OWN_ROWS.source,
   );
   if (foreign > 0) throw new Error(`${name}: ${foreign} row(s) that are not the capture's own are still visible`);
+  await guardFooters(page, name, hideFooter);
+}
+
+/** The pagination footer's count line: "Showing 1–25 of 1,120" / "Hiển thị 1–25 trong 1.120". */
+const FOOTER_COUNT = /^(?:Showing|Hiển thị)\s+\d+[–-]\d+\s+(?:of|trong)\s+([\d.,]+)$/;
+
+/**
+ * A pagination footer counts rows, and a count over other people's sheets is data too. A picture that has to show an
+ * unfiltered list hides the footer (hideFooter); every footer still visible must count no more than the own rows
+ * showing, or the capture fails.
+ */
+async function guardFooters(page: Page, name: string, hideFooter: boolean): Promise<void> {
+  const own = await page.locator(DATA_ROWS).evaluateAll((rows) => (rows as HTMLElement[]).filter((r) => r.offsetParent !== null).length);
+  const footers = await page.locator("main p").evaluateAll((ps, source) => {
+    const re = new RegExp(source);
+    const found: number[] = [];
+    for (const p of ps as HTMLElement[]) {
+      const m = re.exec((p.textContent ?? "").trim());
+      if (!m) continue;
+      found.push(Number(m[1].replace(/[.,]/g, "")));
+      (p.parentElement ?? p).setAttribute("data-capture-footer", "");
+    }
+    return found;
+  }, FOOTER_COUNT.source);
+  if (hideFooter) {
+    await page.locator("[data-capture-footer]").evaluateAll((els) => {
+      for (const el of els as HTMLElement[]) {
+        el.setAttribute("data-capture-hidden", "");
+        el.style.display = "none";
+      }
+    });
+    return;
+  }
+  const over = footers.filter((total) => total > own);
+  if (over.length > 0) throw new Error(`${name}: a pagination footer counts ${over.join(", ")} rows but only ${own} of the capture's own are showing`);
 }
 
 async function showOtherRows(page: Page): Promise<void> {
@@ -148,6 +183,9 @@ async function showOtherRows(page: Page): Promise<void> {
       row.removeAttribute("data-capture-hidden");
       row.style.display = "";
     }
+  });
+  await page.locator("[data-capture-footer]").evaluateAll((els) => {
+    for (const el of els as HTMLElement[]) el.removeAttribute("data-capture-footer");
   });
 }
 
@@ -217,6 +255,7 @@ for (const locale of LOCALES) {
             new Right(dialog.getByRole("button", { name: /^(Tải lên|Upload)$/ })),
           ],
           Shots.clipAround((await dialog.boundingBox())!),
+          { hideFooter: true }, // the list behind the dialog is unfiltered: its count would include other people's sheets
         );
         await staff.keyboard.press("Escape");
         await expect(dialog).toBeHidden();
@@ -305,7 +344,7 @@ for (const locale of LOCALES) {
           staff.getByRole("searchbox", { name: /Tìm theo tên phiếu|Search sheet names/ }),
           new Right(staff.getByRole("navigation").getByRole("link", { name: /Thùng rác|Trash/ })),
           button(staff, /^(Thao tác với|Actions for) Ring RG-1042$/),
-        ], { x: 100, y: 0, width: 1240, height: 420 });
+        ], { x: 100, y: 0, width: 1240, height: 420 }, { hideFooter: true }); // two own sheets in an unfiltered list: the count is not theirs
       }
 
       // 5. Admin: users, then Trash -------------------------------------------------------------------------------
@@ -337,7 +376,7 @@ for (const locale of LOCALES) {
         await shots.take(page, "admin-trash", [
           trashRow.getByRole("button", { name: /^(Thao tác cho|Thao tác với|Actions for) / }),
           button(page, /^(Kiểm tra tệp mồ côi|Check for orphan files)$/),
-        ], { x: 100, y: 0, width: 1240, height: 680 }); // tall enough for the orphan clean-up card below the table
+        ], { x: 100, y: 0, width: 1240, height: 680 }, { hideFooter: true }); // tall enough for the orphan clean-up card below the table
         await page.close();
       }
 

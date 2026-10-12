@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { staffId } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
-import { BOTTOM_RIGHT, TOP_LEFT, TOP_RIGHT, auditCount, dragBox, editValue, marker, markers, openValuesSheet, storedSheet, waitForVersion } from "./support/sheets";
+import { BOTTOM_RIGHT, TOP_LEFT, TOP_RIGHT, auditCount, dragBox, editValue, marker, markers, openValuesSheet, searchSheets, storedSheet, waitForVersion } from "./support/sheets";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -164,8 +164,7 @@ test("TC-41 saving a sheet someone moved to the Trash says so", async ({ page, c
   await editValue(page, "6.90", TOP_LEFT, "7.1");
   const list = await context.newPage();
   await list.goto("/sheets");
-  await list.getByRole("searchbox").fill(name);
-  await expect(list).toHaveURL(/[?&]q=/); // the address takes the search 300 ms after typing
+  await searchSheets(list, name);
   await list.getByRole("button", { name: new RegExp(name) }).click(); // the row's ⋯ menu
   await list.getByRole("menuitem", { name: /Đưa vào Thùng rác|Move to Trash/ }).click();
   await expect.poll(async () => (await storedSheet(id)).deleted).toBe(true);

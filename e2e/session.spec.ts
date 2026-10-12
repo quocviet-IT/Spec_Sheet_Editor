@@ -119,14 +119,12 @@ test("TC-53 on a phone the editor shows its desktop notice and the list fits the
     await page.goto("/sheets");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page.getByRole("button", { name: /Tải phiếu lên|Upload sheet/ }).first()).toBeVisible();
-    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-    expect(fits, "the list must not scroll sideways").toBe(true);
     // the pagination row is on screen and wraps instead of widening the page
     const paging = page.getByLabel(/Số dòng mỗi trang|Rows per page/);
     await expect(paging).toBeVisible();
     await expect(page.getByRole("button", { name: /Trang sau|Next page/ })).toBeVisible();
-    const pagingFits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-    expect(pagingFits, "the pagination must not scroll sideways").toBe(true);
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+    expect(fits, "the list and its pagination must not scroll sideways").toBe(true);
   } finally {
     await restoreAll([async () => context?.close(), () => deleteSheetsOf(owner), () => resign(browser, STAFF_EMAIL, STAFF_STATE)]);
   }
