@@ -15,6 +15,8 @@ export const en: Messages = {
     cancel: "Cancel",
     copy: "Copy",
     copied: "Copied",
+    loadFailed: "This page could not be loaded. Check your connection and try again.",
+    tryAgain: "Try again",
   },
   login: {
     title: "Sign in",

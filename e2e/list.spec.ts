@@ -66,6 +66,24 @@ test("TC-52 more than 1,000 sheets: all 1,120 are reachable page by page", async
   await expect(page.getByRole("button", { name: /Trang sau|Next page/ })).toBeDisabled();
 });
 
+test("UC-02 the search matches %, _, *, commas, brackets and a backslash literally, on the server", async ({ page }) => {
+  const prefix = `lit-${randomUUID().slice(0, 8)}`;
+  const wanted = `${prefix} 50%_a*c,(x)\\y`;
+  // each decoy differs in one character that a wildcard, a regex or a filter separator would have let through
+  const decoys = [`${prefix} 50Q_a*c,(x)\\y`, `${prefix} 50%Xa*c,(x)\\y`, `${prefix} 50%_aac,(x)\\y`, `${prefix} 50%_a*c,(x)y`, `${prefix} 50%_a*c;(x)\\y`];
+  const owner = await staffId();
+  const rows = [wanted, ...decoys].map((name) => {
+    const id = randomUUID();
+    return { id, name, source_type: "png", source_path: `${id}/source.png`, thumb_path: `${id}/thumb.jpg`, page_px_w: 1135, page_px_h: 877, created_by: owner, updated_by: owner };
+  });
+  const { error } = await admin().from("spec_sheets").insert(rows);
+  if (error) throw new Error(`test sheets not inserted: ${error.message}`);
+
+  await page.goto("/sheets");
+  await searchSheets(page, wanted); // exactly one row: "Showing 1–1 of 1"
+  await expect(page.locator("#sheet-panel > ul > li").first()).toContainText(wanted);
+});
+
 // Leave the account empty so the other specs see a short list and a slow page cannot spill over.
 test.afterEach(async () => {
   await deleteSheetsOf(await staffId());

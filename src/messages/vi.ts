@@ -13,6 +13,8 @@ export const vi = {
     cancel: "Huỷ",
     copy: "Sao chép",
     copied: "Đã sao chép",
+    loadFailed: "Không tải được trang này. Kiểm tra kết nối mạng rồi thử lại.",
+    tryAgain: "Thử lại",
   },
   login: {
     title: "Đăng nhập",

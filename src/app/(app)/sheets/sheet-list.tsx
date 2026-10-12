@@ -191,7 +191,9 @@ export function SheetList({
               aria-current={tab === key ? "page" : undefined}
               onClick={() => {
                 setMenuFor(null);
-                if (timerRef.current) clearTimeout(timerRef.current); // a search still waiting must not undo the tab
+                // a search still waiting must not undo a tab change; the other tab then takes it in turn.
+                // On the open tab nothing changes, so the waiting search is left to run.
+                if (key !== tab && timerRef.current) clearTimeout(timerRef.current);
               }}
               className={"-mb-px inline-flex min-h-6 items-center border-b-2 px-1 pb-2 text-sm font-medium " + (tab === key ? "border-accent text-ink" : "border-transparent text-ink-2 hover:text-ink")}
             >
