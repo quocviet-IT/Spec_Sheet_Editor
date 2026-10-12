@@ -192,7 +192,14 @@ export function SheetList({
                 // a search still waiting would otherwise land on the old creator's address
                 if (timerRef.current) clearTimeout(timerRef.current);
                 const next = e.target.value;
-                startTransition(() => router.push(sheetListHref({ tab, q: parseSheetQuery(query), page: 1, size: info.size, owner: next })));
+                // the typed search goes with it, recorded as this box's own push so its echo never overwrites the box
+                const typed = parseSheetQuery(query);
+                if (typed !== lastPushed.current) {
+                  lastPushed.current = typed;
+                  pushedRef.current = [...pushedRef.current, typed];
+                }
+                // replace, not push: arrow keys on a closed select change it once per press, and each must not become a history entry
+                startTransition(() => router.replace(sheetListHref({ tab, q: typed, page: 1, size: info.size, owner: next })));
               }}
               className="min-h-[42px] w-full rounded-md border border-line bg-surface px-3 py-2"
             >
