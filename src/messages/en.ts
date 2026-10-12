@@ -273,6 +273,10 @@ export const en: Messages = {
       resetConfirm: "Issue a new one-time password? The person is signed out on every device.",
       resetYes: "Issue new password",
       search: "Search by name or email",
+      testAccounts: {
+        title: "Test accounts ({n})",
+        lead: "Reserved for the automated tests. They cannot be deleted because the audit log refers to them; keep them suspended.",
+      },
       sheets: "Sheets created",
       makeAdmin: "Make Admin",
       makeStaff: "Make Staff",

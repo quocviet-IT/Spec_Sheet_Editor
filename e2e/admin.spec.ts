@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { ADMIN_EMAIL, STAFF_B_EMAIL, adminId, resetPassword, resign, restoreAll, restoreStaff, staffBId, staffId } from "./support/account";
+import { isTestAccount } from "../src/admin/test-accounts";
 import { admin, deleteSheetsOf } from "./support/db";
 import { framedPng, valuesPdf } from "./support/files";
 import { TOP_LEFT, editValue, exportSheet, markers, openValuesSheet, storedSheet, uploadSheet, waitForVersion } from "./support/sheets";
@@ -38,7 +39,9 @@ const LABELS: Record<Kind, string> = {
 /** Presses the row button for an account on /admin/users and confirms; waits for "Saved.". */
 async function changeUser(page: Page, email: string, kind: Kind): Promise<void> {
   await page.goto("/admin/users");
-  await page.getByRole("searchbox", { name: /Tìm theo tên hoặc email|Search by name or email/ }).fill(email);
+  // The reserved test accounts sit in their own closed section, without a search box.
+  if (isTestAccount(email)) await page.getByText(/^(Tài khoản kiểm thử|Test accounts) \(\d+\)$/).click();
+  else await page.getByRole("searchbox", { name: /Tìm theo tên hoặc email|Search by name or email/ }).fill(email);
   const button = page.getByRole("button", { name: new RegExp(`^(${LABELS[kind]}): ${escape(email)}$`) });
   await button.click();
   const dialog = page.getByRole("alertdialog");
