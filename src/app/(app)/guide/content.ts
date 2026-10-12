@@ -121,9 +121,8 @@ export const BLOCKS: Record<SectionId, Block[]> = {
       steps: [
         { key: "adminUsersAdd", n: 1 },
         { key: "adminUsersSearch", n: 2 },
-        { key: "adminUsersRole", n: 3 },
-        { key: "adminUsersSuspend", n: 4 },
-        { key: "adminUsersReset", n: 5 },
+        { key: "adminUsersStatus", n: 3 },
+        { key: "adminUsersMenu", n: 4 },
       ],
     },
     {

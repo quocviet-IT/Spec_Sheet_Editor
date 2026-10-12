@@ -147,25 +147,56 @@ test.describe("as Admin", () => {
     await deleteSheetsOf(await adminId());
   });
 
-  test("Admin screens and the purge dialog", async ({ page }) => {
-    test.setTimeout(300_000);
-    await setLocale(page, "en");
-    const { step, failures } = steps(page, "en");
+  for (const locale of ["vi", "en"] as const) {
+    test(`Admin screens, row menus and dialogs (${locale})`, async ({ page }) => {
+      test.setTimeout(480_000);
+      await setLocale(page, locale);
+      const { step, failures } = steps(page, locale);
+      const rowMenu = /^(Thao tác cho|Thao tác với|Actions for) /;
 
-    // A trashed sheet, so that the Admin trash has a row to purge.
-    const { name } = await openValuesSheet(page, `a11y-admin`);
-    await trashFromList(page, name);
+      // A trashed sheet, so that the Admin trash has a row to open a menu on.
+      const { name } = await openValuesSheet(page, `a11y-admin-${locale}`);
+      await trashFromList(page, name);
 
-    for (const path of ["/admin/users", "/admin/access", "/admin/audit", "/admin/trash"]) {
-      await page.goto(path);
-      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      await step(path.slice(1).replace("/", "-"));
-    }
-    await page.getByRole("button", { name: /^(Xoá vĩnh viễn|Delete permanently)/ }).first().click();
-    await expect(page.getByRole("alertdialog")).toBeVisible();
-    await step("admin-purge-dialog");
-    await page.keyboard.press("Escape");
+      // Every Admin page, in both themes. The test accounts are listed only with ?show=test.
+      for (const path of ["/admin/users?show=test", "/admin/access", "/admin/audit", "/admin/trash"]) {
+        await page.goto(path);
+        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+        await step(path.slice(1).replace(/\?.*$/, "").replace("/", "-"));
+      }
 
-    expect(failures, failures.join("\n\n")).toEqual([]);
-  });
+      // Users: a row menu, then the Add user dialog.
+      await page.goto("/admin/users?show=test");
+      await page.getByRole("button", { name: rowMenu }).first().click();
+      await expect(page.getByRole("menu")).toBeVisible();
+      await step("admin-users-row-menu");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await page.getByRole("button", { name: /^(Thêm người dùng|Add user)$/ }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await step("admin-users-add-dialog");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+
+      // Access: the Add domain dialog (the first Add button belongs to the domains list).
+      await page.goto("/admin/access");
+      await page.getByRole("button", { name: /^(Thêm|Add)$/ }).first().click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await step("admin-access-add-dialog");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+
+      // Trash: the row menu, then the purge dialog it opens.
+      await page.goto("/admin/trash");
+      await page.getByRole("button", { name: rowMenu }).first().click();
+      await expect(page.getByRole("menu")).toBeVisible();
+      await step("admin-trash-row-menu");
+      await page.getByRole("menuitem", { name: /^(Xoá vĩnh viễn|Delete permanently)$/ }).click();
+      await expect(page.getByRole("alertdialog").or(page.getByRole("dialog"))).toBeVisible();
+      await step("admin-purge-dialog");
+      await page.keyboard.press("Escape");
+
+      expect(failures, failures.join("\n\n")).toEqual([]);
+    });
+  }
 });

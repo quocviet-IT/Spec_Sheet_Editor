@@ -14,6 +14,7 @@ import { RowMenu } from "../ui/row-menu";
 import { ConfirmDialog } from "../users/users-table";
 
 type Kind = "domain" | "email";
+type Message = { kind: Kind; status: string; alert: string | null };
 type Pending = { kind: Kind; entry: AccessEntry; opener: HTMLElement | null };
 
 /** The add fields for one list. Calls onAdded with the stored value once the entry has been added. */
@@ -83,12 +84,15 @@ function AddEntryForm({ kind, onAdded }: { kind: Kind; onAdded: (value: string) 
   );
 }
 
-function ListCard({ kind, icon: Icon, title, addTitle, entries, onAdded, onRemove }: {
+function ListCard({ kind, icon: Icon, title, addTitle, entries, status, alert, onAdded, onRemove }: {
   kind: Kind;
   icon: LucideIcon;
   title: string;
   addTitle: string;
   entries: AccessEntry[];
+  /** The result of the last add or remove in this list, shown here so it appears next to the action. */
+  status: string;
+  alert: string | null;
   onAdded: (value: string) => void;
   onRemove: (kind: Kind, entry: AccessEntry, opener: HTMLElement) => void;
 }) {
@@ -121,6 +125,8 @@ function ListCard({ kind, icon: Icon, title, addTitle, entries, onAdded, onRemov
           }}
         />
       </Dialog>
+      <p role="status" className={status ? "border-b border-line px-4 py-2 text-sm text-ink-2" : "sr-only"}>{status}</p>
+      {alert && <p role="alert" className="mx-4 my-3 rounded-md bg-danger-soft px-3 py-2 text-sm">{alert}</p>}
       {entries.length === 0 ? (
         <EmptyState icon={Icon} title={a.empty} />
       ) : (
@@ -165,12 +171,11 @@ export function AccessLists({ domains, emails }: { domains: AccessEntry[]; email
   const a = t.admin.access;
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("");
-  const [alert, setAlert] = useState<string | null>(null);
+  const [message, setMessage] = useState<Message>({ kind: "domain", status: "", alert: null });
+  const clear = (kind: Kind) => setMessage({ kind, status: "", alert: null });
 
   function ask(kind: Kind, entry: AccessEntry, opener: HTMLElement) {
-    setStatus("");
-    setAlert(null);
+    clear(kind);
     setPending({ kind, entry, opener });
   }
 
@@ -184,8 +189,7 @@ export function AccessLists({ domains, emails }: { domains: AccessEntry[]; email
     if (!pending || busy) return;
     const { kind, entry } = pending;
     setBusy(true);
-    setStatus("");
-    setAlert(null);
+    clear(kind);
     let result: Awaited<ReturnType<typeof removeAllowed>>;
     try {
       result = await removeAllowed({ kind, value: entry.value });
@@ -193,23 +197,19 @@ export function AccessLists({ domains, emails }: { domains: AccessEntry[]; email
       result = { error: "unknown" };
     }
     setBusy(false);
-    if ("ok" in result) setStatus(fill(a.removed, { value: entry.value }));
-    else setAlert(result.error === "self_lockout" ? a.errors.selfLockout : result.error === "forbidden" ? t.admin.users.errors.forbidden : a.errors.unknown);
+    if ("ok" in result) setMessage({ kind, status: fill(a.removed, { value: entry.value }), alert: null });
+    else setMessage({ kind, status: "", alert: result.error === "self_lockout" ? a.errors.selfLockout : result.error === "forbidden" ? t.admin.users.errors.forbidden : a.errors.unknown });
     close();
   }
 
-  const added = (value: string) => {
-    setAlert(null);
-    setStatus(fill(a.added, { value }));
-  };
+  const added = (kind: Kind) => (value: string) => setMessage({ kind, status: fill(a.added, { value }), alert: null });
+  const shown = (kind: Kind) => (message.kind === kind ? message : { kind, status: "", alert: null });
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-6 lg:grid-cols-2">
-        <ListCard kind="domain" icon={Globe} title={a.domains} addTitle={a.addDomain} entries={domains} onAdded={added} onRemove={ask} />
-        <ListCard kind="email" icon={Mail} title={a.emails} addTitle={a.addEmail} entries={emails} onAdded={added} onRemove={ask} />
+        <ListCard kind="domain" icon={Globe} title={a.domains} addTitle={a.addDomain} entries={domains} status={shown("domain").status} alert={shown("domain").alert} onAdded={added("domain")} onRemove={ask} />
+        <ListCard kind="email" icon={Mail} title={a.emails} addTitle={a.addEmail} entries={emails} status={shown("email").status} alert={shown("email").alert} onAdded={added("email")} onRemove={ask} />
       </div>
-      <p role="status" className="text-sm text-ink-2">{status}</p>
-      {alert && <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{alert}</p>}
       {pending && (
         <ConfirmDialog
           message={fill(a.removeConfirm, { n: pending.entry.loseAccess })}

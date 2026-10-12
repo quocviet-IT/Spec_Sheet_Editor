@@ -577,7 +577,7 @@ All use cases below share these preconditions: signed in, role Admin, account ac
 3. The Admin switches a role between Staff and Admin; a confirmation dialog names the person and the new role, and only then does the system call `set_user_role`.
 4. The Admin clicks "Suspend"; a confirmation dialog follows, and only then does the system call `set_user_status`. The suspended user loses access on their next request.
 5. The Admin clicks "Add user" (name, email, role); the system creates the account and the one-time password is shown once.
-6. The Admin clicks "Issue new password" (password accounts only, not one's own); the person is signed out on every device.
+6. The Admin opens the "⋯" menu on the person's row and chooses "Issue new password" (password accounts only, not one's own); the person is signed out on every device.
 
 **Extensions:** 4a. "Reinstate": the account works again from its next sign-in.
 
@@ -645,7 +645,7 @@ All use cases below share these preconditions: signed in, role Admin, account ac
 
 **Main flow:**
 
-1. The Admin opens the Trash (every deleted sheet, who deleted it and when) and clicks "Delete permanently".
+1. The Admin opens the Trash (every deleted sheet, who deleted it and when), opens the "⋯" menu on the sheet's row and chooses "Delete permanently".
 2. The system shows a confirmation dialog: thumbnail, sheet name, a warning that this cannot be undone, and a field to retype the sheet name. The delete button is enabled only when the name matches.
 3. The server checks the Admin role and calls `purge_sheet` with the Admin's session. In one statement, `purge_sheet` checks that the sheet is still in the Trash and deletes the record. Only then does the server delete the original and the thumbnail from storage with the service role, making two attempts.
 4. The system shows "'…' was permanently deleted."
@@ -1176,7 +1176,7 @@ Wireframes use illustrative data; sheet names and people are examples.
 
 *Figure 8.3. S3, S5, S1 and S6.*
 
-*Figure 8.4. S7 Admin · Users. The Admin's own row has no Suspend button (BR-13).*
+*Figure 8.4. S7 Admin · Users. The row actions sit in a "⋯" menu; the Admin's own row has no Suspend item (BR-13). The layout of the four Admin screens follows `2026-10-12-admin-ui-redesign.md` in this folder; the wireframes in the HTML edition show the earlier layout.*
 
 *Figure 8.5. S8 Admin · Access & settings.*
 

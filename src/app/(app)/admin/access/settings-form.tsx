@@ -85,6 +85,7 @@ export function SettingsForm({ initial }: { initial: Record<SettingKey, number> 
           const Icon = ICONS[key];
           const hint = `${id}-${key}-hint`;
           const error = `${id}-${key}-error`;
+          const unit = `${id}-${key}-unit`;
           return (
             <li key={key} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
               <Icon size={16} aria-hidden="true" className="shrink-0 text-ink-2" />
@@ -108,10 +109,10 @@ export function SettingsForm({ initial }: { initial: Record<SettingKey, number> 
                     if (invalid) setBadKey(null);
                   }}
                   aria-invalid={invalid ? true : undefined}
-                  aria-describedby={invalid ? `${hint} ${error}` : hint}
+                  aria-describedby={invalid ? `${hint} ${unit} ${error}` : `${hint} ${unit}`}
                   className="w-28 rounded-md border border-line bg-surface px-3 py-2 text-sm tabular-nums"
                 />
-                <span className="w-24 text-sm text-ink-2">{a.units[key]}</span>
+                <span id={unit} className="w-24 text-sm text-ink-2">{a.units[key]}</span>
               </div>
             </li>
           );
