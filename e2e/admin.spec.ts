@@ -351,7 +351,8 @@ async function restoreFromTrash(page: Page, name: string): Promise<void> {
 /** Opens the permanent-deletion dialog for a sheet on /admin/trash. */
 async function openPurge(page: Page, name: string) {
   await page.goto("/admin/trash");
-  await page.getByRole("button", { name: new RegExp(`^(Xoá vĩnh viễn|Delete permanently): ${escape(name)}$`) }).click();
+  await page.getByRole("button", { name: new RegExp(`^(Thao tác với|Actions for) ${escape(name)}$`) }).click(); // the row's ... menu
+  await page.getByRole("menuitem", { name: /^(Xoá vĩnh viễn|Delete permanently)$/ }).click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toBeVisible();
   return dialog;

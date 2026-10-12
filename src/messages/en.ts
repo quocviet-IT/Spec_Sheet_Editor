@@ -402,7 +402,7 @@ export const en: Messages = {
       title: "Trash and clean-up",
       lead: "Sheets in the Trash can be restored by anyone; only an Admin can delete them permanently.",
       empty: "The Trash is empty.",
-      columns: { sheet: "Sheet", trashed: "Moved to Trash", by: "By" },
+      columns: { thumbnail: "Preview", sheet: "Sheet", deletedBy: "Deleted by", deleted: "Deleted", actions: "Actions" },
       deleteForever: "Delete permanently",
       dialogTitle: "Delete permanently",
       warning: "This cannot be undone. The original file, the thumbnail and the record are deleted.",

@@ -283,23 +283,28 @@ export type TrashRow = { id: string; name: string; thumbUrl: string | null; dele
 
 type TrashDbRow = { id: string; name: string; thumb_path: string; deleted_at: string; deleted_by_name: string | null };
 
-/** Every sheet in the Trash, newest first, with short-lived thumbnail links (as in the sheet list). */
-export async function fetchTrash(): Promise<TrashRow[]> {
+/**
+ * One page of the Trash, newest first, with the exact total. Only this page's thumbnails are signed. A page past
+ * the end is clamped to the last one, the same way `pageInfo` clamps it for the page that shows the result.
+ */
+export async function fetchTrashPage(page: number, size: number): Promise<{ rows: TrashRow[]; total: number }> {
   const supabase = await createSupabaseServer();
-  const rows: TrashDbRow[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
+  const read = async (at: number) => {
+    const { from, to } = rangeOf(at, size);
+    const { data, error, count } = await supabase
       .from("sheet_list")
-      .select("id, name, thumb_path, deleted_at, deleted_by_name")
+      .select("id, name, thumb_path, deleted_at, deleted_by_name", { count: "exact" })
       .not("deleted_at", "is", null)
       .order("deleted_at", { ascending: false })
       .order("id", { ascending: false })
-      .range(from, from + PAGE - 1);
+      .range(from, to);
     if (error) throw error;
-    const page = (data ?? []) as unknown as TrashDbRow[];
-    rows.push(...page);
-    if (page.length < PAGE) break;
-  }
+    return { data: (data ?? []) as unknown as TrashDbRow[], total: count ?? 0 };
+  };
+  let result = await read(page);
+  const last = pageInfo(result.total, page, size).page;
+  if (result.data.length === 0 && result.total > 0 && last !== page) result = await read(last);
+  const rows = result.data;
   const links = new Map<string, string>();
   if (rows.length > 0) {
     const ttl = (await fetchSettings()).signed_url_ttl_min * 60;
@@ -309,5 +314,8 @@ export async function fetchTrash(): Promise<TrashRow[]> {
       for (const s of signed ?? []) if (s.path && s.signedUrl && !s.error) links.set(s.path, s.signedUrl);
     }
   }
-  return rows.map((r) => ({ id: r.id, name: r.name, thumbUrl: links.get(r.thumb_path) ?? null, deletedAt: r.deleted_at, deletedByName: r.deleted_by_name }));
+  return {
+    rows: rows.map((r) => ({ id: r.id, name: r.name, thumbUrl: links.get(r.thumb_path) ?? null, deletedAt: r.deleted_at, deletedByName: r.deleted_by_name })),
+    total: result.total,
+  };
 }

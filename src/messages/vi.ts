@@ -400,7 +400,7 @@ export const vi = {
       title: "Thùng rác và dọn dẹp",
       lead: "Ai cũng khôi phục được phiếu trong Thùng rác; chỉ quản trị viên mới xoá vĩnh viễn được.",
       empty: "Thùng rác trống.",
-      columns: { sheet: "Phiếu", trashed: "Đưa vào Thùng rác", by: "Người đưa" },
+      columns: { thumbnail: "Xem trước", sheet: "Phiếu", deletedBy: "Người xoá", deleted: "Thời điểm xoá", actions: "Thao tác" },
       deleteForever: "Xoá vĩnh viễn",
       dialogTitle: "Xoá vĩnh viễn",
       warning: "Không thể hoàn tác. Tệp gốc, ảnh thu nhỏ và bản ghi đều bị xoá.",
