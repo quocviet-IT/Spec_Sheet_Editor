@@ -1,5 +1,6 @@
 import "server-only";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { pageInfo, pageRead, rangeOf } from "./paging";
 import { auditRange, groupPrefix, type AuditFilter } from "./audit-filter";
 import { SETTING_DEFAULTS, type SettingKey } from "./settings-ranges";
 
@@ -80,22 +81,23 @@ export async function fetchUsers(): Promise<UserRow[]> {
 }
 
 /** `accounts`: Google accounts the entry admits; `loseAccess`: those admitted by this entry and no other. */
-export type AccessEntry = { value: string; note: string | null; accounts: number; loseAccess: number };
+export type AccessEntry = { value: string; note: string | null; createdAt: string; accounts: number; loseAccess: number };
 
-type AllowedRow = { value: string; note: string | null };
+type AllowedRow = { value: string; note: string | null; createdAt: string };
 
 async function fetchAllowed(supabase: Supabase, table: "allowed_domains" | "allowed_emails", column: "domain" | "email"): Promise<AllowedRow[]> {
   const all: AllowedRow[] = [];
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from(table)
-      .select(`${column}, note`)
+      .select(`${column}, note, created_at`)
       .order(column)
       .range(from, from + PAGE - 1);
     if (error) throw error;
     const rows = ((data ?? []) as unknown as Record<string, string | null>[]).map((r) => ({
       value: String(r[column]),
       note: r.note ?? null,
+      createdAt: String(r.created_at),
     }));
     all.push(...rows);
     if (rows.length < PAGE) return all;
@@ -151,7 +153,6 @@ export async function fetchSettings(): Promise<Record<SettingKey, number>> {
   return out;
 }
 
-export const AUDIT_PAGE = 100;
 export const AUDIT_CSV_MAX = 50_000;
 
 export type AuditRow = {
@@ -215,21 +216,30 @@ export async function maxAuditId(filter: AuditFilter): Promise<number | null> {
   return row ? row.id : null;
 }
 
-/** One page of the audit log, newest first; `before` is the id of the last entry already shown. */
-export async function fetchAudit(filter: AuditFilter, before: number | null): Promise<{ rows: AuditRow[]; next: number | null; total: number }> {
+/**
+ * One numbered page of the audit log, newest first, over a pinned snapshot: `upto` is the newest id the snapshot
+ * includes. When the caller has none (the first visit) it is read here and returned, so every later page link can
+ * carry it and entries written meanwhile do not shift the pages. A page past the end is clamped to the last one.
+ */
+export async function fetchAuditPage(
+  filter: AuditFilter,
+  upto: number | null,
+  page: number,
+  size: number,
+): Promise<{ rows: AuditRow[]; total: number; upto: number | null }> {
+  const pinned = upto ?? (await maxAuditId(filter));
+  if (pinned === null) return { rows: [], total: 0, upto: null };
+  const total = await countAudit(filter, pinned);
+  const { from, to } = rangeOf(pageInfo(total, page, size).page, size);
   const supabase = await createSupabaseServer();
   const f = auditParams(filter);
-  let q = supabase.from("audit_log").select(AUDIT_COLUMNS).gte("occurred_at", f.fromIso).lt("occurred_at", f.toIsoExclusive);
+  let q = supabase.from("audit_log").select(AUDIT_COLUMNS).gte("occurred_at", f.fromIso).lt("occurred_at", f.toIsoExclusive).lte("id", pinned);
   if (f.actor) q = q.eq("actor_id", f.actor);
   if (f.like) q = q.like("action", f.like);
   if (f.target) q = q.eq("target_id", f.target);
-  if (before !== null) q = q.lt("id", before);
-  const [page, total] = await Promise.all([q.order("id", { ascending: false }).limit(AUDIT_PAGE + 1), countAudit(filter)]);
-  if (page.error) throw page.error;
-  const rows = ((page.data ?? []) as unknown as AuditDbRow[]).map(toAuditRow);
-  const more = rows.length > AUDIT_PAGE;
-  const shown = more ? rows.slice(0, AUDIT_PAGE) : rows;
-  return { rows: shown, next: more ? shown[shown.length - 1].id : null, total };
+  const { data, error } = await q.order("id", { ascending: false }).range(from, to);
+  if (error) throw error;
+  return { rows: ((data ?? []) as unknown as AuditDbRow[]).map(toAuditRow), total, upto: pinned };
 }
 
 /**
@@ -273,22 +283,31 @@ export type TrashRow = { id: string; name: string; thumbUrl: string | null; dele
 
 type TrashDbRow = { id: string; name: string; thumb_path: string; deleted_at: string; deleted_by_name: string | null };
 
-/** Every sheet in the Trash, newest first, with short-lived thumbnail links (as in the sheet list). */
-export async function fetchTrash(): Promise<TrashRow[]> {
+/**
+ * One page of the Trash, newest first, with the exact total. Only this page's thumbnails are signed. A page past
+ * the end is clamped to the last one, the same way `pageInfo` clamps it for the page that shows the result.
+ */
+export async function fetchTrashPage(page: number, size: number): Promise<{ rows: TrashRow[]; total: number; page: number }> {
   const supabase = await createSupabaseServer();
-  const rows: TrashDbRow[] = [];
-  for (let from = 0; ; from += PAGE) {
+  // Count first: a range that starts past the end, read together with an exact count, is refused by PostgREST (416).
+  const { count, error: countError } = await supabase
+    .from("sheet_list")
+    .select("id", { count: "exact", head: true })
+    .not("deleted_at", "is", null);
+  if (countError) throw countError;
+  const total = count ?? 0;
+  const plan = pageRead(total, page, size);
+  let rows: TrashDbRow[] = [];
+  if (plan) {
     const { data, error } = await supabase
       .from("sheet_list")
       .select("id, name, thumb_path, deleted_at, deleted_by_name")
       .not("deleted_at", "is", null)
       .order("deleted_at", { ascending: false })
       .order("id", { ascending: false })
-      .range(from, from + PAGE - 1);
+      .range(plan.from, plan.to);
     if (error) throw error;
-    const page = (data ?? []) as unknown as TrashDbRow[];
-    rows.push(...page);
-    if (page.length < PAGE) break;
+    rows = (data ?? []) as unknown as TrashDbRow[];
   }
   const links = new Map<string, string>();
   if (rows.length > 0) {
@@ -299,5 +318,9 @@ export async function fetchTrash(): Promise<TrashRow[]> {
       for (const s of signed ?? []) if (s.path && s.signedUrl && !s.error) links.set(s.path, s.signedUrl);
     }
   }
-  return rows.map((r) => ({ id: r.id, name: r.name, thumbUrl: links.get(r.thumb_path) ?? null, deletedAt: r.deleted_at, deletedByName: r.deleted_by_name }));
+  return {
+    rows: rows.map((r) => ({ id: r.id, name: r.name, thumbUrl: links.get(r.thumb_path) ?? null, deletedAt: r.deleted_at, deletedByName: r.deleted_by_name })),
+    total,
+    page: plan?.page ?? 1,
+  };
 }

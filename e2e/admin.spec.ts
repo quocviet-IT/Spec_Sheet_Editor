@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { ADMIN_EMAIL, STAFF_B_EMAIL, adminId, resetPassword, resign, restoreAll, restoreStaff, staffBId, staffId } from "./support/account";
-import { isTestAccount } from "../src/admin/test-accounts";
 import { admin, deleteSheetsOf } from "./support/db";
 import { framedPng, valuesPdf } from "./support/files";
 import { TOP_LEFT, editValue, exportSheet, markers, openValuesSheet, storedSheet, uploadSheet, waitForVersion } from "./support/sheets";
@@ -36,14 +35,14 @@ const LABELS: Record<Kind, string> = {
   status: "Đình chỉ|Kích hoạt lại|Suspend|Reinstate",
 };
 
-/** Presses the row button for an account on /admin/users and confirms; waits for "Saved.". */
+/** Opens the row menu of an account on /admin/users, chooses the item and confirms; waits for "Saved.". */
 async function changeUser(page: Page, email: string, kind: Kind): Promise<void> {
-  await page.goto("/admin/users");
-  // The reserved test accounts sit in their own closed section, without a search box.
-  if (isTestAccount(email)) await page.getByText(/^(Tài khoản kiểm thử|Test accounts) \(\d+\)$/).click();
-  else await page.getByRole("searchbox", { name: /Tìm theo tên hoặc email|Search by name or email/ }).fill(email);
-  const button = page.getByRole("button", { name: new RegExp(`^(${LABELS[kind]}): ${escape(email)}$`) });
-  await button.click();
+  // The reserved test accounts are listed only with ?show=test.
+  await page.goto("/admin/users?show=test");
+  await page.getByRole("searchbox", { name: /Tìm theo tên hoặc email|Search by name or email/ }).fill(email);
+  const menu = ROW_OF(page, email).getByRole("button", { name: /^(Thao tác cho|Actions for) / });
+  await menu.click();
+  await page.getByRole("menuitem", { name: new RegExp(`^(${LABELS[kind]})$`) }).click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: new RegExp(`^(${LABELS[kind]})$`) }).click();
@@ -265,37 +264,47 @@ test("Access lists: add a domain and an email, refuse a duplicate and a bad valu
   await clean();
   try {
     await page.goto("/admin/access");
-    const value = page.getByLabel(/^(Tên miền hoặc email|Domain or email)$/);
-    const add = page.getByRole("button", { name: /^(Thêm|Add)$/ });
-    const kind = page.getByLabel(/^(Loại|Kind)$/);
+    const domains = page.getByRole("region", { name: /^(Tên miền được phép|Permitted domains)$/ });
+    const emails = page.getByRole("region", { name: /^(Email được phép|Permitted emails)$/ });
+    const addButton = (card: Locator) => card.getByRole("button", { name: /^(Thêm|Add)$/ });
+    // Each list has its own Add button; the dialog it opens holds the value and note fields.
+    const dialog = page.getByRole("dialog");
+    const value = dialog.getByLabel(/^(Tên miền hoặc email|Domain or email)$/);
+    const submit = dialog.getByRole("button", { name: /^(Thêm|Add)$/ });
 
+    await addButton(domains).click();
     await value.fill(domain);
-    await add.click();
+    await submit.click();
+    await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("status").filter({ hasText: new RegExp(escape(domain)) })).toBeVisible();
-    const row = page.getByRole("listitem").filter({ hasText: domain });
-    await expect(row).toContainText(/0 tài khoản|0 account\(s\)/);
+    await expect(domains.getByRole("row").filter({ hasText: domain })).toContainText(/0 tài khoản|0 account\(s\)/);
 
+    await addButton(domains).click();
     await value.fill(domain);
-    await add.click();
-    await expect(page.getByText(/Mục này đã có trong danh sách|This entry is already on the list/)).toBeVisible();
+    await submit.click();
+    await expect(dialog.getByText(/Mục này đã có trong danh sách|This entry is already on the list/)).toBeVisible();
 
     await value.fill("not a domain");
-    await add.click();
-    await expect(page.getByText(/Nhập tên miền, ví dụ|Enter a domain such as/)).toBeVisible();
+    await submit.click();
+    await expect(dialog.getByText(/Nhập tên miền, ví dụ|Enter a domain such as/)).toBeVisible();
+    await dialog.getByRole("button", { name: /^(Đóng|Close)$/ }).click();
+    await expect(dialog).toHaveCount(0);
 
-    await kind.selectOption("email");
+    await addButton(emails).click();
     await value.fill(email);
-    await add.click();
+    await submit.click();
+    await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("status").filter({ hasText: new RegExp(escape(email)) })).toBeVisible();
-    await expect(page.getByRole("listitem").filter({ hasText: email })).toContainText(/0 tài khoản|0 account\(s\)/);
+    await expect(emails.getByRole("row").filter({ hasText: email })).toContainText(/0 tài khoản|0 account\(s\)/);
 
-    for (const entry of [domain, email]) {
-      await page.getByRole("button", { name: new RegExp(`^(Gỡ|Remove): ${escape(entry)}$`) }).click();
-      const dialog = page.getByRole("alertdialog");
-      await expect(dialog).toContainText(/0 tài khoản sẽ mất quyền truy cập|0 account\(s\) will lose access/);
-      await dialog.getByRole("button", { name: /^(Gỡ|Remove)$/ }).click();
+    for (const [card, entry] of [[domains, domain], [emails, email]] as const) {
+      await card.getByRole("button", { name: new RegExp(`(Thao tác cho|Actions for) ${escape(entry)}$`) }).click();
+      await page.getByRole("menuitem", { name: /^(Gỡ|Remove)$/ }).click();
+      const confirm = page.getByRole("alertdialog");
+      await expect(confirm).toContainText(/0 tài khoản sẽ mất quyền truy cập|0 account\(s\) will lose access/);
+      await confirm.getByRole("button", { name: /^(Gỡ|Remove)$/ }).click();
       await expect(page.getByRole("status").filter({ hasText: /^(Đã gỡ|Removed) / })).toContainText(entry);
-      await expect(page.getByRole("listitem").filter({ hasText: entry })).toHaveCount(0);
+      await expect(card.getByRole("row").filter({ hasText: entry })).toHaveCount(0);
     }
   } finally {
     await clean();
@@ -342,7 +351,8 @@ async function restoreFromTrash(page: Page, name: string): Promise<void> {
 /** Opens the permanent-deletion dialog for a sheet on /admin/trash. */
 async function openPurge(page: Page, name: string) {
   await page.goto("/admin/trash");
-  await page.getByRole("button", { name: new RegExp(`^(Xoá vĩnh viễn|Delete permanently): ${escape(name)}$`) }).click();
+  await page.getByRole("button", { name: new RegExp(`^(Thao tác cho|Thao tác với|Actions for) ${escape(name)}$`) }).click(); // the row's ... menu
+  await page.getByRole("menuitem", { name: /^(Xoá vĩnh viễn|Delete permanently)$/ }).click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toBeVisible();
   return dialog;
@@ -406,8 +416,8 @@ test("TC-68 / TC-72 every Admin action is audited once, and the CSV matches the 
     await page.waitForURL(/actor=/);
     const shown: Record<string, number> = {};
     for (;;) {
-      for (const action of await page.locator("tbody tr td:nth-child(3)").allTextContents()) shown[action] = (shown[action] ?? 0) + 1;
-      const older = page.getByRole("link", { name: /Xem các mục cũ hơn|Show older entries/ });
+      for (const action of await page.locator("tbody tr td[data-action]").evaluateAll((cells) => cells.map((c) => c.getAttribute("data-action") ?? ""))) shown[action] = (shown[action] ?? 0) + 1;
+      const older = page.getByRole("link", { name: /^(Trang sau|Next page)$/ });
       if ((await older.count()) === 0) break;
       const here = page.url();
       await older.click();
@@ -416,9 +426,9 @@ test("TC-68 / TC-72 every Admin action is audited once, and the CSV matches the 
     for (const action of WATCHED) expect(shown[action] ?? 0, `${action} on the page`).toBe(after[action]);
 
     // The CSV: UTF-8 BOM, the header, only the Admin's rows, and the sheet's name.
-    await page.goto(page.url().split("&before=")[0]);
+    await page.goto(page.url().split("&upto=")[0]);
     const count = Number((await page.getByText(/^(Số mục|Entries): /).innerText()).replace(/\D/g, ""));
-    const downloading = page.waitForEvent("download");
+    const downloading = page.waitForEvent("download", { timeout: 60_000 });
     await page.getByRole("link", { name: /^(Tải CSV|Download CSV)$/ }).click();
     const download = await downloading;
     const path = testInfo.outputPath("audit.csv");

@@ -60,6 +60,13 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 | `npm run admin:create` | Create the first Admin (once) |
 | `npm run admin:reset-password` | New one-time password for an Admin who cannot sign in |
 
+## Admin area
+
+Admin → Users, Access and settings, Audit log, and Trash and clean-up share one layout: a page header, tabs,
+tables with status badges, a "⋯" menu on each row for its actions, and paging. The reserved test accounts are
+hidden from the Users list unless the address ends in `?show=test`. The design is in
+`docs/design/2026-10-12-admin-ui-redesign.md`.
+
 ## End-to-end tests
 
 `npm run e2e` runs the Playwright tests against the development project. It needs the dev server

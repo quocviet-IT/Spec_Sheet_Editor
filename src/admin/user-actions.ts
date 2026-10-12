@@ -137,7 +137,10 @@ export async function setRole(input: {
   try {
     const supabase = await createSupabaseServer();
     const { error } = await supabase.rpc("set_user_role", { p_user: parsed.data.userId, p_role: parsed.data.role });
-    if (!error) return { ok: true };
+    if (!error) {
+      revalidatePath("/admin/users");
+      return { ok: true };
+    }
     const code = mapChangeError(error.message);
     return { error: code === "self_suspend" ? "unknown" : code };
   } catch {
@@ -156,7 +159,10 @@ export async function setStatus(input: {
   try {
     const supabase = await createSupabaseServer();
     const { error } = await supabase.rpc("set_user_status", { p_user: parsed.data.userId, p_status: parsed.data.status });
-    if (!error) return { ok: true };
+    if (!error) {
+      revalidatePath("/admin/users");
+      return { ok: true };
+    }
     return { error: mapChangeError(error.message) };
   } catch {
     return { error: "unknown" };

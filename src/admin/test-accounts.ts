@@ -1,7 +1,7 @@
 /**
  * The accounts reserved for the end-to-end tests (the same addresses as e2e/support/account.ts). They stay in
- * the system because the append-only audit log refers to them, but the Users page shows them apart from the
- * real people, in a closed "Test accounts" section. Pure: no server or browser code.
+ * the system because the append-only audit log refers to them, but the Users page hides them unless the Admin
+ * opens it with ?show=test. Pure: no server or browser code.
  */
 export const TEST_ACCOUNT_EMAILS: readonly string[] = ["e2e-staff@ctyhp.vn", "e2e-staff-b@ctyhp.vn", "e2e-admin@ctyhp.vn"];
 

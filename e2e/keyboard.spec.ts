@@ -9,7 +9,7 @@ test.afterEach(async () => {
   await deleteSheetsOf(await staffId());
 });
 
-type Active = { tag: string; text: string; detection: string | null; popup: string | null; type: string | null };
+type Active = { tag: string; text: string; label: string | null; detection: string | null; popup: string | null; type: string | null };
 
 const active = (page: Page): Promise<Active> =>
   page.evaluate(() => {
@@ -17,6 +17,7 @@ const active = (page: Page): Promise<Active> =>
     return {
       tag: el.tagName,
       text: (el.textContent ?? "").trim(),
+      label: el.getAttribute("aria-label"),
       detection: el.getAttribute("data-detection"),
       popup: el.getAttribute("aria-haspopup"),
       type: el.getAttribute("type"),
@@ -117,4 +118,45 @@ test("NFR-07 a sheet is opened, a value edited and saved, and exported with the 
   const download = await downloading;
   await download.saveAs(testInfo.outputPath(download.suggestedFilename()));
   expect(download.suggestedFilename()).toMatch(/\.png$/);
+});
+
+test.describe("Admin", () => {
+  test.use({ storageState: "e2e/.auth/admin.json" });
+
+  test("a row menu on the Users page is opened, moved through and closed with the keyboard alone", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/admin/users?show=test"); // the reserved test accounts are listed only with ?show=test
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); // Tab starts from the top of the page
+
+    // Tab to a row's "..." button.
+    await tabTo(page, "a row's ... button", (a) => a.popup === "menu" && /^(Thao tác cho|Actions for) /.test(a.label ?? ""));
+    // Pin the button by its own name: a ":focus" locator would follow focus into the menu.
+    const label = (await active(page)).label!;
+    const button = page.getByRole("button", { name: label, exact: true });
+    await expect(button).toBeFocused();
+    await expect(button).toHaveAttribute("aria-expanded", "false");
+
+    // Enter opens the menu on its first item.
+    await page.keyboard.press("Enter");
+    const menu = page.getByRole("menu");
+    await expect(menu).toBeVisible();
+    await expect(button).toHaveAttribute("aria-expanded", "true");
+    const items = menu.getByRole("menuitem");
+    await expect(items.first()).toBeFocused();
+    await expectFocusRing(page, "the first menu item");
+
+    // ArrowDown moves to the next item (and wraps when the menu has one item only).
+    const count = await items.count();
+    await page.keyboard.press("ArrowDown");
+    await expect(items.nth(1 % count)).toBeFocused();
+    await expectFocusRing(page, "the second menu item");
+
+    // Escape closes the menu and focus is back on the button.
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(button).toBeFocused();
+    expect((await active(page)).label).toBe(label);
+    await expect(button).toHaveAttribute("aria-expanded", "false");
+  });
 });

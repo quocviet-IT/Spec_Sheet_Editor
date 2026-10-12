@@ -54,6 +54,15 @@ class Shots {
 
   /** Takes the picture, then measures every target (numbered 1, 2, 3 in order) against the clip. */
   async take(page: Page, name: string, targets: (Locator | Right | Above)[], clip?: Clip): Promise<void> {
+    await hideOtherRows(page, name);
+    try {
+      await this.shoot(page, name, targets, clip);
+    } finally {
+      await showOtherRows(page);
+    }
+  }
+
+  private async shoot(page: Page, name: string, targets: (Locator | Right | Above)[], clip?: Clip): Promise<void> {
     await page.mouse.move(VIEWPORT.width - 4, VIEWPORT.height - 4); // no stray hover state
     await page.waitForTimeout(250);
     const area = clip ?? { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height };
@@ -106,6 +115,40 @@ class Shots {
     const ordered = Object.fromEntries(Object.entries(this.points));
     await writeFile(`src/app/(app)/guide/shots/${this.locale}/points.json`, JSON.stringify(ordered, null, 2) + "\n", "utf8");
   }
+}
+
+/**
+ * The capture runs against the live database, where real sheets and real people exist, and the repository is
+ * public. Only the capture's own sheets and the reserved test accounts may appear in a picture.
+ */
+const OWN_ROWS = /Ring RG-1042|Ring-RG-1042|Pendant PD-2210|Bracelet BR-7731|E2E Staff|E2E Admin|e2e-staff|e2e-admin/;
+const DATA_ROWS = "main li:has(a[href^='/sheets/']), main tbody tr";
+
+/** Hides every list or table row that is not the capture's own, before measuring and shooting; fails if one stays visible. */
+async function hideOtherRows(page: Page, name: string): Promise<void> {
+  await page.locator(DATA_ROWS).evaluateAll((rows, own) => {
+    const re = new RegExp(own);
+    for (const row of rows as HTMLElement[]) {
+      if (re.test(row.textContent ?? "")) continue;
+      row.setAttribute("data-capture-hidden", "");
+      row.style.display = "none";
+    }
+  }, OWN_ROWS.source);
+  const foreign = await page.locator(DATA_ROWS).evaluateAll(
+    (rows, own) => (rows as HTMLElement[]).filter((r) => r.offsetParent !== null && !new RegExp(own).test(r.textContent ?? "")).length,
+    OWN_ROWS.source,
+  );
+  if (foreign > 0) throw new Error(`${name}: ${foreign} row(s) that are not the capture's own are still visible`);
+}
+
+async function showOtherRows(page: Page): Promise<void> {
+  if (page.isClosed()) return;
+  await page.locator("[data-capture-hidden]").evaluateAll((rows) => {
+    for (const row of rows as HTMLElement[]) {
+      row.removeAttribute("data-capture-hidden");
+      row.style.display = "";
+    }
+  });
 }
 
 async function context(browser: Browser, locale: Locale, state?: string): Promise<BrowserContext> {
@@ -269,21 +312,17 @@ for (const locale of LOCALES) {
       {
         const page = await adminCtx.newPage();
         page.on("dialog", (d) => void d.accept());
-        await page.goto("/admin/users", { timeout: 120_000 });
+        await page.goto("/admin/users?show=test", { timeout: 120_000 });
         const email = "e2e-staff@ctyhp.vn";
         await page.getByRole("searchbox", { name: /Tìm theo tên hoặc email|Search by name or email/ }).fill(email);
         const row = page.getByRole("row").filter({ hasText: email });
         await expect(row).toHaveCount(1);
         await page.mouse.click(1000, 700); // takes focus off the search box
         await shots.take(page, "admin-users", [
-          new Above(button(page, /^(Tạo tài khoản|Create account)$/)),
+          new Above(button(page, /^(Thêm người dùng|Add user)$/)),
           page.getByRole("searchbox", { name: /Tìm theo tên hoặc email|Search by name or email/ }),
-          new Above(row.getByRole("button", { name: /^(Đặt làm quản trị viên|Make Admin): / })),
-          new Above(row.getByRole("button", { name: /^(Đình chỉ|Suspend): / })),
-          // In Vietnamese the buttons wrap and this one starts a new line: its left is free there.
-          locale === "vi"
-            ? row.getByRole("button", { name: /^Cấp lại mật khẩu: / })
-            : new Above(row.getByRole("button", { name: /^Issue new password: / })),
+          new Above(row.getByText(/^(Đang hoạt động|Active)$/)),
+          new Above(row.getByRole("button", { name: /^(Thao tác cho|Actions for) / })),
         ], { x: 100, y: 0, width: 1240, height: 640 });
 
         // A sheet in the Trash, made by the reserved Admin and removed again below.
@@ -296,9 +335,9 @@ for (const locale of LOCALES) {
         const trashRow = page.getByRole("row").filter({ hasText: "Bracelet BR-7731" });
         await expect(trashRow).toHaveCount(1);
         await shots.take(page, "admin-trash", [
-          trashRow.getByRole("button", { name: /^(Xoá vĩnh viễn|Delete permanently)/ }),
+          trashRow.getByRole("button", { name: /^(Thao tác cho|Thao tác với|Actions for) / }),
           button(page, /^(Kiểm tra tệp mồ côi|Check for orphan files)$/),
-        ], { x: 100, y: 0, width: 1240, height: 500 });
+        ], { x: 100, y: 0, width: 1240, height: 680 }); // tall enough for the orphan clean-up card below the table
         await page.close();
       }
 

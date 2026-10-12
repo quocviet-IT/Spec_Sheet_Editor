@@ -1,5 +1,6 @@
 "use client";
 
+import { FolderX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { formatBytes } from "@/admin/orphans";
 import { checkOrphans, cleanOrphans } from "@/admin/trash-actions";
@@ -79,8 +80,11 @@ export function OrphanPanel() {
   }
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-lg font-semibold">{a.orphans}</h2>
+    <section className="space-y-3 rounded-lg border border-line bg-surface p-4">
+      <h2 className="flex items-center gap-2 text-lg font-semibold">
+        <FolderX size={20} aria-hidden="true" className="shrink-0 text-ink-2" />
+        {a.orphans}
+      </h2>
       <p className="text-sm text-ink-2">{a.orphansLead}</p>
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => void check()} disabled={busy} aria-busy={busy} className="rounded-md border border-line px-3 py-2 text-sm disabled:opacity-50">
