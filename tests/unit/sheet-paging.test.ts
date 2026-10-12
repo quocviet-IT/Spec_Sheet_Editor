@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_PAGE_SIZE } from "@/admin/paging";
-import { nameContainsPattern, parseSheetTab, sheetListHref } from "@/sheets/list-url";
+import { nameContainsPattern, parseSheetQuery, parseSheetTab, readUrlQuery, sheetListHref } from "@/sheets/list-url";
 
 describe("nameContainsPattern", () => {
   const matches = (query: string, name: string) => new RegExp(nameContainsPattern(query), "i").test(name);
@@ -63,5 +63,29 @@ describe("sheetListHref", () => {
 
   it("changing the tab or the search resets the page, by passing page 1", () => {
     expect(sheetListHref({ tab: "trash", q: "x", page: 1, size: 25 })).toBe("/sheets?tab=trash&q=x");
+  });
+});
+
+describe("parseSheetQuery", () => {
+  it("removes control characters including NUL, then trims", () => {
+    expect(parseSheetQuery("  a\u0000b\u0007c\n ")).toBe("abc");
+    expect(parseSheetQuery(["x\u0000", "y"])).toBe("x");
+    expect(parseSheetQuery(undefined)).toBe("");
+  });
+
+  it("caps the length", () => {
+    expect(parseSheetQuery("a".repeat(500))).toHaveLength(200);
+  });
+});
+
+describe("readUrlQuery", () => {
+  it("ignores a late echo of our own push and keeps the newer ones", () => {
+    const first = readUrlQuery("ab", ["", "ab", "abc"]);
+    expect(first).toEqual({ adopt: false, pushed: ["abc"] });
+    expect(readUrlQuery("abc", first.pushed)).toEqual({ adopt: false, pushed: [] });
+  });
+
+  it("adopts an address change we did not push and forgets older pushes", () => {
+    expect(readUrlQuery("zzz", ["", "ab"])).toEqual({ adopt: true, pushed: [] });
   });
 });

@@ -48,7 +48,7 @@ export async function fetchSheetPageNumbered(
   let counting = supabase.from("sheet_list").select("id", { count: "exact", head: true });
   counting = trash ? counting.not("deleted_at", "is", null) : counting.is("deleted_at", null);
   if (pattern) counting = counting.filter("name", "imatch", pattern);
-  const { count, error: countError } = await counting;
+  const [{ count, error: countError }, cfg] = await Promise.all([counting, settings()]);
   if (countError) throw countError;
   const total = count ?? 0;
   const plan = pageRead(total, page, size);
@@ -58,13 +58,10 @@ export async function fetchSheetPageNumbered(
     .select("id, name, source_type, thumb_path, page_px_w, page_px_h, edit_count, version, updated_at, updated_by_name, deleted_at, deleted_by_name");
   reading = trash ? reading.not("deleted_at", "is", null) : reading.is("deleted_at", null);
   if (pattern) reading = reading.filter("name", "imatch", pattern);
-  const [{ data, error }, cfg] = await Promise.all([
-    reading
-      .order(trash ? "deleted_at" : "updated_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(plan.from, plan.to),
-    settings(),
-  ]);
+  const { data, error } = await reading
+    .order(trash ? "deleted_at" : "updated_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(plan.from, plan.to);
   if (error) throw error;
   const found = (data ?? []) as unknown as ListRow[];
   const links = new Map<string, string>();

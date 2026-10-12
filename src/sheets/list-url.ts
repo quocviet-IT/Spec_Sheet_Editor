@@ -10,6 +10,25 @@ export function nameContainsPattern(query: string): string {
   return query.trim().replace(/[\\^$.|?*+()[\]{}]/g, "\\$&");
 }
 
+export const MAX_QUERY = 200;
+
+/** `?q=` as the page uses it: control characters (NUL included, which PostgreSQL rejects) removed, trimmed, capped. */
+export function parseSheetQuery(raw: string | string[] | undefined): string {
+  const text = (Array.isArray(raw) ? raw[0] : raw) ?? "";
+  return text.replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim().slice(0, MAX_QUERY);
+}
+
+/**
+ * The address's `q` arrived. `pushed` holds the values this box put in the address since the last change that did not
+ * come from it. A value found there is our own (possibly late) echo and must not overwrite newer typing; anything else
+ * (back, forward, a link) is external and the box follows it.
+ */
+export function readUrlQuery(urlQ: string, pushed: readonly string[]): { adopt: boolean; pushed: string[] } {
+  const at = pushed.indexOf(urlQ);
+  if (at === -1) return { adopt: true, pushed: [] };
+  return { adopt: false, pushed: pushed.slice(at + 1) };
+}
+
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 /** `?tab=`: `trash` or, for anything else, `live`. */

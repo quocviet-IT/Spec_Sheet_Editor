@@ -8,7 +8,7 @@ import { fill } from "@/messages/format";
 import { useMessages } from "@/messages/client";
 import { restoreSheet, trashSheet } from "@/sheets/actions";
 import { fileLabel, TIME_ZONE } from "@/sheets/format";
-import { sheetListHref } from "@/sheets/list-url";
+import { parseSheetQuery, readUrlQuery, sheetListHref } from "@/sheets/list-url";
 import type { SheetRow, SheetTab, UploadSettings } from "@/sheets/types";
 import { Pagination } from "@/ui/pagination";
 import { UploadDialog } from "./upload-dialog";
@@ -36,6 +36,8 @@ export function SheetList({
   const [brokenThumbs, setBrokenThumbs] = useState<ReadonlySet<string>>(new Set());
   const menuRef = useRef<HTMLDivElement | null>(null);
   const lastPushed = useRef(q);
+  const pushedRef = useRef<string[]>([q]);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const when = useMemo(
     () => new Intl.DateTimeFormat(locale === "vi" ? "vi-VN" : "en-GB", { dateStyle: "short", timeStyle: "short", timeZone: TIME_ZONE }),
@@ -46,18 +48,24 @@ export function SheetList({
 
   // 300 ms after typing stops the address takes the search and returns to page 1 (UC-02 step 2)
   useEffect(() => {
-    const typed = query.trim();
+    const typed = parseSheetQuery(query);
     if (typed === lastPushed.current) return;
     const timer = setTimeout(() => {
+      timerRef.current = null;
       lastPushed.current = typed;
+      pushedRef.current = [...pushedRef.current, typed];
       startTransition(() => router.replace(sheetListHref({ tab, q: typed, page: 1, size: info.size })));
     }, 300);
+    timerRef.current = timer;
     return () => clearTimeout(timer);
   }, [query, tab, info.size, router]);
 
-  // the address changed without typing here (back or forward): the box follows it
+  // the address changed without typing here (back, forward, a link): the box follows it.
+  // An echo of a search this box pushed, however late, is ignored so it cannot overwrite newer typing.
   useEffect(() => {
-    if (q !== lastPushed.current) {
+    const seen = readUrlQuery(q, pushedRef.current);
+    pushedRef.current = seen.pushed;
+    if (seen.adopt) {
       lastPushed.current = q;
       setQuery(q);
     }
@@ -159,43 +167,45 @@ export function SheetList({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <nav aria-label={s.title} className="flex gap-6 border-b border-line">
+      {/* DOM order is the Tab order: search, upload, tabs; `order-*` keeps the tabs on the left */}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="relative order-2 min-w-[200px] flex-1 sm:ml-auto sm:max-w-xs sm:flex-none sm:basis-80">
+          <span className="sr-only">{s.search}</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={s.search}
+            className="w-full rounded-md border border-line bg-surface px-3 py-2"
+          />
+        </label>
+        <button type="button" onClick={() => setUploadOpen(true)} className="order-3 rounded-md bg-accent px-4 py-2 font-semibold text-accent-ink hover:opacity-90">
+          {s.upload}
+        </button>
+        <nav aria-label={s.title} className="order-1 flex gap-6 border-b border-line sm:mr-auto">
           {TAB_KEYS.map((key) => (
             <Link
               key={key}
               id={`sheet-tab-${key}`}
               href={sheetListHref({ tab: key, q, page: 1, size: info.size })}
               aria-current={tab === key ? "page" : undefined}
-              onClick={() => setMenuFor(null)}
+              onClick={() => {
+                setMenuFor(null);
+                if (timerRef.current) clearTimeout(timerRef.current); // a search still waiting must not undo the tab
+              }}
               className={"-mb-px inline-flex min-h-6 items-center border-b-2 px-1 pb-2 text-sm font-medium " + (tab === key ? "border-accent text-ink" : "border-transparent text-ink-2 hover:text-ink")}
             >
               {s.tabs[key]} <span className="ml-1 rounded-full bg-sunk px-2 py-0.5 font-mono text-xs">{counts[key]}</span>
             </Link>
           ))}
         </nav>
-        <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-          <label className="relative min-w-[200px] flex-1 sm:max-w-xs">
-            <span className="sr-only">{s.search}</span>
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={s.search}
-              className="w-full rounded-md border border-line bg-surface px-3 py-2"
-            />
-          </label>
-          <button type="button" onClick={() => setUploadOpen(true)} className="rounded-md bg-accent px-4 py-2 font-semibold text-accent-ink hover:opacity-90">
-            {s.upload}
-          </button>
-        </div>
       </div>
 
       <div
         id="sheet-panel"
         aria-busy={refreshing}
         tabIndex={-1}
-        className="overflow-hidden rounded-lg border border-line bg-surface outline-none"
+        className={"overflow-hidden rounded-lg border border-line bg-surface outline-none transition-opacity " + (refreshing ? "opacity-60" : "")}
       >
         <ul>
           {rows.map((row) => (
