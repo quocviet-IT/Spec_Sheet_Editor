@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import {
-  actAs, actAsOwner, closeDb, hasDb, insertSheetAsOwner, makePasswordUser, makeUser, rollback, staffEmail, type Tx,
+  actAs, actAsOwner, applyMigration, closeDb, hasDb, insertSheetAsOwner, makePasswordUser, makeUser, rollback, staffEmail, type Tx,
 } from "./harness";
 
 afterAll(closeDb);
@@ -146,10 +146,11 @@ describe.skipIf(!hasDb)("sheet list (UC-02, UC-11)", () => {
 
   it("clients may read the view and call the functions; anonymous visitors may not", async () => {
     await rollback(async (tx) => {
+      await applyMigration(tx, "0004_sheet_ownership.sql");
       const [p] = await tx<Record<string, boolean>[]>`
         select has_table_privilege('authenticated', 'public.sheet_list', 'select') as view_select,
                has_function_privilege('authenticated', 'public.list_sheets(boolean, text, timestamptz, uuid, int)', 'execute') as list,
-               has_function_privilege('authenticated', 'public.sheet_counts()', 'execute') as counts,
+               has_function_privilege('authenticated', 'public.sheet_counts(uuid)', 'execute') as counts,
                has_table_privilege('anon', 'public.sheet_list', 'select') as anon_view,
                has_function_privilege('anon', 'public.list_sheets(boolean, text, timestamptz, uuid, int)', 'execute') as anon_list`;
       expect(p).toEqual({ view_select: true, list: true, counts: true, anon_view: false, anon_list: false });
