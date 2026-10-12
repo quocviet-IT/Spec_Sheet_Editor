@@ -3,16 +3,12 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { setRole, setStatus } from "@/admin/user-actions";
 import type { UserRow } from "@/admin/queries";
+import { fold } from "@/admin/users-filter";
 import { useLocale, useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 import { ResetPasswordButton } from "./reset-password";
 
 type Pending = { row: UserRow; kind: "role" | "status"; opener: HTMLElement | null };
-
-/** Lower-case text without accents, so "nhan" finds "Nhân". */
-function fold(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/đ/g, "d");
-}
 
 export function ConfirmDialog({ message, confirmLabel, cancelLabel, busy, onConfirm, onCancel }: {
   message: string;
