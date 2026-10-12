@@ -1,40 +1,44 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import { resetPassword, type ResetPasswordState } from "@/admin/user-actions";
 import { useMessages } from "@/messages/client";
+import { Dialog } from "../ui/dialog";
 import { IssuedPasswordNotice } from "./issued-password";
 
 const initial: ResetPasswordState = { error: null, issued: null };
 
-/** A two-step control: ask first (no browser dialogs), then show the new one-time password once. */
-export function ResetPasswordButton({ userId, email }: { userId: string; email: string }) {
+/**
+ * The reset flow in a dialog, opened from the row menu: ask first (no browser dialogs), then show the new one-time
+ * password once. The dialog returns focus to the element focused when it opened, which is the row's "..." button.
+ */
+export function ResetPasswordDialog({ userId, name, email, onClose }: { userId: string; name: string; email: string; onClose: () => void }) {
   const t = useMessages();
   const u = t.admin.users;
-  const [confirming, setConfirming] = useState(false);
   const [state, action, pending] = useActionState(resetPassword, initial);
-  if (state.issued) return <IssuedPasswordNotice key={state.issued.tempPassword} title={u.resetTitle} issued={state.issued} />;
-  if (!confirming) {
-    return (
-      <button type="button" onClick={() => setConfirming(true)} aria-label={`${u.reset}: ${email}`} className="rounded border border-line px-3 py-1 hover:bg-sunk">
-        {u.reset}
-      </button>
-    );
-  }
   const errors = { self_reset: u.errors.selfReset, not_password_account: u.errors.notPasswordAccount, unknown: u.errors.unknown } as const;
   return (
-    <form action={action} className="space-y-2 text-left">
-      <input type="hidden" name="userId" value={userId} />
-      <p className="text-sm">{u.resetConfirm}</p>
-      {state.error && <p role="alert" className="text-sm text-danger">{errors[state.error]}</p>}
-      <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={pending} className="rounded bg-accent px-3 py-1 font-semibold text-accent-ink disabled:opacity-60">
-          {u.resetYes}
-        </button>
-        <button type="button" onClick={() => setConfirming(false)} className="rounded border border-line px-3 py-1 hover:bg-sunk">
-          {t.common.cancel}
-        </button>
-      </div>
-    </form>
+    <Dialog title={state.issued ? u.resetTitle : u.reset} open onClose={onClose}>
+      {state.issued ? (
+        <IssuedPasswordNotice key={state.issued.tempPassword} title={u.resetTitle} issued={state.issued} />
+      ) : (
+        <form action={action} className="space-y-3 text-left">
+          <input type="hidden" name="userId" value={userId} />
+          <p className="text-sm font-medium">
+            {name} <span className="font-mono text-xs font-normal text-ink-2">{email}</span>
+          </p>
+          <p className="text-sm">{u.resetConfirm}</p>
+          {state.error && <p role="alert" className="text-sm text-danger">{errors[state.error]}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="rounded-md border border-line px-3 py-2 text-sm hover:bg-sunk">
+              {t.common.cancel}
+            </button>
+            <button type="submit" disabled={pending} className="rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-ink disabled:opacity-60">
+              {u.resetYes}
+            </button>
+          </div>
+        </form>
+      )}
+    </Dialog>
   );
 }

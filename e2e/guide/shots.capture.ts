@@ -276,14 +276,10 @@ for (const locale of LOCALES) {
         await expect(row).toHaveCount(1);
         await page.mouse.click(1000, 700); // takes focus off the search box
         await shots.take(page, "admin-users", [
-          new Above(button(page, /^(Tạo tài khoản|Create account)$/)),
+          new Above(button(page, /^(Thêm người dùng|Add user)$/)),
           page.getByRole("searchbox", { name: /Tìm theo tên hoặc email|Search by name or email/ }),
-          new Above(row.getByRole("button", { name: /^(Đặt làm quản trị viên|Make Admin): / })),
-          new Above(row.getByRole("button", { name: /^(Đình chỉ|Suspend): / })),
-          // In Vietnamese the buttons wrap and this one starts a new line: its left is free there.
-          locale === "vi"
-            ? row.getByRole("button", { name: /^Cấp lại mật khẩu: / })
-            : new Above(row.getByRole("button", { name: /^Issue new password: / })),
+          new Above(row.getByText(/^(Đang hoạt động|Active)$/)),
+          new Above(row.getByRole("button", { name: /^(Thao tác cho|Actions for) / })),
         ], { x: 100, y: 0, width: 1240, height: 640 });
 
         // A sheet in the Trash, made by the reserved Admin and removed again below.

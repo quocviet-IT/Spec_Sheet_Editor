@@ -1,12 +1,19 @@
 "use client";
 
+import { Ban, Clock, Globe, KeyRound, RotateCcw, Search, SearchX, ShieldCheck, ShieldMinus, ShieldPlus, User, Users } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { DEFAULT_PAGE_SIZE, pageInfo } from "@/admin/paging";
 import { setRole, setStatus } from "@/admin/user-actions";
 import type { UserRow } from "@/admin/queries";
-import { fold } from "@/admin/users-filter";
-import { useLocale, useMessages } from "@/messages/client";
+import { filterUsers, type UserStatusFilter } from "@/admin/users-filter";
+import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
-import { ResetPasswordButton } from "./reset-password";
+import { Badge } from "../ui/badge";
+import { EmptyState } from "../ui/empty-state";
+import { Pagination } from "../ui/pagination";
+import { RelativeTime } from "../ui/relative-time";
+import { RowMenu, type RowMenuItem } from "../ui/row-menu";
+import { ResetPasswordDialog } from "./reset-password";
 
 type Pending = { row: UserRow; kind: "role" | "status"; opener: HTMLElement | null };
 
@@ -70,32 +77,39 @@ export function ConfirmDialog({ message, confirmLabel, cancelLabel, busy, onConf
   );
 }
 
-export function UsersTable({ rows: initialRows, meId, searchable = true }: { rows: UserRow[]; meId: string; searchable?: boolean }) {
+function initials(row: UserRow): string {
+  const source = (row.fullName ?? row.email.split("@")[0]).trim();
+  const words = source.split(/[\s._-]+/).filter(Boolean);
+  const letters = words.length > 1 ? [words[0], words[words.length - 1]] : [words[0] ?? "?"];
+  return letters.map((w) => Array.from(w)[0] ?? "").join("").toUpperCase();
+}
+
+export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId: string }) {
   const t = useMessages();
-  const locale = useLocale();
   const u = t.admin.users;
   const [rows, setRows] = useState(initialRows);
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
+  const [role, setRoleFilter] = useState<"all" | "user" | "admin">("all");
+  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("all");
+  const [paging, setPaging] = useState({ page: 1, size: DEFAULT_PAGE_SIZE });
   const [pending, setPending] = useState<Pending | null>(null);
+  const [resetting, setResetting] = useState<UserRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setQuery(input.trim()), 300);
+    const timer = setTimeout(() => {
+      setQuery(input.trim());
+      setPaging((p) => ({ ...p, page: 1 }));
+    }, 300);
     return () => clearTimeout(timer);
   }, [input]);
 
-  const when = new Intl.DateTimeFormat(locale === "vi" ? "vi-VN" : "en-GB", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Asia/Ho_Chi_Minh",
-  });
-  const needle = fold(query);
-  const visible = needle
-    ? rows.filter((r) => fold(r.email).includes(needle) || fold(r.fullName ?? "").includes(needle))
-    : rows;
+  const filtered = filterUsers(rows, { query, role, status: statusFilter });
+  const info = pageInfo(filtered.length, paging.page, paging.size);
+  const visible = filtered.slice(info.from === 0 ? 0 : info.from - 1, info.to);
   const errors: Record<string, string> = {
     last_admin: u.errors.lastAdmin,
     self_suspend: u.errors.selfSuspend,
@@ -159,83 +173,169 @@ export function UsersTable({ rows: initialRows, meId, searchable = true }: { row
     }
   }
 
+  function menuItems(row: UserRow, mine: boolean): RowMenuItem[] {
+    const items: RowMenuItem[] = [
+      {
+        key: "role",
+        label: row.role === "admin" ? u.makeStaff : u.makeAdmin,
+        icon: row.role === "admin" ? ShieldMinus : ShieldPlus,
+        onSelect: (opener) => ask(row, "role", opener),
+      },
+    ];
+    if (row.passwordAccount && !mine) {
+      items.push({ key: "reset", label: u.reset, icon: KeyRound, onSelect: () => setResetting(row) });
+    }
+    if (!mine) {
+      const active = row.status === "active";
+      items.push({
+        key: "status",
+        label: active ? u.suspend : u.reinstate,
+        icon: active ? Ban : RotateCcw,
+        tone: active ? "danger" : undefined,
+        separatorBefore: true,
+        onSelect: (opener) => ask(row, "status", opener),
+      });
+    }
+    return items;
+  }
+
+  const select = "rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink";
+
   return (
     <div className="space-y-3">
-      {searchable && (
-        <input
-          type="search"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={u.search}
-          aria-label={u.search}
-          className="w-full max-w-sm rounded-md border border-line bg-surface px-3 py-2 text-sm"
-        />
-      )}
-      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-        <table className="w-full min-w-[900px] text-sm">
-          <thead className="bg-sunk text-left text-ink-2">
-            <tr>
-              <th className="px-3 py-2 font-medium">{u.columns.user}</th>
-              <th className="px-3 py-2 font-medium">{u.columns.role}</th>
-              <th className="px-3 py-2 font-medium">{u.columns.status}</th>
-              <th className="px-3 py-2 font-medium">{u.columns.signIn}</th>
-              <th className="px-3 py-2 font-medium">{u.columns.lastSeen}</th>
-              <th className="px-3 py-2 text-right font-medium">{u.sheets}</th>
-              <th className="px-3 py-2"><span className="sr-only">{u.columns.actions}</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 && (
-              <tr className="border-t border-line">
-                <td colSpan={7} className="px-3 py-4 text-ink-2">{fill(u.noMatch, { q: query })}</td>
-              </tr>
-            )}
-            {visible.map((row) => {
-              const mine = row.id === meId;
-              const roleLabel = row.role === "admin" ? u.makeStaff : u.makeAdmin;
-              const statusLabel = row.status === "active" ? u.suspend : u.reinstate;
-              return (
-                <tr key={row.id} className="border-t border-line align-top">
-                  <td className="px-3 py-2">
-                    <div className="font-medium">
-                      {row.fullName ?? row.email}
-                      {mine && <span className="font-normal text-ink-3"> {u.you}</span>}
-                    </div>
-                    <div className="font-mono text-xs text-ink-2">{row.email}</div>
-                  </td>
-                  <td className="px-3 py-2">{u.roles[row.role]}</td>
-                  <td className="px-3 py-2">
-                    {u.status[row.status]}
-                    {row.mustChangePassword && (
-                      <span className="ml-2 whitespace-nowrap rounded bg-warn-soft px-1.5 py-0.5 text-xs">{u.mustChange}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">{row.passwordAccount ? u.signIn.password : u.signIn.google}</td>
-                  <td className="px-3 py-2 font-mono text-xs">
-                    {row.lastSeenAt ? when.format(new Date(row.lastSeenAt)) : u.never}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{row.sheets}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <button type="button" onClick={(e) => ask(row, "role", e.currentTarget)} aria-label={`${roleLabel}: ${row.email}`} className="rounded border border-line px-3 py-1 hover:bg-sunk">
-                        {roleLabel}
-                      </button>
-                      {!mine && (
-                        <button type="button" onClick={(e) => ask(row, "status", e.currentTarget)} aria-label={`${statusLabel}: ${row.email}`} className="rounded border border-line px-3 py-1 hover:bg-sunk">
-                          {statusLabel}
-                        </button>
-                      )}
-                      {row.passwordAccount && !mine && <ResetPasswordButton userId={row.id} email={row.email} />}
-                    </div>
-                  </td>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-sm">
+          <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
+          <input
+            type="search"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={u.search}
+            aria-label={u.search}
+            className="w-full rounded-md border border-line bg-surface py-2 pl-9 pr-3 text-sm"
+          />
+        </div>
+        <select
+          aria-label={u.filters.role}
+          value={role}
+          onChange={(e) => {
+            setRoleFilter(e.target.value as "all" | "user" | "admin");
+            setPaging((p) => ({ ...p, page: 1 }));
+          }}
+          className={select}
+        >
+          <option value="all">{u.filters.allRoles}</option>
+          <option value="admin">{u.roles.admin}</option>
+          <option value="user">{u.roles.user}</option>
+        </select>
+        <select
+          aria-label={u.filters.status}
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value as UserStatusFilter);
+            setPaging((p) => ({ ...p, page: 1 }));
+          }}
+          className={select}
+        >
+          <option value="all">{u.filters.allStatuses}</option>
+          <option value="active">{u.status.active}</option>
+          <option value="suspended">{u.status.suspended}</option>
+          <option value="waiting">{u.status.waiting}</option>
+        </select>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-line bg-surface">
+        {visible.length === 0 ? (
+          rows.length === 0 ? (
+            <EmptyState icon={Users} title={u.none} />
+          ) : (
+            <EmptyState icon={SearchX} title={query ? fill(u.noMatch, { q: query }) : u.noMatchFilters} />
+          )
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead className="bg-sunk text-left text-ink-2">
+                <tr>
+                  <th className="px-3 py-2 font-medium">{u.columns.user}</th>
+                  <th className="px-3 py-2 font-medium">{u.columns.role}</th>
+                  <th className="px-3 py-2 font-medium">{u.columns.status}</th>
+                  <th className="px-3 py-2 font-medium">{u.columns.lastSeen}</th>
+                  <th className="px-3 py-2 text-right font-medium">{u.sheets}</th>
+                  <th className="w-12 px-3 py-2"><span className="sr-only">{u.columns.actions}</span></th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {visible.map((row) => {
+                  const mine = row.id === meId;
+                  const label = row.fullName ?? row.email;
+                  const method = row.passwordAccount ? u.signIn.password : u.signIn.google;
+                  const SignInIcon = row.passwordAccount ? KeyRound : Globe;
+                  const waiting = row.status === "active" && row.passwordAccount && row.mustChangePassword;
+                  return (
+                    <tr key={row.id} className="border-t border-line first:border-t-0">
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-3">
+                          <span
+                            aria-hidden="true"
+                            className={`inline-flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${row.role === "admin" ? "bg-accent-soft text-accent" : "bg-sunk text-ink-2"}`}
+                          >
+                            {initials(row)}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="font-medium">
+                              {label}
+                              {mine && <span className="font-normal text-ink-3"> {u.you}</span>}
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-ink-2">
+                              <span role="img" aria-label={`${u.columns.signIn}: ${method}`} title={`${u.columns.signIn}: ${method}`} className="inline-flex">
+                                <SignInIcon size={16} aria-hidden="true" />
+                              </span>
+                              <span className="font-mono">{row.email}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.role === "admin" ? (
+                          <Badge tone="admin" icon={ShieldCheck}>{u.roles.admin}</Badge>
+                        ) : (
+                          <Badge tone="neutral" icon={User}>{u.roles.user}</Badge>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.status === "suspended" ? (
+                          <Badge tone="danger" icon={Ban}>{u.status.suspended}</Badge>
+                        ) : waiting ? (
+                          <Badge tone="warning" icon={Clock}>{u.status.waiting}</Badge>
+                        ) : (
+                          <Badge tone="success">{u.status.active}</Badge>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-ink-2">
+                        {row.lastSeenAt ? <RelativeTime iso={row.lastSeenAt} /> : u.never}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{row.sheets}</td>
+                      <td className="px-3 py-2 text-right">
+                        <RowMenu label={fill(t.admin.ui.actionsFor, { name: label })} items={menuItems(row, mine)} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {filtered.length > 0 && <Pagination info={info} onChange={(page, size) => setPaging({ page, size })} />}
       </div>
       <p role="status" className="text-sm text-ink-2">{saved ? u.changed : ""}</p>
       {error && <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{error}</p>}
+      {resetting && (
+        <ResetPasswordDialog
+          userId={resetting.id}
+          name={resetting.fullName ?? resetting.email}
+          email={resetting.email}
+          onClose={() => setResetting(null)}
+        />
+      )}
       {pending && (
         <ConfirmDialog
           message={message}

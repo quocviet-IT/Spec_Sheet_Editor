@@ -1,35 +1,32 @@
+import { Ban, CircleCheck, ShieldCheck, Users } from "lucide-react";
 import { fetchUsers } from "@/admin/queries";
 import { splitTestAccounts } from "@/admin/test-accounts";
 import { requireAdmin } from "@/auth/session";
 import { getMessages } from "@/messages/server";
-import { fill } from "@/messages/format";
-import { AddUserForm } from "./add-user-form";
+import { PageHeader } from "../ui/page-header";
+import { StatCards } from "../ui/stat-cards";
+import { AddUser } from "./add-user";
 import { UsersTable } from "./users-table";
 
-export default async function UsersPage() {
+export default async function UsersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const me = await requireAdmin("/admin/users");
-  const t = await getMessages();
+  const [t, params] = await Promise.all([getMessages(), searchParams]);
   const u = t.admin.users;
   const { people, tests } = splitTestAccounts(await fetchUsers());
+  // The reserved test accounts are shown only for the automated tests, which add ?show=test; nothing links to it.
+  const rows = params.show === "test" ? [...people, ...tests] : people;
   return (
-    <section className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">{u.title}</h1>
-        <p className="text-ink-2">{u.lead}</p>
-      </div>
-      <AddUserForm />
-      <UsersTable rows={people} meId={me.id} />
-      {tests.length > 0 && (
-        <details className="rounded-lg border border-line bg-surface">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-ink-2">
-            {fill(u.testAccounts.title, { n: tests.length })}
-          </summary>
-          <div className="space-y-3 border-t border-line px-4 py-4">
-            <p className="text-sm text-ink-2">{u.testAccounts.lead}</p>
-            <UsersTable rows={tests} meId={me.id} searchable={false} />
-          </div>
-        </details>
-      )}
+    <section>
+      <PageHeader icon={Users} title={u.title} lead={u.lead} action={<AddUser />} />
+      <StatCards
+        items={[
+          { icon: Users, label: u.stats.total, value: rows.length },
+          { icon: CircleCheck, label: u.stats.active, value: rows.filter((r) => r.status === "active").length },
+          { icon: Ban, label: u.stats.suspended, value: rows.filter((r) => r.status === "suspended").length },
+          { icon: ShieldCheck, label: u.stats.admins, value: rows.filter((r) => r.role === "admin").length },
+        ]}
+      />
+      <UsersTable rows={rows} meId={me.id} />
     </section>
   );
 }
