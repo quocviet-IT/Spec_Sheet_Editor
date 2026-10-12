@@ -163,6 +163,16 @@ describe("makeEdit", () => {
     near(e.box.h * W, 13);
   });
 
+  it("keeps the digit height when a line crosses the value, at detection and again at the edit", () => {
+    const r = page();
+    ink(r, 196, 150, 197, 260); // an extension line through the horizontal value, far beyond its box
+    const [d] = fromScan(scan(), r, ids());
+    near(d.box.h * W, 13);
+    const e = makeEdit(r, d, "2.50", "2.60");
+    near(e.fontPx * W, 13);
+    near(e.box.h * W, 13);
+  });
+
   it("falls back to the detection box and black on white when no text is found", () => {
     const [d] = fromScan(scan(), page(), ids());
     const e = makeEdit(createRaster(W, H), d, "2.50", "2.60");

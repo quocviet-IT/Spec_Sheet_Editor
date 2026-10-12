@@ -121,6 +121,63 @@ describe("analyseBox: which run is the digits", () => {
   });
 });
 
+describe("analyseBox: ink that runs out of the search window is drawing, not digits", () => {
+  const RED: [number, number, number] = [0xd0, 0x20, 0x20];
+  const METAL: [number, number, number] = [0x10, 0x40, 0x30]; // darker than the red digits
+  const box = { cx: 129, cy: 64, w: 80, h: 30, angle: 0 };
+
+  /** The scene's digits in red, with two extension lines crossing the whole page through the value's box. */
+  function extensionLines(): Raster {
+    const r = scene();
+    for (const x0 of [100, 114, 134, 148]) fill(r, x0, 50, x0 + 10, 69, RED);
+    fill(r, 128, 67, 130, 69, RED);
+    fill(r, 96, 0, 97, 149, RED);
+    fill(r, 161, 0, 162, 149, RED);
+    return r;
+  }
+
+  /** The red digits under a ring shank that comes down from the top of the page and touches two of them. */
+  function shank(): Raster {
+    const r = extensionLines();
+    fill(r, 96, 0, 97, 149, [255, 255, 255]);
+    fill(r, 161, 0, 162, 149, [255, 255, 255]);
+    fill(r, 120, 0, 135, 49, METAL);
+    return r;
+  }
+
+  it("measures the digit height when lines cross the box", () => {
+    const { tight } = analyseBox(extensionLines(), box)!;
+    expect(tight.h).toBe(20);
+    near(tight.cy, 59.5);
+    near(tight.cx, 129);
+    expect(tight.w).toBeGreaterThanOrEqual(59);
+  });
+
+  it("measures the digit height and keeps the digits' colour under a darker shank that touches them", () => {
+    const result = analyseBox(shank(), box)!;
+    expect(result.tight.h).toBe(20);
+    near(result.tight.cy, 59.5);
+    expect(result.textColor).toBe("#d02020");
+  });
+
+  it("does the same for vertical text", () => {
+    // Turned clockwise, (x, y) moves to (149 - y, x): the text now reads top-down (angle 90).
+    const result = analyseBox(rotate90cw(shank()), { cx: 85, cy: 129, w: 80, h: 30, angle: 90 })!;
+    expect(result.tight.h).toBe(20);
+    near(result.tight.cx, 89.5);
+    expect(result.textColor).toBe("#d02020");
+  });
+
+  it("does not grow when its own tight box is measured again", () => {
+    for (const page of [extensionLines(), shank()]) {
+      const once = analyseBox(page, box)!.tight;
+      const twice = analyseBox(page, once)!.tight;
+      expect(twice.h).toBe(once.h);
+      near(twice.cy, once.cy);
+    }
+  });
+});
+
 describe("analyseBox: other angles", () => {
   /** Ink wherever a pixel lies inside the rotated rectangle (s along the text, t across it). */
   function line(angle: number, cx: number, cy: number, halfW: number, halfH: number): Raster {
