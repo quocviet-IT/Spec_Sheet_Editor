@@ -5,7 +5,7 @@ import type { IssuedPassword } from "@/admin/user-actions";
 import { useMessages } from "@/messages/client";
 
 /** Shows a one-time password once, with a copy button; it is never stored by the app. */
-export function IssuedPasswordNotice({ title, issued }: { title: string; issued: IssuedPassword }) {
+export function IssuedPasswordNotice({ issued }: { issued: IssuedPassword }) {
   const t = useMessages();
   const [copied, setCopied] = useState(false);
   async function copy() {
@@ -19,7 +19,7 @@ export function IssuedPasswordNotice({ title, issued }: { title: string; issued:
   return (
     <div role="status" className="space-y-2 rounded-md border border-accent bg-accent-soft p-3 text-left text-sm">
       <p className="font-semibold">
-        {title}: <span className="font-mono">{issued.email}</span>
+        <span className="font-mono">{issued.email}</span>
       </p>
       <p className="text-ink-2">{t.admin.users.tempLead}</p>
       <div className="flex flex-wrap items-center gap-2">

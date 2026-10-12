@@ -11,13 +11,14 @@ const FIELDS = "input:not(:disabled):not([type='hidden']), select:not(:disabled)
  * A modal for forms. role="dialog" with aria-modal and a labelled title. Same focus handling as the existing
  * confirm dialogs: focus moves to the first field (or the first control when there is no field), Tab and
  * Shift+Tab stay inside, Esc calls onClose, and focus returns to the element that was focused when it opened.
- * Renders nothing while open is false.
+ * With requireClose, Esc does nothing and only the close button closes it (for content that cannot be shown again,
+ * such as a one-time password). Renders nothing while open is false.
  */
-export function Dialog({ title, open, onClose, children }: { title: string; open: boolean; onClose: () => void; children: ReactNode }) {
-  return open ? <OpenDialog title={title} onClose={onClose}>{children}</OpenDialog> : null;
+export function Dialog({ title, open, onClose, requireClose = false, children }: { title: string; open: boolean; onClose: () => void; requireClose?: boolean; children: ReactNode }) {
+  return open ? <OpenDialog title={title} onClose={onClose} requireClose={requireClose}>{children}</OpenDialog> : null;
 }
 
-function OpenDialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+function OpenDialog({ title, onClose, requireClose, children }: { title: string; onClose: () => void; requireClose: boolean; children: ReactNode }) {
   const t = useMessages();
   const id = useId();
   const section = useRef<HTMLElement | null>(null);
@@ -32,7 +33,7 @@ function OpenDialog({ title, onClose, children }: { title: string; onClose: () =
     const target = root?.querySelector<HTMLElement>(FIELDS) ?? root?.querySelector<HTMLElement>(FOCUSABLE) ?? root;
     target?.focus();
     function onEscape(e: globalThis.KeyboardEvent) {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || requireClose) return;
       e.preventDefault();
       closeRef.current();
     }
@@ -41,7 +42,7 @@ function OpenDialog({ title, onClose, children }: { title: string; onClose: () =
       document.removeEventListener("keydown", onEscape);
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
     };
-  }, []);
+  }, [requireClose]);
 
   function onKeyDown(e: KeyboardEvent<HTMLElement>) {
     if (e.key !== "Tab") return;

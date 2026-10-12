@@ -32,8 +32,8 @@ export function AddUser() {
           }}
         />
       </Dialog>
-      <Dialog title={u.createdTitle} open={issued !== null} onClose={() => setIssued(null)}>
-        {issued && <IssuedPasswordNotice key={issued.tempPassword} title={u.createdTitle} issued={issued} />}
+      <Dialog title={u.createdTitle} open={issued !== null} requireClose onClose={() => setIssued(null)}>
+        {issued && <IssuedPasswordNotice key={issued.tempPassword} issued={issued} />}
       </Dialog>
     </>
   );

@@ -8,9 +8,9 @@ export type FilterableUser = {
   mustChangePassword: boolean;
 };
 
-/** Lower-case text without accents, so "nhan" finds "Nhân". */
+/** Lower-case text without accents, so a search typed without accents finds accented names. */
 export function fold(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/đ/g, "d");
+  return s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/\u0111/g, "d");
 }
 
 const waiting = (r: FilterableUser) => r.status === "active" && r.passwordAccount && r.mustChangePassword;

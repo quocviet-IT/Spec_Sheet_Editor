@@ -1,7 +1,7 @@
 "use client";
 
 import { Ellipsis, type LucideIcon } from "lucide-react";
-import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { menuReaction, nextMenuIndex } from "@/admin/row-menu-keys";
 
@@ -47,14 +47,15 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const startAt = useRef<"first" | "last">("first");
 
-  function placeFor(rect: DOMRect): Place {
-    const need = items.length * ITEM_HEIGHT + MENU_PADDING;
+  const count = items.length;
+  const placeFor = useCallback((rect: DOMRect): Place => {
+    const need = count * ITEM_HEIGHT + MENU_PADDING;
     const below = window.innerHeight - rect.bottom;
     const right = document.documentElement.clientWidth - rect.right;
     return below < need && rect.top > below
       ? { right, bottom: window.innerHeight - rect.top + MENU_GAP }
       : { right, top: rect.bottom + MENU_GAP };
-  }
+  }, [count]);
 
   function openMenu(at: "first" | "last") {
     const rect = button.current?.getBoundingClientRect();
@@ -113,7 +114,7 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
     };
-  }, [open]);
+  }, [open, placeFor]);
 
   function onButtonKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {

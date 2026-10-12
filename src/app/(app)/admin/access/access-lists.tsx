@@ -134,11 +134,11 @@ function ListCard({ kind, icon: Icon, title, addTitle, entries, status, alert, o
           <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-sunk text-left text-ink-2">
               <tr>
-                <th className="px-3 py-2 font-medium">{a.columns.entry}</th>
-                <th className="px-3 py-2 font-medium">{a.columns.note}</th>
-                <th className="px-3 py-2 font-medium">{a.columns.accounts}</th>
-                <th className="px-3 py-2 font-medium">{a.columns.added}</th>
-                <th className="w-12 px-3 py-2"><span className="sr-only">{t.admin.users.columns.actions}</span></th>
+                <th scope="col" className="px-3 py-2 font-medium">{a.columns.entry}</th>
+                <th scope="col" className="px-3 py-2 font-medium">{a.columns.note}</th>
+                <th scope="col" className="px-3 py-2 font-medium">{a.columns.accounts}</th>
+                <th scope="col" className="px-3 py-2 font-medium">{a.columns.added}</th>
+                <th scope="col" className="w-12 px-3 py-2"><span className="sr-only">{t.admin.users.columns.actions}</span></th>
               </tr>
             </thead>
             <tbody>

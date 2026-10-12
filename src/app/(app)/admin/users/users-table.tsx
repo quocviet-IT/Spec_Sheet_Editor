@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { DEFAULT_PAGE_SIZE, pageInfo } from "@/admin/paging";
 import { setRole, setStatus } from "@/admin/user-actions";
 import type { UserRow } from "@/admin/queries";
+import { initials } from "@/admin/row-menu-keys";
 import { filterUsers, type UserStatusFilter } from "@/admin/users-filter";
 import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
@@ -75,13 +76,6 @@ export function ConfirmDialog({ message, confirmLabel, cancelLabel, busy, onConf
       </section>
     </div>
   );
-}
-
-function initials(row: UserRow): string {
-  const source = (row.fullName ?? row.email.split("@")[0]).trim();
-  const words = source.split(/[\s._-]+/).filter(Boolean);
-  const letters = words.length > 1 ? [words[0], words[words.length - 1]] : [words[0] ?? "?"];
-  return letters.map((w) => Array.from(w)[0] ?? "").join("").toUpperCase();
 }
 
 export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId: string }) {
@@ -263,12 +257,12 @@ export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId:
             <table className="w-full min-w-[820px] text-sm">
               <thead className="bg-sunk text-left text-ink-2">
                 <tr>
-                  <th className="px-3 py-2 font-medium">{u.columns.user}</th>
-                  <th className="px-3 py-2 font-medium">{u.columns.role}</th>
-                  <th className="px-3 py-2 font-medium">{u.columns.status}</th>
-                  <th className="px-3 py-2 font-medium">{u.columns.lastSeen}</th>
-                  <th className="px-3 py-2 text-right font-medium">{u.sheets}</th>
-                  <th className="w-12 px-3 py-2"><span className="sr-only">{u.columns.actions}</span></th>
+                  <th scope="col" className="px-3 py-2 font-medium">{u.columns.user}</th>
+                  <th scope="col" className="px-3 py-2 font-medium">{u.columns.role}</th>
+                  <th scope="col" className="px-3 py-2 font-medium">{u.columns.status}</th>
+                  <th scope="col" className="px-3 py-2 font-medium">{u.columns.lastSeen}</th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium">{u.sheets}</th>
+                  <th scope="col" className="w-12 px-3 py-2"><span className="sr-only">{u.columns.actions}</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -286,7 +280,7 @@ export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId:
                             aria-hidden="true"
                             className={`inline-flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${row.role === "admin" ? "bg-accent-soft text-accent" : "bg-sunk text-ink-2"}`}
                           >
-                            {initials(row)}
+                            {initials(row.fullName, row.email)}
                           </span>
                           <div className="min-w-0">
                             <div className="font-medium">

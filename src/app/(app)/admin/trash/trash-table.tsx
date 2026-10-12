@@ -4,6 +4,7 @@ import { RotateCcw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import type { TrashRow } from "@/admin/queries";
+import { initials } from "@/admin/row-menu-keys";
 import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 import { restoreSheet } from "@/sheets/actions";
@@ -22,12 +23,6 @@ export function Thumb({ url, className }: { url: string | null; className: strin
       ) : null}
     </div>
   );
-}
-
-function initials(source: string): string {
-  const words = source.trim().split(/[\s._@-]+/).filter(Boolean);
-  const letters = words.length > 1 ? [words[0], words[words.length - 1]] : [words[0] ?? "?"];
-  return letters.map((w) => Array.from(w)[0] ?? "").join("").toUpperCase();
 }
 
 type Pending = { row: TrashRow; opener: HTMLElement | null };
@@ -104,7 +99,7 @@ export function TrashTable({ rows: initialRows }: { rows: TrashRow[] }) {
                     {row.deletedByName ? (
                       <span className="flex items-center gap-2">
                         <span aria-hidden="true" className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-sunk text-xs font-semibold text-ink-2">
-                          {initials(row.deletedByName)}
+                          {initials(row.deletedByName, "")}
                         </span>
                         <span className="min-w-0 truncate">{row.deletedByName}</span>
                       </span>
@@ -115,7 +110,7 @@ export function TrashTable({ rows: initialRows }: { rows: TrashRow[] }) {
                   <td className="whitespace-nowrap px-4 py-2"><RelativeTime iso={row.deletedAt} /></td>
                   <td className="px-4 py-2 text-right">
                     <RowMenu
-                      label={fill(t.sheets.menu, { name: row.name })}
+                      label={fill(t.admin.ui.actionsFor, { name: row.name })}
                       items={[
                         { key: "restore", label: t.sheets.restore, icon: RotateCcw, onSelect: () => void restore(row) },
                         {

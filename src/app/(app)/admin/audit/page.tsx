@@ -5,6 +5,7 @@ import {
 import { AUDIT_GROUPS, filterQuery, parseAuditFilter } from "@/admin/audit-filter";
 import { auditActionLabel, auditIconKey, type AuditIconKey } from "@/admin/audit-icons";
 import { pageInfo, parsePaging } from "@/admin/paging";
+import { initials } from "@/admin/row-menu-keys";
 import { AUDIT_CSV_MAX, fetchAuditPage, fetchAuditPeople } from "@/admin/queries";
 import { requireAdmin } from "@/auth/session";
 import { getMessages } from "@/messages/server";
@@ -35,12 +36,6 @@ function parseUpto(v: string | string[] | undefined): number | null {
   if (!s || !/^[1-9]\d{0,15}$/.test(s)) return null;
   const n = Number(s);
   return Number.isSafeInteger(n) ? n : null;
-}
-
-function initials(source: string): string {
-  const words = source.trim().split(/[\s._@-]+/).filter(Boolean);
-  const letters = words.length > 1 ? [words[0], words[1]] : [words[0] ?? "?"];
-  return letters.map((w) => Array.from(w)[0] ?? "").join("").toUpperCase();
 }
 
 export default async function AuditPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -139,11 +134,11 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
               <table className="w-full min-w-[900px] text-sm">
                 <thead className="bg-sunk text-left text-ink-2">
                   <tr>
-                    <th className="px-4 py-2 font-medium">{a.columns.when}</th>
-                    <th className="px-4 py-2 font-medium">{a.columns.who}</th>
-                    <th className="px-4 py-2 font-medium">{a.columns.action}</th>
-                    <th className="px-4 py-2 font-medium">{a.columns.target}</th>
-                    <th className="px-4 py-2 font-medium">{a.columns.detail}</th>
+                    <th scope="col" className="px-4 py-2 font-medium">{a.columns.when}</th>
+                    <th scope="col" className="px-4 py-2 font-medium">{a.columns.who}</th>
+                    <th scope="col" className="px-4 py-2 font-medium">{a.columns.action}</th>
+                    <th scope="col" className="px-4 py-2 font-medium">{a.columns.target}</th>
+                    <th scope="col" className="px-4 py-2 font-medium">{a.columns.detail}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -161,7 +156,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
                           {r.actorEmail ? (
                             <span className="flex items-center gap-2">
                               <span aria-hidden="true" className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-sunk text-xs font-semibold text-ink-2">
-                                {initials(name ?? r.actorEmail)}
+                                {initials(name, r.actorEmail ?? "")}
                               </span>
                               <span className="min-w-0">
                                 <span className="block truncate font-medium">{name ?? r.actorEmail}</span>

@@ -18,9 +18,9 @@ export function ResetPasswordDialog({ userId, name, email, onClose }: { userId: 
   const [state, action, pending] = useActionState(resetPassword, initial);
   const errors = { self_reset: u.errors.selfReset, not_password_account: u.errors.notPasswordAccount, unknown: u.errors.unknown } as const;
   return (
-    <Dialog title={state.issued ? u.resetTitle : u.reset} open onClose={onClose}>
+    <Dialog title={state.issued ? u.resetTitle : u.reset} open onClose={onClose} requireClose={state.issued !== null}>
       {state.issued ? (
-        <IssuedPasswordNotice key={state.issued.tempPassword} title={u.resetTitle} issued={state.issued} />
+        <IssuedPasswordNotice key={state.issued.tempPassword} issued={state.issued} />
       ) : (
         <form action={action} className="space-y-3 text-left">
           <input type="hidden" name="userId" value={userId} />
