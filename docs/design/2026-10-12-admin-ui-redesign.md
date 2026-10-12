@@ -166,10 +166,12 @@ Accessibility rules:
   - `keyboard.spec.ts`: open the row menu with the keyboard, move, Esc returns focus;
   - `csp.spec.ts`.
   The guide's Admin screenshots are captured again (`npm run guide:shots`) and looked at.
-- **Prerequisite**: these tests need a Supabase project that holds no real data, because the end-to-end harness
-  is disabled against production (`E2E_DEV_PROJECT_REF` is commented out in `.env.local` since 2026-10-12). Until
-  the owner creates one, the plan can run only the unit tests, the type check, the lint and the build. The release
-  waits for the end-to-end run.
+- **Where the end-to-end tests run** (owner's decision, 2026-10-12): on the current project, which is production,
+  not on a separate test project. They touch only the three reserved test accounts and their own sheets; the
+  Admin spec briefly changes the shared settings and the access lists and restores them, and it writes audit
+  entries. So only the specs that cover the Admin pages are run (`admin`, `a11y`, `keyboard`, `csp`, and the
+  guide capture), never the full suite, and the owner is told before each run so it happens when no one is
+  working. `E2E_DEV_PROJECT_REF` in `.env.local` is switched back on only for those runs.
 
 ## Risks and decisions
 
