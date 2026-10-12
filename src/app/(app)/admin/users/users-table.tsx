@@ -88,6 +88,14 @@ export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId:
   const t = useMessages();
   const u = t.admin.users;
   const [rows, setRows] = useState(initialRows);
+  // Follow the server's rows when they change (an account added, a password issued, a role or status changed
+  // after the page was revalidated). Resetting state while rendering keeps filters, page and open dialogs, and the
+  // instant local update after a change still shows until the fresh rows arrive.
+  const [seenRows, setSeenRows] = useState(initialRows);
+  if (seenRows !== initialRows) {
+    setSeenRows(initialRows);
+    setRows(initialRows);
+  }
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
   const [role, setRoleFilter] = useState<"all" | "user" | "admin">("all");

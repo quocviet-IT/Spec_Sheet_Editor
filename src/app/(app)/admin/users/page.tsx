@@ -20,10 +20,10 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
       <PageHeader icon={Users} title={u.title} lead={u.lead} action={<AddUser />} />
       <StatCards
         items={[
-          { icon: Users, label: u.stats.total, value: rows.length },
-          { icon: CircleCheck, label: u.stats.active, value: rows.filter((r) => r.status === "active").length },
-          { icon: Ban, label: u.stats.suspended, value: rows.filter((r) => r.status === "suspended").length },
-          { icon: ShieldCheck, label: u.stats.admins, value: rows.filter((r) => r.role === "admin").length },
+          { icon: Users, label: u.stats.total, value: people.length },
+          { icon: CircleCheck, label: u.stats.active, value: people.filter((r) => r.status === "active").length },
+          { icon: Ban, label: u.stats.suspended, value: people.filter((r) => r.status === "suspended").length },
+          { icon: ShieldCheck, label: u.stats.admins, value: people.filter((r) => r.role === "admin").length },
         ]}
       />
       <UsersTable rows={rows} meId={me.id} />
