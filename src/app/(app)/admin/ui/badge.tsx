@@ -19,7 +19,8 @@ const TONES: Record<BadgeTone, string> = {
 export function Badge({ tone, icon: Icon, children }: { tone: BadgeTone; icon?: LucideIcon; children: ReactNode }) {
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${TONES[tone]}`}>
-      {Icon ? <Icon size={16} aria-hidden="true" className="size-3.5 shrink-0" /> : null}
+      {/* 14 px on purpose: badges are 12 px text pills and 16 px would crowd them; the 16 px rule is for table cells and buttons. */}
+      {Icon ? <Icon size={14} aria-hidden="true" className="size-3.5 shrink-0" /> : null}
       {children}
     </span>
   );

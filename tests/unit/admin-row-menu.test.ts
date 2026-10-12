@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextMenuIndex } from "@/admin/row-menu-keys";
+import { dismissAction, nextMenuIndex } from "@/admin/row-menu-keys";
 
 describe("nextMenuIndex", () => {
   it("moves down and wraps from the last item to the first", () => {
@@ -24,5 +24,22 @@ describe("nextMenuIndex", () => {
     expect(nextMenuIndex(0, 3, "a")).toBeNull();
     expect(nextMenuIndex(0, 3, "Enter")).toBeNull();
     expect(nextMenuIndex(-1, 0, "ArrowDown")).toBeNull();
+  });
+});
+
+describe("dismissAction", () => {
+  it("ignores a scroll inside the menu itself", () => {
+    expect(dismissAction("scroll", true, true)).toBe("ignore");
+  });
+  it("closes and returns focus to the button when focus is in the menu", () => {
+    expect(dismissAction("scroll", false, true)).toBe("close-and-refocus");
+    expect(dismissAction("resize", false, true)).toBe("close-and-refocus");
+  });
+  it("closes without moving focus when focus is elsewhere", () => {
+    expect(dismissAction("scroll", false, false)).toBe("close");
+    expect(dismissAction("resize", false, false)).toBe("close");
+  });
+  it("does not ignore a resize even if its target is inside the menu", () => {
+    expect(dismissAction("resize", true, false)).toBe("close");
   });
 });

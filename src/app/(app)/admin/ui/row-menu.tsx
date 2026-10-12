@@ -1,9 +1,9 @@
 "use client";
 
 import { Ellipsis, type LucideIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { nextMenuIndex } from "@/admin/row-menu-keys";
+import { dismissAction, nextMenuIndex } from "@/admin/row-menu-keys";
 
 export type RowMenuItem = {
   key: string;
@@ -79,14 +79,24 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
       if (menu.current?.contains(target) || button.current?.contains(target)) return;
       setOpen(false);
     }
-    const dismiss = () => setOpen(false);
+    function dismissFor(kind: "scroll" | "resize") {
+      return (e: Event) => {
+        const el = menu.current;
+        const action = dismissAction(kind, e.target instanceof Node && !!el?.contains(e.target), !!el?.contains(document.activeElement));
+        if (action === "ignore") return;
+        if (action === "close-and-refocus") button.current?.focus({ preventScroll: true });
+        setOpen(false);
+      };
+    }
+    const onScroll = dismissFor("scroll");
+    const onResize = dismissFor("resize");
     document.addEventListener("mousedown", onDown);
-    window.addEventListener("scroll", dismiss, true);
-    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      window.removeEventListener("scroll", dismiss, true);
-      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
     };
   }, [open]);
 
@@ -149,7 +159,7 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
               className="z-50 w-56 rounded-md border border-line bg-surface py-1 shadow-lg"
             >
               {items.map((item, i) => (
-                <div key={item.key}>
+                <Fragment key={item.key}>
                   {item.separatorBefore ? <div role="separator" className="my-1 border-t border-line" /> : null}
                   <button
                     ref={(el) => {
@@ -164,7 +174,7 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
                     <item.icon size={16} aria-hidden="true" className="shrink-0" />
                     {item.label}
                   </button>
-                </div>
+                </Fragment>
               ))}
             </div>,
             document.body,

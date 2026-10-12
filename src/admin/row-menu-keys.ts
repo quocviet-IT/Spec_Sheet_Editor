@@ -18,3 +18,12 @@ export function nextMenuIndex(current: number, count: number, key: string): numb
       return null;
   }
 }
+
+/**
+ * What an open row menu does on a scroll or resize event: "ignore" for a scroll that happens inside the menu itself,
+ * "close-and-refocus" when focus is in the menu (so it goes back to the menu button, like Esc), otherwise "close".
+ */
+export function dismissAction(kind: "scroll" | "resize", targetInsideMenu: boolean, focusInsideMenu: boolean): "ignore" | "close" | "close-and-refocus" {
+  if (kind === "scroll" && targetInsideMenu) return "ignore";
+  return focusInsideMenu ? "close-and-refocus" : "close";
+}

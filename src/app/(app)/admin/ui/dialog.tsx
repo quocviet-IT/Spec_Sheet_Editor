@@ -52,7 +52,10 @@ function OpenDialog({ title, onClose, children }: { title: string; onClose: () =
     }
     const i = controls.indexOf(document.activeElement as HTMLElement);
     e.preventDefault();
-    controls[(i + (e.shiftKey ? -1 : 1) + controls.length) % controls.length]?.focus();
+    const n = controls.length;
+    // Focus on the dialog itself (index -1): Tab goes to the first control, Shift+Tab to the last.
+    const next = i < 0 ? (e.shiftKey ? n - 1 : 0) : (i + (e.shiftKey ? -1 : 1) + n) % n;
+    controls[next]?.focus();
   }
 
   return (
