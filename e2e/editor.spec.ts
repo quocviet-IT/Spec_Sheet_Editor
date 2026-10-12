@@ -165,6 +165,7 @@ test("TC-41 saving a sheet someone moved to the Trash says so", async ({ page, c
   const list = await context.newPage();
   await list.goto("/sheets");
   await list.getByRole("searchbox").fill(name);
+  await expect(list).toHaveURL(/[?&]q=/); // the address takes the search 300 ms after typing
   await list.getByRole("button", { name: new RegExp(name) }).click(); // the row's ⋯ menu
   await list.getByRole("menuitem", { name: /Đưa vào Thùng rác|Move to Trash/ }).click();
   await expect.poll(async () => (await storedSheet(id)).deleted).toBe(true);

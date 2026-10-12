@@ -436,7 +436,7 @@ export const en: Messages = {
     sections: {
       signin: { title: "Sign in and language", lead: "Use the email and the one-time password an administrator gave you. You set your own password the first time." },
       upload: { title: "Upload a sheet", lead: "A sheet starts as a PDF, PNG or JPG of the whole Product Specifications page. The editor reads the page and finds the dimension numbers on its four drawing panels." },
-      find: { title: "Find sheets", lead: "The Sheets page lists every sheet, newest first. Search by name, and move sheets you no longer need to the Trash." },
+      find: { title: "Find sheets", lead: "The Sheets page lists every sheet, newest first. The list is split into numbered pages of 25 sheets. Search by name, and move sheets you no longer need to the Trash." },
       edit: { title: "Edit values", lead: "Correct a number on a drawing: pick its marker, check what the machine read, type the new value. Only the four drawing panels are edited; the rest of the sheet stays exactly as uploaded." },
       save: { title: "Save", lead: "Edits stay on your screen until you save. A saved sheet is shared: everyone with access sees the same latest version." },
       export: { title: "Export", lead: "Export turns the sheet, with its edits, into a PNG image or a PDF file. A check dialog comes first so nothing is exported by accident." },
@@ -470,7 +470,8 @@ export const en: Messages = {
       uploadName: "Check the **Sheet name**. It starts as the file name; you can change it now or later.",
       uploadStart: "Press **Upload**. When it finishes the editor opens on the new sheet.",
       findUpload: "**Upload sheet** starts a new upload, as described above.",
-      findSearch: "Type part of a name in the search box; the list narrows as you type.",
+      findSearch: "Type part of a name in the search box; the list narrows a moment after you stop typing, and starts again at page 1.",
+      findPages: "Under the list, **Previous page** and **Next page** move between pages, and **Rows per page** sets 10, 25 or 50 sheets a page. The address keeps the tab, the search and the page, so you can bookmark a page or come back to it with the browser's Back button.",
       findTrash: "The **Trash** tab shows the sheets that were moved out of the list. **Sheets** shows the live ones.",
       findMenu: "A row's actions menu (use the arrow keys to move in it) opens the sheet or moves it to the Trash. **Undo** appears for a few seconds after a move.",
       findRestore: "To bring a sheet back, open the **Trash** tab and choose **Restore** in its actions menu. Anyone can restore; only an Admin can delete a sheet permanently.",

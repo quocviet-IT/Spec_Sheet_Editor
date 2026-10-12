@@ -48,6 +48,7 @@ function steps(page: Page, locale: Locale) {
 async function trashFromList(page: Page, name: string): Promise<void> {
   await page.goto("/sheets");
   await page.getByRole("searchbox").fill(name);
+  await expect(page).toHaveURL(/[?&]q=/); // the address takes the search 300 ms after typing
   await page.getByRole("button", { name: new RegExp(escape(name)) }).click(); // the row's menu
   await page.getByRole("menuitem", { name: /Đưa vào Thùng rác|Move to Trash/ }).click();
   // The outcome, not the timed toast: the row leaves the active list. A cold dev server can take a while.
@@ -120,7 +121,7 @@ test.describe("as Staff", () => {
       await step("sheets");
 
       await trashFromList(page, name);
-      await page.getByRole("tab", { name: /Thùng rác|Trash/ }).click();
+      await page.getByRole("navigation").getByRole("link", { name: /Thùng rác|Trash/ }).click();
       await expect(page.locator("li", { hasText: name }).getByRole("button", { name: /Khôi phục|Restore/ })).toBeVisible();
       await step("trash");
 

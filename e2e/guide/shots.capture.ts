@@ -122,7 +122,7 @@ class Shots {
  * public. Only the capture's own sheets and the reserved test accounts may appear in a picture.
  */
 const OWN_ROWS = /Ring RG-1042|Ring-RG-1042|Pendant PD-2210|Bracelet BR-7731|E2E Staff|E2E Admin|e2e-staff|e2e-admin/;
-const DATA_ROWS = "main li:has(a[href^='/sheets/']), main tbody tr";
+const DATA_ROWS = "main #sheet-panel > ul > li, main li:has(a[href^='/sheets/']), main tbody tr";
 
 /** Hides every list or table row that is not the capture's own, before measuring and shooting; fails if one stays visible. */
 async function hideOtherRows(page: Page, name: string): Promise<void> {
@@ -303,7 +303,7 @@ for (const locale of LOCALES) {
         await shots.take(staff, "list", [
           new Above(button(staff, /Tải phiếu lên|Upload sheet/).first()),
           staff.getByRole("searchbox", { name: /Tìm theo tên phiếu|Search sheet names/ }),
-          new Right(staff.getByRole("tab", { name: /Thùng rác|Trash/ })),
+          new Right(staff.getByRole("navigation").getByRole("link", { name: /Thùng rác|Trash/ })),
           button(staff, /^(Thao tác với|Actions for) Ring RG-1042$/),
         ], { x: 100, y: 0, width: 1240, height: 420 });
       }

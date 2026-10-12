@@ -50,6 +50,7 @@ export const BLOCKS: Record<SectionId, Block[]> = {
         { key: "findSearch", n: 2 },
         { key: "findTrash", n: 3 },
         { key: "findMenu", n: 4 },
+        { key: "findPages" },
         { key: "findRestore" },
       ],
     },

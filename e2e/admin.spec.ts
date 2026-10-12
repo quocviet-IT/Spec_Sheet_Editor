@@ -336,6 +336,7 @@ async function adminAuditToday(): Promise<Record<string, number>> {
 async function trashFromList(page: Page, name: string): Promise<void> {
   await page.goto("/sheets");
   await page.getByRole("searchbox").fill(name);
+  await expect(page).toHaveURL(/[?&]q=/); // the address takes the search 300 ms after typing
   await page.getByRole("button", { name: new RegExp(escape(name)) }).click(); // the row's ⋯ menu
   await page.getByRole("menuitem", { name: /Đưa vào Thùng rác|Move to Trash/ }).click();
   await expect(page.getByRole("status").filter({ hasText: /Thùng rác|Trash/ })).toBeVisible();
@@ -343,7 +344,7 @@ async function trashFromList(page: Page, name: string): Promise<void> {
 
 async function restoreFromTrash(page: Page, name: string): Promise<void> {
   await page.goto("/sheets");
-  await page.getByRole("tab", { name: /Thùng rác|Trash/ }).click();
+  await page.getByRole("navigation").getByRole("link", { name: /Thùng rác|Trash/ }).click();
   await page.locator("li", { hasText: name }).getByRole("button", { name: /Khôi phục|Restore/ }).click();
   await expect(page.getByRole("status").filter({ hasText: /khôi phục|restored/i })).toBeVisible();
 }
