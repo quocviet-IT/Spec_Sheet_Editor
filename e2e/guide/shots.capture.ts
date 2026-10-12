@@ -292,7 +292,7 @@ for (const locale of LOCALES) {
         const trashRow = page.getByRole("row").filter({ hasText: "Bracelet BR-7731" });
         await expect(trashRow).toHaveCount(1);
         await shots.take(page, "admin-trash", [
-          trashRow.getByRole("button", { name: /^(Thao tác với|Actions for) / }),
+          trashRow.getByRole("button", { name: /^(Thao tác cho|Thao tác với|Actions for) / }),
           button(page, /^(Kiểm tra tệp mồ côi|Check for orphan files)$/),
         ], { x: 100, y: 0, width: 1240, height: 500 });
         await page.close();

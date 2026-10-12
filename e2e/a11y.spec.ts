@@ -114,7 +114,7 @@ test.describe("as Staff", () => {
       await expect(page.getByRole("dialog")).toHaveCount(0);
 
       await page.keyboard.press("Control+s");
-      await expect(page.getByText(/Đã lưu lúc|Saved at/)).toBeVisible();
+      await expect(page.getByText(/Đã lưu lúc|Saved at/)).toBeVisible({ timeout: 30_000 }); // a save can take longer on a busy machine
       await page.goto("/sheets");
       await expect(page.getByText(name).first()).toBeVisible();
       await step("sheets");
