@@ -441,9 +441,9 @@ export const en: Messages = {
     sections: {
       signin: { title: "Sign in and language", lead: "Use the email and the one-time password an administrator gave you. You set your own password the first time." },
       upload: { title: "Upload a sheet", lead: "A sheet starts as a PDF, PNG or JPG of the whole Product Specifications page. The editor reads the page and finds the dimension numbers on its four drawing panels." },
-      find: { title: "Find sheets", lead: "The Sheets page lists every sheet, newest first. The list is split into numbered pages, 25 sheets a page unless you choose 10 or 50. Search by name, and move sheets you no longer need to the Trash." },
+      find: { title: "Find sheets", lead: "The Sheets page lists the sheets you uploaded, newest first. An Admin sees everyone's sheets and can filter them by Creator. The list is split into numbered pages, 25 sheets a page unless you choose 10 or 50. Search by name, and move sheets you no longer need to the Trash." },
       edit: { title: "Edit values", lead: "Correct a number on a drawing: pick its marker, check what the machine read, type the new value. Only the four drawing panels are edited; the rest of the sheet stays exactly as uploaded." },
-      save: { title: "Save", lead: "Edits stay on your screen until you save. A saved sheet is shared: everyone with access sees the same latest version." },
+      save: { title: "Save", lead: "Edits stay on your screen until you save. Only you and the Admins see your sheets, and each of you opens the latest saved version." },
       export: { title: "Export", lead: "Export turns the sheet, with its edits, into a PNG image or a PDF file. A check dialog comes first so nothing is exported by accident." },
       shortcuts: { title: "Keyboard shortcuts", lead: "These keys work in the editor and the sheet list. They are read from the program itself." },
       trouble: { title: "When something goes wrong", lead: "The five messages you are most likely to meet, word for word, and what to do about each." },

@@ -1,7 +1,7 @@
 # Spec Sheet Editor
 
 Edit the dimension values on Product Specifications sheets and export a clean copy for customer
-approval. Bilingual (Vietnamese / English).
+approval. Bilingual (Vietnamese / English). Each sheet is seen by the person who uploaded it and by Admins.
 
 - Design: [`docs/design/spec-sheet-editor-design.md`](docs/design/spec-sheet-editor-design.md)
   (HTML edition with wireframes: `docs/design/spec-sheet-editor-design.html`)

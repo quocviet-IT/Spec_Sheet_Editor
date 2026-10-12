@@ -179,7 +179,7 @@ Editable and locked zones are fixed by position on the template. Coordinates wer
 | BR-07 | Before exporting, the system lists the edited values, suggests other places that still show the same old value, and reminds the user that the right-hand table does not change. | Prevents a sheet that says Size 5.75 while the drawing says 16.51. |
 | BR-08 | A user may enter the system if and only if their account is not suspended, has replaced any one-time password, and either (a) signed in with Google with an email in a permitted domain or on the permitted email list, or (b) is a password account an Admin created. Domains are matched on the whole part after the `@`, case-insensitively. | Sheets contain order numbers and order specifications. |
 | BR-09 | Staff and Admins can both move sheets to the Trash and restore them. | Prevents losing a sheet through a mis-click. |
-| BR-10 | When two people edit the same sheet, the one who saves second is told about the conflict; nobody's work is silently overwritten. | Everyone can edit every sheet. |
+| BR-10 | When two people edit the same sheet, the one who saves second is told about the conflict; nobody's work is silently overwritten. | The owner can have the sheet open twice, and an Admin can edit a sheet while its owner does. |
 | BR-11 | Phone photos of paper sheets are not accepted. For multi-page PDFs only page 1 is used. | Photos are skewed and shadowed and do not match the template. |
 | BR-12 | There are two roles: Staff and Admin. An Admin has every Staff permission plus the Admin area. | Requirement added on 6 October 2026. |
 | BR-13 | At least one active Admin must always remain. Admins cannot suspend their own account. | The system must never be left without an administrator. |
@@ -187,6 +187,7 @@ Editable and locked zones are fixed by position on the template. Coordinates wer
 | BR-15 | The audit log is append-only: nobody, Admins included, can change or delete entries. | The log must be trustworthy when consulted later. |
 | BR-16 | Permanent deletion applies only to sheets already in the Trash, requires the sheet name to be typed to confirm, and cannot be undone. The audit log keeps the sheet name, its creator and who deleted it. | An irreversible action must be protected against mis-clicks. |
 | BR-17 | No access change may lock the acting Admin out of the system. | Prevents self-lockout. |
+| BR-18 | A sheet, its original file and its thumbnail can be read and changed only by the person who uploaded it (`created_by`) and by Admins. This covers the list, the counts, the editor, saving, the Trash and restoring. Permanent deletion stays Admin-only (BR-16). | Requirement added on 12 October 2026: each person's sheets are their own work. |
 
 ### 2.5 Roles and permission matrix
 
@@ -221,7 +222,7 @@ Priority: **Must** is required in the first release; **Should** is built if time
 | F-01 | Sign-in | Sign in with an email and password an Admin issued; a one-time password must be replaced at the first sign-in. Google sign-in (permitted domains and emails) can be switched on later and runs alongside. | UC-01 | Must |
 | F-02 | Sign out | End the session in the current browser. | UC-12 | Must |
 | **Sheet management** |  |  |  |  |
-| F-03 | Sheet list | Thumbnail, name, number of edits, last editor, time; newest first; numbered pages of 10, 25 (default) or 50 rows, with the tab, search and page in the address. | UC-02 | Must |
+| F-03 | Sheet list | The caller's own sheets (an Admin sees everyone's, with the creator on each row and a Creator filter, `owner` in the address): thumbnail, name, number of edits, last editor, time; newest first; numbered pages of 10, 25 (default) or 50 rows, with the tab, search and page in the address. | UC-02 | Must |
 | F-04 | Search by name | Partial, case-insensitive match on the sheet name. | UC-02 | Must |
 | F-05 | Upload sheet | Accept PDF, PNG, JPG; check type, size and template; create a thumbnail; store the original. | UC-03 | Must |
 | F-06 | Rename sheet | Edit the name in the editor toolbar; the sheet list menu does not rename. | UC-02, UC-08 | Should |
@@ -362,20 +363,20 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 #### UC-02 · Browse and search sheets
 
-*Traces to: F-03 · F-04 · F-06*
+*Traces to: F-03 · F-04 · F-06 · BR-18*
 
-**Actors:** Staff
+**Actors:** Staff, Admin
 
 **Preconditions:** Signed in.
 
 **Main flow:**
 
-1. The system shows the first page of 25 sheets not in the Trash, most recently edited first, with thumbnail, name, number of edits, last editor and time, and under the list "Showing 1–25 of n".
+1. The system shows the first page of 25 of the caller's own sheets not in the Trash (BR-18), most recently edited first, with thumbnail, name, number of edits, last editor and time, and under the list "Showing 1–25 of n".
 2. The user types in the search box; 300 ms after typing stops, the system puts the search in the address, returns to page 1 and filters by name.
 3. The user uses the numbered paging under the list: "Previous page" and "Next page", and "Rows per page" (10, 25 or 50). The tab, the search, the page and the size are in the address (`?tab=trash&q=…&page=2&size=25`), so a page can be bookmarked and the Back button returns to it.
 4. The user clicks a sheet; the system opens the editor.
 
-**Extensions:** 1a. No sheets yet: an empty state with an "Upload sheet" button.<br>2a. No matches: "No sheet names contain '…'."<br>4a. The user chooses "Rename": enters a new name (1–200 characters) and saves as in UC-08.
+**Extensions:** 1a. No sheets yet: an empty state with an "Upload sheet" button.<br>2a. No matches: "No sheet names contain '…'."<br>4a. The user chooses "Rename": enters a new name (1–200 characters) and saves as in UC-08.<br>Admin extension: an Admin sees every sheet. Each row shows "by {creator}", and a "Creator" select beside the search box offers All (the default), My sheets and each person who owns a sheet, with their sheet count. The choice is in the address as `owner` (`all` is left out; `me`, or a person's id) and returns the list to page 1; the tab counts follow it. An `owner` that is malformed, or whose id matches nobody who owns a sheet, falls back to All. For Staff the parameter is ignored. In the editor, an Admin on someone else's sheet sees "Uploaded by {name}".
 
 **Exceptions:** 1b. Network error: message with a "Try again" button.
 
@@ -481,7 +482,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 #### UC-08 · Save a sheet
 
-*Traces to: F-06 · F-15 · F-16 · BR-10*
+*Traces to: F-06 · F-15 · F-16 · BR-10 · BR-18*
 
 **Actors:** Staff
 
@@ -489,7 +490,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Main flow:**
 
-1. The user clicks "Save" or presses `Ctrl`+`S`.
+1. The user clicks "Save" or presses `Ctrl`+`S`. Saving follows BR-18: the user is the sheet's owner or an Admin.
 2. The system calls `save_sheet` with the sheet id, the version it holds, the name and the edit list.
 3. The database updates only if the version matches and the sheet is not in the Trash, and returns the new version.
 4. The system shows "Saved at HH:MM".
@@ -1267,7 +1268,7 @@ Priority: High blocks go-live; Med medium; Low.
 | TC-36 | UC-07 | Diagonal value | Box around 1.20, free rotation 58° | New value drawn at exactly 58° | Visual | Med |
 | **Saving** |  |  |  |  |  |  |
 | TC-37 | UC-08 | Normal save | Edit 2 values, `Ctrl`+`S`, reload | Both edits still shown; version +1; `sheet.save` logged | E2E | High |
-| TC-38 | UC-08 | Two people save | A and B open; A saves; B saves | B sees the conflict dialog naming A; A's data intact | E2E | High |
+| TC-38 | UC-08 | The owner and an Admin save | The owner and an Admin open the sheet; the owner saves; the Admin saves | The Admin sees the conflict dialog naming the owner; the owner's data intact | E2E | High |
 | TC-39 | UC-08 | Leave unsaved | Edit one value, click "Sheets" | Confirmation requested | E2E | Med |
 | TC-40 | UC-08 | Offline save | Go offline, Save, reconnect, Try again | No changes lost; save succeeds | E2E | Med |
 | TC-41 | UC-11 | Sheet trashed while open | B moves the sheet to Trash; A saves | A sees "This sheet has been moved to the Trash…" | E2E | Med |
@@ -1313,6 +1314,10 @@ Priority: High blocks go-live; Med medium; Low.
 | TC-75 | UC-17 | File deletion fails midway | Storage refuses to delete a file | The record is deleted, the remaining files are reported and later removed by the orphan clean-up | Unit | Med |
 | TC-76 | UC-18 | Orphan clean-up | One orphan folder 30 hours old, one 2 hours old | Only the 30-hour folder is listed and removed; logged | E2E | Med |
 | TC-77 | — | Service-role key not exposed | Search the built browser bundle for the key name and value | Not found | Unit | High |
+| **Sheet ownership** |  |  |  |  |  |  |
+| TC-78 | UC-02 | Staff see only their own sheets | B searches a prefix shared by A's and B's sheets; B opens A's link | One row, B's; A's link gives 404 and its name appears nowhere | E2E | High |
+| TC-79 | UC-02 | An Admin sees every sheet and filters by creator | Admin searches the prefix; chooses B in "Creator"; opens A's sheet | Rows show "by {name}"; `owner` in the address, one row, the tab count follows; the editor shows "Uploaded by {A}" | E2E | High |
+| TC-80 | — | Ownership in the database | Staff A and B and an Admin read, save, trash, restore and fetch files of each other's sheets; counts and owners | A reaches only A's sheets and files; an Admin reaches all; counts and owners follow the rule | SQL | High |
 
 ### 9.3 Test data
 

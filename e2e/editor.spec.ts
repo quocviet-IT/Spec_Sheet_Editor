@@ -107,9 +107,9 @@ test("TC-31 reverting an edit removes it from the saved sheet", async ({ page })
   expect(stored.edits).toEqual([]);
 });
 
-test("TC-38 the second of two people to save sees who saved first; the first person's work stays", async ({ page, browser }) => {
+test("TC-38 the owner and an Admin edit the same sheet; whoever saves second sees who saved first and the first work stays", async ({ page, browser }) => {
   const { id } = await openValuesSheet(page, "tc38");
-  const other = await browser.newContext({ storageState: "e2e/.auth/staff-b.json", viewport: { width: 1440, height: 900 } });
+  const other = await browser.newContext({ storageState: "e2e/.auth/admin.json", viewport: { width: 1440, height: 900 } });
   try {
     const pageB = await other.newPage();
     await pageB.goto(`/sheets/${id}`);

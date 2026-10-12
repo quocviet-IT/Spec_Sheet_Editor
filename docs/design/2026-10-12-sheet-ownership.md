@@ -84,7 +84,7 @@ were rejected:
     from `sheet_owners()` with their sheet count.
   - The choice is in the address as `owner` (`all` is the default and is left out; `me`, or a person's id), like
     `tab`, `q`, `page` and `size`. Changing it returns to page 1.
-  - An unknown or malformed `owner` falls back to All. For Staff the parameter is ignored.
+  - An unknown or malformed `owner` falls back to All, and so does an `owner` id that matches nobody who owns a sheet. For Staff the parameter is ignored.
   - The counts on the tabs follow the filter.
   - The Admin area's Trash page is unchanged, since it already lists every sheet in the Trash.
 - **Admin, editor:** when an Admin opens a sheet someone else uploaded, a line under the title reads "Uploaded by
