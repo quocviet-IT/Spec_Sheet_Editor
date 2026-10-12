@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { ADMIN_EMAIL, STAFF_B_EMAIL, adminId, resetPassword, resign, restoreAll, restoreStaff, staffBId, staffId } from "./support/account";
 import { admin, deleteSheetsOf } from "./support/db";
 import { framedPng, valuesPdf } from "./support/files";
@@ -264,37 +264,47 @@ test("Access lists: add a domain and an email, refuse a duplicate and a bad valu
   await clean();
   try {
     await page.goto("/admin/access");
-    const value = page.getByLabel(/^(Tên miền hoặc email|Domain or email)$/);
-    const add = page.getByRole("button", { name: /^(Thêm|Add)$/ });
-    const kind = page.getByLabel(/^(Loại|Kind)$/);
+    const domains = page.getByRole("region", { name: /^(Tên miền được phép|Permitted domains)$/ });
+    const emails = page.getByRole("region", { name: /^(Email được phép|Permitted emails)$/ });
+    const addButton = (card: Locator) => card.getByRole("button", { name: /^(Thêm|Add)$/ });
+    // Each list has its own Add button; the dialog it opens holds the value and note fields.
+    const dialog = page.getByRole("dialog");
+    const value = dialog.getByLabel(/^(Tên miền hoặc email|Domain or email)$/);
+    const submit = dialog.getByRole("button", { name: /^(Thêm|Add)$/ });
 
+    await addButton(domains).click();
     await value.fill(domain);
-    await add.click();
+    await submit.click();
+    await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("status").filter({ hasText: new RegExp(escape(domain)) })).toBeVisible();
-    const row = page.getByRole("listitem").filter({ hasText: domain });
-    await expect(row).toContainText(/0 tài khoản|0 account\(s\)/);
+    await expect(domains.getByRole("row").filter({ hasText: domain })).toContainText(/0 tài khoản|0 account\(s\)/);
 
+    await addButton(domains).click();
     await value.fill(domain);
-    await add.click();
-    await expect(page.getByText(/Mục này đã có trong danh sách|This entry is already on the list/)).toBeVisible();
+    await submit.click();
+    await expect(dialog.getByText(/Mục này đã có trong danh sách|This entry is already on the list/)).toBeVisible();
 
     await value.fill("not a domain");
-    await add.click();
-    await expect(page.getByText(/Nhập tên miền, ví dụ|Enter a domain such as/)).toBeVisible();
+    await submit.click();
+    await expect(dialog.getByText(/Nhập tên miền, ví dụ|Enter a domain such as/)).toBeVisible();
+    await dialog.getByRole("button", { name: /^(Đóng|Close)$/ }).click();
+    await expect(dialog).toHaveCount(0);
 
-    await kind.selectOption("email");
+    await addButton(emails).click();
     await value.fill(email);
-    await add.click();
+    await submit.click();
+    await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("status").filter({ hasText: new RegExp(escape(email)) })).toBeVisible();
-    await expect(page.getByRole("listitem").filter({ hasText: email })).toContainText(/0 tài khoản|0 account\(s\)/);
+    await expect(emails.getByRole("row").filter({ hasText: email })).toContainText(/0 tài khoản|0 account\(s\)/);
 
-    for (const entry of [domain, email]) {
-      await page.getByRole("button", { name: new RegExp(`^(Gỡ|Remove): ${escape(entry)}$`) }).click();
-      const dialog = page.getByRole("alertdialog");
-      await expect(dialog).toContainText(/0 tài khoản sẽ mất quyền truy cập|0 account\(s\) will lose access/);
-      await dialog.getByRole("button", { name: /^(Gỡ|Remove)$/ }).click();
+    for (const [card, entry] of [[domains, domain], [emails, email]] as const) {
+      await card.getByRole("button", { name: new RegExp(`(Thao tác cho|Actions for) ${escape(entry)}$`) }).click();
+      await page.getByRole("menuitem", { name: /^(Gỡ|Remove)$/ }).click();
+      const confirm = page.getByRole("alertdialog");
+      await expect(confirm).toContainText(/0 tài khoản sẽ mất quyền truy cập|0 account\(s\) will lose access/);
+      await confirm.getByRole("button", { name: /^(Gỡ|Remove)$/ }).click();
       await expect(page.getByRole("status").filter({ hasText: /^(Đã gỡ|Removed) / })).toContainText(entry);
-      await expect(page.getByRole("listitem").filter({ hasText: entry })).toHaveCount(0);
+      await expect(card.getByRole("row").filter({ hasText: entry })).toHaveCount(0);
     }
   } finally {
     await clean();

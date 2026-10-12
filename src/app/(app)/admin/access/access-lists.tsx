@@ -1,75 +1,37 @@
 "use client";
 
+import { Globe, Mail, Plus, Trash2, type LucideIcon } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import { addAllowed, removeAllowed } from "@/admin/access-actions";
 import type { AccessEntry } from "@/admin/queries";
 import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
+import { Badge } from "../ui/badge";
+import { Dialog } from "../ui/dialog";
+import { EmptyState } from "../ui/empty-state";
+import { RelativeTime } from "../ui/relative-time";
+import { RowMenu } from "../ui/row-menu";
 import { ConfirmDialog } from "../users/users-table";
 
 type Kind = "domain" | "email";
 type Pending = { kind: Kind; entry: AccessEntry; opener: HTMLElement | null };
 
-function List({ kind, title, entries, onRemove }: {
-  kind: Kind;
-  title: string;
-  entries: AccessEntry[];
-  onRemove: (kind: Kind, entry: AccessEntry, opener: HTMLElement) => void;
-}) {
-  const t = useMessages();
-  const a = t.admin.access;
-  return (
-    <section className="space-y-2">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      {entries.length === 0 ? (
-        <p className="text-sm text-ink-2">{a.empty}</p>
-      ) : (
-        <ul className="divide-y divide-line rounded-lg border border-line bg-surface">
-          {entries.map((entry) => (
-            <li key={entry.value} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
-              <div className="min-w-0">
-                <div className="break-all font-mono text-sm">{entry.value}</div>
-                {entry.note && <div className="text-xs text-ink-2">{entry.note}</div>}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="whitespace-nowrap text-sm tabular-nums text-ink-2">{fill(a.accounts, { n: entry.accounts })}</span>
-                <button
-                  type="button"
-                  onClick={(e) => onRemove(kind, entry, e.currentTarget)}
-                  aria-label={`${a.remove}: ${entry.value}`}
-                  className="rounded border border-line px-3 py-1 text-sm hover:bg-sunk"
-                >
-                  {a.remove}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-export function AccessLists({ domains, emails }: { domains: AccessEntry[]; emails: AccessEntry[] }) {
+/** The add fields for one list. Calls onAdded with the stored value once the entry has been added. */
+function AddEntryForm({ kind, onAdded }: { kind: Kind; onAdded: (value: string) => void }) {
   const t = useMessages();
   const a = t.admin.access;
   const id = useId();
-  const [kind, setKind] = useState<Kind>("domain");
   const [value, setValue] = useState("");
   const [note, setNote] = useState("");
   const [fieldError, setFieldError] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [pending, setPending] = useState<Pending | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("");
   const [alert, setAlert] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   async function add(e: FormEvent) {
     e.preventDefault();
     if (adding) return;
     setAdding(true);
     setFieldError(null);
-    setStatus("");
     setAlert(null);
     let result: Awaited<ReturnType<typeof addAllowed>>;
     try {
@@ -78,17 +40,138 @@ export function AccessLists({ domains, emails }: { domains: AccessEntry[]; email
       result = { error: "unknown" };
     }
     setAdding(false);
-    if ("ok" in result) {
-      setValue("");
-      setNote("");
-      setStatus(fill(a.added, { value: result.value }));
-    } else if (result.error === "invalid") {
-      setFieldError(kind === "domain" ? a.errors.invalidDomain : a.errors.invalidEmail);
-    } else if (result.error === "duplicate") {
-      setFieldError(a.errors.duplicate);
-    } else {
-      setAlert(a.errors.unknown);
-    }
+    if ("ok" in result) onAdded(result.value);
+    else if (result.error === "invalid") setFieldError(kind === "domain" ? a.errors.invalidDomain : a.errors.invalidEmail);
+    else if (result.error === "duplicate") setFieldError(a.errors.duplicate);
+    else setAlert(result.error === "forbidden" ? t.admin.users.errors.forbidden : a.errors.unknown);
+  }
+
+  const errorId = `${id}-error`;
+  return (
+    <form onSubmit={add} noValidate className="space-y-3">
+      <div className="space-y-1">
+        <label htmlFor={`${id}-value`} className="block text-sm font-medium">{a.value}</label>
+        <input
+          id={`${id}-value`}
+          value={value}
+          onChange={(e) => { setValue(e.target.value); setFieldError(null); }}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={fieldError ? true : undefined}
+          aria-describedby={fieldError ? errorId : undefined}
+          className="w-full rounded-md border border-line bg-surface px-3 py-2 font-mono text-sm"
+        />
+        {fieldError && <p id={errorId} className="text-sm text-danger">{fieldError}</p>}
+      </div>
+      <div className="space-y-1">
+        <label htmlFor={`${id}-note`} className="block text-sm font-medium">{a.note}</label>
+        <input
+          id={`${id}-note`}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={200}
+          className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm"
+        />
+      </div>
+      {alert && <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{alert}</p>}
+      <div className="flex justify-end">
+        <button type="submit" disabled={adding} aria-busy={adding} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:opacity-90 disabled:opacity-50">
+          {a.add}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ListCard({ kind, icon: Icon, title, addTitle, entries, onAdded, onRemove }: {
+  kind: Kind;
+  icon: LucideIcon;
+  title: string;
+  addTitle: string;
+  entries: AccessEntry[];
+  onAdded: (value: string) => void;
+  onRemove: (kind: Kind, entry: AccessEntry, opener: HTMLElement) => void;
+}) {
+  const t = useMessages();
+  const a = t.admin.access;
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  return (
+    <section aria-labelledby={`${id}-title`} className="overflow-hidden rounded-lg border border-line bg-surface">
+      <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <h2 id={`${id}-title`} className="flex items-center gap-2 text-base font-semibold">
+          <Icon size={20} aria-hidden="true" className="shrink-0 text-accent" />
+          {title}
+        </h2>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:opacity-90"
+        >
+          <Plus size={16} aria-hidden="true" />
+          {a.add}
+        </button>
+      </header>
+      <Dialog title={addTitle} open={open} onClose={() => setOpen(false)}>
+        <AddEntryForm
+          kind={kind}
+          onAdded={(value) => {
+            setOpen(false);
+            onAdded(value);
+          }}
+        />
+      </Dialog>
+      {entries.length === 0 ? (
+        <EmptyState icon={Icon} title={a.empty} />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="bg-sunk text-left text-ink-2">
+              <tr>
+                <th className="px-3 py-2 font-medium">{a.columns.entry}</th>
+                <th className="px-3 py-2 font-medium">{a.columns.note}</th>
+                <th className="px-3 py-2 font-medium">{a.columns.accounts}</th>
+                <th className="px-3 py-2 font-medium">{a.columns.added}</th>
+                <th className="w-12 px-3 py-2"><span className="sr-only">{t.admin.users.columns.actions}</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.value} className="border-t border-line first:border-t-0">
+                  <td className="break-all px-3 py-2 font-mono">{entry.value}</td>
+                  <td className="px-3 py-2 text-ink-2">{entry.note ?? ""}</td>
+                  <td className="px-3 py-2">
+                    <Badge tone={entry.accounts > 0 ? "accent" : "neutral"}>{fill(a.accounts, { n: entry.accounts })}</Badge>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-ink-2"><RelativeTime iso={entry.createdAt} /></td>
+                  <td className="px-3 py-2 text-right">
+                    <RowMenu
+                      label={fill(t.admin.ui.actionsFor, { name: entry.value })}
+                      items={[{ key: "remove", label: a.remove, icon: Trash2, tone: "danger", onSelect: (opener) => onRemove(kind, entry, opener) }]}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function AccessLists({ domains, emails }: { domains: AccessEntry[]; emails: AccessEntry[] }) {
+  const t = useMessages();
+  const a = t.admin.access;
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
+  const [alert, setAlert] = useState<string | null>(null);
+
+  function ask(kind: Kind, entry: AccessEntry, opener: HTMLElement) {
+    setStatus("");
+    setAlert(null);
+    setPending({ kind, entry, opener });
   }
 
   function close() {
@@ -99,13 +182,13 @@ export function AccessLists({ domains, emails }: { domains: AccessEntry[]; email
 
   async function confirmRemove() {
     if (!pending || busy) return;
-    const { kind: k, entry } = pending;
+    const { kind, entry } = pending;
     setBusy(true);
     setStatus("");
     setAlert(null);
     let result: Awaited<ReturnType<typeof removeAllowed>>;
     try {
-      result = await removeAllowed({ kind: k, value: entry.value });
+      result = await removeAllowed({ kind, value: entry.value });
     } catch {
       result = { error: "unknown" };
     }
@@ -115,54 +198,16 @@ export function AccessLists({ domains, emails }: { domains: AccessEntry[]; email
     close();
   }
 
-  const errorId = `${id}-error`;
+  const added = (value: string) => {
+    setAlert(null);
+    setStatus(fill(a.added, { value }));
+  };
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2">
-        <List kind="domain" title={a.domains} entries={domains} onRemove={(k, entry, opener) => { setStatus(""); setAlert(null); setPending({ kind: k, entry, opener }); }} />
-        <List kind="email" title={a.emails} entries={emails} onRemove={(k, entry, opener) => { setStatus(""); setAlert(null); setPending({ kind: k, entry, opener }); }} />
+    <div className="space-y-4">
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <ListCard kind="domain" icon={Globe} title={a.domains} addTitle={a.addDomain} entries={domains} onAdded={added} onRemove={ask} />
+        <ListCard kind="email" icon={Mail} title={a.emails} addTitle={a.addEmail} entries={emails} onAdded={added} onRemove={ask} />
       </div>
-      <form onSubmit={add} noValidate className="flex flex-wrap items-start gap-3 rounded-lg border border-line bg-surface p-4">
-        <div className="space-y-1">
-          <label htmlFor={`${id}-kind`} className="block text-sm font-medium">{a.kind}</label>
-          <select
-            id={`${id}-kind`}
-            value={kind}
-            onChange={(e) => { setKind(e.target.value as Kind); setFieldError(null); }}
-            className="rounded-md border border-line bg-surface px-3 py-2 text-sm"
-          >
-            <option value="domain">{a.kinds.domain}</option>
-            <option value="email">{a.kinds.email}</option>
-          </select>
-        </div>
-        <div className="min-w-[14rem] flex-1 space-y-1">
-          <label htmlFor={`${id}-value`} className="block text-sm font-medium">{a.value}</label>
-          <input
-            id={`${id}-value`}
-            value={value}
-            onChange={(e) => { setValue(e.target.value); setFieldError(null); }}
-            autoComplete="off"
-            spellCheck={false}
-            aria-invalid={fieldError ? true : undefined}
-            aria-describedby={fieldError ? errorId : undefined}
-            className="w-full rounded-md border border-line bg-surface px-3 py-2 font-mono text-sm"
-          />
-          {fieldError && <p id={errorId} className="text-sm text-danger">{fieldError}</p>}
-        </div>
-        <div className="min-w-[12rem] flex-1 space-y-1">
-          <label htmlFor={`${id}-note`} className="block text-sm font-medium">{a.note}</label>
-          <input
-            id={`${id}-note`}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            maxLength={200}
-            className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm"
-          />
-        </div>
-        <button type="submit" disabled={adding} aria-busy={adding} className="mt-6 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50">
-          {a.add}
-        </button>
-      </form>
       <p role="status" className="text-sm text-ink-2">{status}</p>
       {alert && <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{alert}</p>}
       {pending && (

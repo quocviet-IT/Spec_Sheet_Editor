@@ -80,22 +80,23 @@ export async function fetchUsers(): Promise<UserRow[]> {
 }
 
 /** `accounts`: Google accounts the entry admits; `loseAccess`: those admitted by this entry and no other. */
-export type AccessEntry = { value: string; note: string | null; accounts: number; loseAccess: number };
+export type AccessEntry = { value: string; note: string | null; createdAt: string; accounts: number; loseAccess: number };
 
-type AllowedRow = { value: string; note: string | null };
+type AllowedRow = { value: string; note: string | null; createdAt: string };
 
 async function fetchAllowed(supabase: Supabase, table: "allowed_domains" | "allowed_emails", column: "domain" | "email"): Promise<AllowedRow[]> {
   const all: AllowedRow[] = [];
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from(table)
-      .select(`${column}, note`)
+      .select(`${column}, note, created_at`)
       .order(column)
       .range(from, from + PAGE - 1);
     if (error) throw error;
     const rows = ((data ?? []) as unknown as Record<string, string | null>[]).map((r) => ({
       value: String(r[column]),
       note: r.note ?? null,
+      createdAt: String(r.created_at),
     }));
     all.push(...rows);
     if (rows.length < PAGE) return all;
