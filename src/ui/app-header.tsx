@@ -3,12 +3,14 @@ import type { Profile } from "@/auth/access";
 import { signOut } from "@/auth/actions";
 import type { Messages } from "@/messages";
 import { LanguageSwitch } from "./language-switch";
+import { Logo } from "./logo";
 
 export function AppHeader({ me, t }: { me: Profile; t: Messages }) {
   return (
     <header className="border-b border-line bg-surface">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-3">
-        <Link href="/sheets" className="font-bold tracking-tight">
+        <Link href="/sheets" className="flex items-center gap-2 font-bold tracking-tight">
+          <Logo size={28} />
           {t.app.name}
         </Link>
         <nav className="flex items-center gap-3 text-sm text-ink-2">
