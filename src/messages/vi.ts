@@ -82,6 +82,8 @@ export const vi = {
     actionError: "Không thực hiện được. Thử lại.",
     trashNote: "Phiếu trong Thùng rác vẫn còn nguyên. Chỉ quản trị viên mới xoá hẳn được.",
     lowRes: "Ảnh độ phân giải thấp",
+    by: "của {name}",
+    owner: { label: "Người tạo", all: "Tất cả", mine: "Phiếu của tôi", option: "{name} ({n})" },
     noThumb: "Chưa có ảnh",
   },
   upload: {
@@ -122,6 +124,7 @@ export const vi = {
     toTrash: "Mở Thùng rác",
   },
   editor: {
+    uploadedBy: "Người tải lên: {name}",
     unsaved: "Chưa lưu",
     save: "Lưu",
     saving: "Đang lưu…",

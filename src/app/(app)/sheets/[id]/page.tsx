@@ -13,10 +13,11 @@ export default async function SheetPage({ params }: { params: Promise<{ id: stri
   // requireUser() resolves; if the check redirects or throws, the read's own failure is swallowed here.
   const sheetRead = validId ? fetchEditorSheet(id) : null;
   sheetRead?.catch(() => undefined);
-  await requireUser(`/sheets/${id}`);
+  const me = await requireUser(`/sheets/${id}`);
   if (!sheetRead) notFound();
-  const sheet = await sheetRead;
-  if (!sheet) notFound();
+  const fetched = await sheetRead;
+  if (!fetched) notFound();
+  const { createdBy, createdByName, ...sheet } = fetched;
   const t = await getMessages();
   if (sheet.deleted || sheet.broken || !sheet.sourceUrl) {
     return (
@@ -37,5 +38,5 @@ export default async function SheetPage({ params }: { params: Promise<{ id: stri
       </section>
     );
   }
-  return <Editor sheet={sheet} />;
+  return <Editor sheet={{ ...sheet, uploadedBy: createdBy !== me.id ? createdByName : null }} />;
 }

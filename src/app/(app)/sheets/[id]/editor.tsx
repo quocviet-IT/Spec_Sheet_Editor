@@ -663,6 +663,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
           {t.editor.save} <kbd aria-hidden className="ml-1 font-sans text-xs">Ctrl S</kbd>
         </button>
       </header>
+      {sheet.uploadedBy ? <p className="-mt-1 text-sm text-ink-2">{fill(t.editor.uploadedBy, { name: sheet.uploadedBy })}</p> : null}
       <div className="flex min-h-0 flex-1 gap-3">
         <div className="relative flex min-w-0 flex-1 flex-col">
           <div role="status" aria-live="polite" className="sr-only">{!loadError && !loaded ? t.sheet.loading : ""}</div>

@@ -9,7 +9,7 @@ import { type EditorSheet, type SheetRow, type SheetTab, type UploadSettings } f
 
 type ListRow = {
   id: string; name: string; source_type: SourceType; thumb_path: string; page_px_w: number; page_px_h: number;
-  edit_count: number; version: number; updated_at: string; updated_by_name: string;
+  edit_count: number; version: number; updated_at: string; updated_by_name: string; created_by_name: string;
   deleted_at: string | null; deleted_by_name: string | null;
 };
 
@@ -40,7 +40,7 @@ export async function fetchUploadSettings(): Promise<UploadSettings> {
  * last change (live) or deletion time (Trash), newest first, then id.
  */
 export async function fetchSheetPageNumbered(
-  tab: SheetTab, query: string, page: number, size: number,
+  tab: SheetTab, query: string, page: number, size: number, ownerId: string | null,
 ): Promise<{ rows: SheetRow[]; total: number; page: number }> {
   const supabase = await createSupabaseServer();
   const trash = tab === "trash";
@@ -48,6 +48,7 @@ export async function fetchSheetPageNumbered(
   let counting = supabase.from("sheet_list").select("id", { count: "exact", head: true });
   counting = trash ? counting.not("deleted_at", "is", null) : counting.is("deleted_at", null);
   if (pattern) counting = counting.filter("name", "imatch", pattern);
+  if (ownerId) counting = counting.eq("created_by", ownerId);
   const [{ count, error: countError }, cfg] = await Promise.all([counting, settings()]);
   if (countError) throw countError;
   const total = count ?? 0;
@@ -55,9 +56,10 @@ export async function fetchSheetPageNumbered(
   if (!plan) return { rows: [], total, page: 1 };
   let reading = supabase
     .from("sheet_list")
-    .select("id, name, source_type, thumb_path, page_px_w, page_px_h, edit_count, version, updated_at, updated_by_name, deleted_at, deleted_by_name");
+    .select("id, name, source_type, thumb_path, page_px_w, page_px_h, edit_count, version, updated_at, updated_by_name, created_by_name, deleted_at, deleted_by_name");
   reading = trash ? reading.not("deleted_at", "is", null) : reading.is("deleted_at", null);
   if (pattern) reading = reading.filter("name", "imatch", pattern);
+  if (ownerId) reading = reading.eq("created_by", ownerId);
   const { data, error } = await reading
     .order(trash ? "deleted_at" : "updated_at", { ascending: false })
     .order("id", { ascending: false })
@@ -75,31 +77,45 @@ export async function fetchSheetPageNumbered(
   const rows: SheetRow[] = found.map((r) => ({
     id: r.id, name: r.name, sourceType: r.source_type, thumbUrl: links.get(r.thumb_path) ?? null,
     pageW: r.page_px_w, pageH: r.page_px_h, editCount: r.edit_count, version: r.version,
-    updatedAt: r.updated_at, updatedByName: r.updated_by_name, deletedAt: r.deleted_at, deletedByName: r.deleted_by_name,
+    updatedAt: r.updated_at, updatedByName: r.updated_by_name, createdByName: r.created_by_name, deletedAt: r.deleted_at, deletedByName: r.deleted_by_name,
   }));
   return { rows, total, page: plan.page };
 }
 
-export async function fetchCounts(): Promise<{ live: number; trash: number }> {
+export async function fetchCounts(ownerId: string | null): Promise<{ live: number; trash: number }> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.rpc("sheet_counts");
+  const { data, error } = await supabase.rpc("sheet_counts", ownerId ? { p_owner: ownerId } : {});
   if (error) throw error;
   const row = (Array.isArray(data) ? data[0] : data) as { live: number | string; trash: number | string } | undefined;
   return { live: Number(row?.live ?? 0), trash: Number(row?.trash ?? 0) };
 }
 
+/** Everyone who owns at least one sheet, with how many (the function returns nothing to Staff). */
+export async function fetchSheetOwners(): Promise<{ id: string; name: string; sheets: number }[]> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase.rpc("sheet_owners");
+  if (error) throw error;
+  return ((data ?? []) as { id: string; name: string; sheets: number | string }[]).map((o) => ({
+    id: o.id, name: o.name, sheets: Number(o.sheets),
+  }));
+}
+
+/** What `fetchEditorSheet` returns: the sheet and its creator; the page turns the creator into `uploadedBy`. */
+export type FetchedEditorSheet = Omit<EditorSheet, "uploadedBy"> & { createdBy: string; createdByName: string };
+
 type EditorRow = {
   id: string; name: string; source_type: SourceType; page_px_w: number; page_px_h: number; version: number;
   detections: unknown; edits: unknown; deleted_at: string | null;
+  created_by: string; creator: { full_name: string | null; email: string } | null;
 };
 
 /** One sheet for the editor with a short-lived link to its original, or null when it does not exist (or RLS hides it). */
-export async function fetchEditorSheet(id: string): Promise<EditorSheet | null> {
+export async function fetchEditorSheet(id: string): Promise<FetchedEditorSheet | null> {
   const supabase = await createSupabaseServer();
   const [{ data, error }, cfg] = await Promise.all([
     supabase
       .from("spec_sheets")
-      .select("id, name, source_type, page_px_w, page_px_h, version, detections, edits, deleted_at")
+      .select("id, name, source_type, page_px_w, page_px_h, version, detections, edits, deleted_at, created_by, creator:profiles!spec_sheets_created_by_fkey(full_name, email)")
       .eq("id", id)
       .maybeSingle<EditorRow>(),
     settings(),
@@ -120,5 +136,7 @@ export async function fetchEditorSheet(id: string): Promise<EditorSheet | null> 
     broken: !stored.ok,
     sourceUrl: signed?.signedUrl ?? null,
     lowRes: data.page_px_w < cfg.lowres_warn_px,
+    createdBy: data.created_by,
+    createdByName: data.creator?.full_name || data.creator?.email || "",
   };
 }

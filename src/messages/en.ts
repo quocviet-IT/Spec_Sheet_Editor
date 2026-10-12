@@ -85,6 +85,8 @@ export const en: Messages = {
     trashNote: "Sheets in the Trash are kept whole. Only an administrator can delete them permanently.",
     lowRes: "Low resolution",
     noThumb: "No preview",
+    by: "by {name}",
+    owner: { label: "Creator", all: "All", mine: "My sheets", option: "{name} ({n})" },
   },
   upload: {
     title: "Upload sheet",
@@ -124,6 +126,7 @@ export const en: Messages = {
     toTrash: "Open the Trash",
   },
   editor: {
+    uploadedBy: "Uploaded by {name}",
     unsaved: "Unsaved",
     save: "Save",
     saving: "Saving…",
