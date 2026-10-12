@@ -78,7 +78,7 @@ describe.skipIf(!hasDb)("sheet ownership (BR-18)", () => {
       const { a, b } = await world(tx);
       const pending = randomUUID();
       await insertObject(tx, `${pending}/source.png`, b);
-      const read = async () => (await tx`select 1 from storage.objects where name = ${`${pending}/source.png`}`).length;
+      const read = async () => (await tx`select 1 from storage.objects where bucket_id = 'spec-sheets' and name = ${`${pending}/source.png`}`).length;
       await actAs(tx, b);
       expect(await read()).toBe(1);
       await actAsOwner(tx);
@@ -95,6 +95,19 @@ describe.skipIf(!hasDb)("sheet ownership (BR-18)", () => {
       await expectError(tx, (sp) => sp`insert into storage.objects (bucket_id, name, owner, owner_id) values ('spec-sheets', ${`${aSheet}/extra.png`}, ${a.id}, ${a.id})`, "row-level security");
       const fresh = randomUUID();
       await tx`insert into storage.objects (bucket_id, name, owner, owner_id) values ('spec-sheets', ${`${fresh}/source.png`}, ${a.id}, ${a.id})`;
+    });
+  });
+
+  it("a folder that is not a sheet id is neither readable nor free, whoever asks", async () => {
+    await rollback(async (tx) => {
+      const { a, admin } = await world(tx);
+      for (const user of [a, admin]) {
+        await actAsOwner(tx);
+        await actAs(tx, user);
+        const [r] = await tx<{ readable: boolean; free: boolean }[]>`
+          select public.sheet_files_readable('not-a-uuid', ${user.id}) as readable, public.sheet_folder_free('../x') as free`;
+        expect(r).toEqual({ readable: false, free: false });
+      }
     });
   });
 

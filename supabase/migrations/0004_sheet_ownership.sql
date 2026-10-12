@@ -2,6 +2,10 @@
 -- uploaded it and by Admins. Written to be re-runnable: tests/sql/ownership.test.ts applies this body inside a
 -- transaction that is rolled back, before the migration itself is applied.
 
+-- Changing a table's policies takes an exclusive lock on it until the transaction ends. Against a live upload, give up
+-- after 5 s instead of queueing every reader behind this statement; run it again when the app is quiet.
+set local lock_timeout = '5s';
+
 -- ===== Rows =====
 drop policy if exists sheets_read on public.spec_sheets;
 drop policy if exists sheets_update on public.spec_sheets;
@@ -16,7 +20,7 @@ create policy sheets_update on public.spec_sheets for update to authenticated
 -- A file lives under "<sheet id>/". Whether a sheet exists is read past RLS (security definer), so a folder whose
 -- sheet the caller cannot see still counts as taken.
 create or replace function public.sheet_files_readable(p_folder text, p_object_owner text) returns boolean
-language plpgsql stable security definer set search_path = public as $$
+language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
   v_owner uuid;
 begin
@@ -32,7 +36,7 @@ begin
 end $$;
 
 create or replace function public.sheet_folder_free(p_folder text) returns boolean
-language plpgsql stable security definer set search_path = public as $$
+language plpgsql stable security definer set search_path = public, pg_temp as $$
 begin
   if p_folder is null or p_folder !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
     return false;
