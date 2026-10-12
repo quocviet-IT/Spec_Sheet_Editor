@@ -54,6 +54,22 @@ create policy spec_files_add on storage.objects for insert to authenticated
   with check (bucket_id = 'spec-sheets' and (select public.is_allowed_user())
               and public.sheet_folder_free((storage.foldername(name))[1]));
 
+-- ===== Export log =====
+-- A client logs an export only for a sheet it may read: another person's sheet is "not found", exactly like a
+-- missing one, so the log can neither be written against it nor be used to probe whether it exists.
+create or replace function public.log_client_event(p_action text, p_target_id uuid, p_detail jsonb)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if not is_allowed_user() then raise exception 'forbidden'; end if;
+  if p_action not in ('sheet.export_png', 'sheet.export_pdf') then raise exception 'action_not_allowed'; end if;
+  -- the audit log can never be pruned, so a client may not grow it with large or dangling rows
+  if pg_column_size(coalesce(p_detail, '{}'::jsonb)) > 2048 then raise exception 'detail_too_large'; end if;
+  if not exists (select 1 from spec_sheets where id = p_target_id and (created_by = auth.uid() or is_admin())) then
+    raise exception 'sheet_not_found';
+  end if;
+  perform _audit(p_action, 'sheet', p_target_id::text, p_detail);
+end $$;
+
 -- ===== The list =====
 -- Columns are only appended, so code reading the old columns keeps working.
 create or replace view public.sheet_list with (security_invoker = true) as

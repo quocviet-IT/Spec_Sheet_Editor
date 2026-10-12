@@ -40,6 +40,7 @@ test("TC-78 BR-18 Staff see only their own sheets; another person's link is not 
 
     const res = await page.goto(`/sheets/${mineId}`);
     expect(res?.status()).toBe(404);
+    await expect(page.getByText(/could not be found/i)).toBeVisible(); // the not-found page itself, should a loading screen ever stream first
     await expect(page.getByText(mine)).toHaveCount(0);
   } finally {
     await context.close();
@@ -71,7 +72,7 @@ test("TC-79 BR-18 an Admin sees every sheet with its creator, filters by creator
     await expect(adminPage.getByText(/Hiển thị 1–1 trong 1$|Showing 1–1 of 1$/)).toBeVisible();
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText(theirs);
-    await expect(adminPage.locator("#sheet-tab-live")).toContainText(/\b1$/); // the Sheets tab count follows the filter
+    await expect(adminPage.locator("#sheet-tab-live")).toContainText(/\b1$/); // the Sheets tab counts all of staff-b's live sheets (the search does not narrow it); afterEach leaves none behind
 
     await adminPage.goto(`/sheets/${uploaded.id}`);
     await expect(adminPage.getByText(new RegExp(`(Người tải lên|Uploaded by):? ${STAFF_NAME}`))).toBeVisible({ timeout: 30_000 });

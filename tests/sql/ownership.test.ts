@@ -128,6 +128,18 @@ describe.skipIf(!hasDb)("sheet ownership (BR-18)", () => {
     });
   });
 
+  it("an export is logged only for a sheet the caller may read; another person's sheet is not found", async () => {
+    await rollback(async (tx) => {
+      const { a, admin, aSheet, bSheet } = await world(tx);
+      await actAs(tx, a);
+      await expectError(tx, (sp) => sp`select public.log_client_event('sheet.export_png', ${bSheet}::uuid, '{}'::jsonb)`, "sheet_not_found");
+      await tx`select public.log_client_event('sheet.export_png', ${aSheet}::uuid, '{}'::jsonb)`;
+      await actAsOwner(tx);
+      await actAs(tx, admin);
+      await tx`select public.log_client_event('sheet.export_pdf', ${bSheet}::uuid, '{}'::jsonb)`;
+    });
+  });
+
   it("the migration can be applied twice", async () => {
     await rollback(async (tx) => {
       await applyMigration(tx, MIGRATION);

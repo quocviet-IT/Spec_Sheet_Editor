@@ -124,7 +124,15 @@ No change. An Admin's save on someone else's sheet is already logged with the Ad
    - From that moment Staff see only their own sheets.
    - Tell the staff before this step.
 3. Merge this branch; Vercel deploys it.
+   - Never merge before step 2. The new code reads `created_by_name` and calls `sheet_owners()`, so the Sheets page
+     shows its error message until 0004 is live. Nothing leaks in that state, but nobody can use the list.
 4. Run the end-to-end specs outside working hours.
+
+Also in 0004:
+- `log_client_event`, the export log, accepts only a sheet the caller may read. Another person's sheet is "not
+  found", like a missing one, so the log can neither be written against it nor used to probe whether it exists.
+- Files left behind by a permanent deletion that failed halfway have no sheet any more. Like an upload in progress,
+  they are readable by their uploader alone until the orphan clean-up removes them.
 
 ## Documents to update
 
