@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PAGE_SIZE, pageInfo, parsePaging, rangeOf } from "@/admin/paging";
+import { DEFAULT_PAGE_SIZE, pageInfo, pageRead, parsePaging, rangeOf } from "@/admin/paging";
 
 describe("parsePaging", () => {
   it("defaults to page 1 and the default size", () => {
@@ -30,5 +30,18 @@ describe("rangeOf", () => {
   it("gives the 0-based inclusive bounds for range()", () => {
     expect(rangeOf(1, 25)).toEqual({ from: 0, to: 24 });
     expect(rangeOf(3, 10)).toEqual({ from: 20, to: 29 });
+  });
+});
+
+describe("pageRead", () => {
+  it("reads nothing for an empty list", () => {
+    expect(pageRead(0, 1, 25)).toBeNull();
+    expect(pageRead(0, 99, 25)).toBeNull();
+  });
+  it("clamps a page past the end to the last page's rows", () => {
+    expect(pageRead(30, 99, 25)).toEqual({ page: 2, from: 25, to: 49 });
+  });
+  it("keeps a page inside the list", () => {
+    expect(pageRead(30, 1, 25)).toEqual({ page: 1, from: 0, to: 24 });
   });
 });

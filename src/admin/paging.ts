@@ -29,3 +29,10 @@ export function rangeOf(page: number, size: number): { from: number; to: number 
   const from = (Math.max(1, page) - 1) * size;
   return { from, to: from + size - 1 };
 }
+
+/** What to read for a page once the total is known: the clamped page and its range, or null when there is nothing to read. */
+export function pageRead(total: number, page: number, size: number): { page: number; from: number; to: number } | null {
+  if (total <= 0) return null;
+  const current = pageInfo(total, page, size).page;
+  return { page: current, ...rangeOf(current, size) };
+}

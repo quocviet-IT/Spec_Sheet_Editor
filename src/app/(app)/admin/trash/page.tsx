@@ -14,8 +14,8 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
   const t = await getMessages();
   const a = t.admin.trash;
   const { page, size } = parsePaging(params);
-  const { rows, total } = await fetchTrashPage(page, size);
-  const info = pageInfo(total, page, size);
+  const { rows, total, page: shown } = await fetchTrashPage(page, size);
+  const info = pageInfo(total, shown, size);
   const hrefFor = (p: number, s: number) => `/admin/trash?page=${p}&size=${s}`;
   return (
     <section className="space-y-6">

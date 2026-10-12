@@ -1,6 +1,6 @@
 import "server-only";
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { pageInfo, rangeOf } from "./paging";
+import { pageInfo, pageRead, rangeOf } from "./paging";
 import { auditRange, groupPrefix, type AuditFilter } from "./audit-filter";
 import { SETTING_DEFAULTS, type SettingKey } from "./settings-ranges";
 
@@ -287,24 +287,28 @@ type TrashDbRow = { id: string; name: string; thumb_path: string; deleted_at: st
  * One page of the Trash, newest first, with the exact total. Only this page's thumbnails are signed. A page past
  * the end is clamped to the last one, the same way `pageInfo` clamps it for the page that shows the result.
  */
-export async function fetchTrashPage(page: number, size: number): Promise<{ rows: TrashRow[]; total: number }> {
+export async function fetchTrashPage(page: number, size: number): Promise<{ rows: TrashRow[]; total: number; page: number }> {
   const supabase = await createSupabaseServer();
-  const read = async (at: number) => {
-    const { from, to } = rangeOf(at, size);
-    const { data, error, count } = await supabase
+  // Count first: a range that starts past the end, read together with an exact count, is refused by PostgREST (416).
+  const { count, error: countError } = await supabase
+    .from("sheet_list")
+    .select("id", { count: "exact", head: true })
+    .not("deleted_at", "is", null);
+  if (countError) throw countError;
+  const total = count ?? 0;
+  const plan = pageRead(total, page, size);
+  let rows: TrashDbRow[] = [];
+  if (plan) {
+    const { data, error } = await supabase
       .from("sheet_list")
-      .select("id, name, thumb_path, deleted_at, deleted_by_name", { count: "exact" })
+      .select("id, name, thumb_path, deleted_at, deleted_by_name")
       .not("deleted_at", "is", null)
       .order("deleted_at", { ascending: false })
       .order("id", { ascending: false })
-      .range(from, to);
+      .range(plan.from, plan.to);
     if (error) throw error;
-    return { data: (data ?? []) as unknown as TrashDbRow[], total: count ?? 0 };
-  };
-  let result = await read(page);
-  const last = pageInfo(result.total, page, size).page;
-  if (result.data.length === 0 && result.total > 0 && last !== page) result = await read(last);
-  const rows = result.data;
+    rows = (data ?? []) as unknown as TrashDbRow[];
+  }
   const links = new Map<string, string>();
   if (rows.length > 0) {
     const ttl = (await fetchSettings()).signed_url_ttl_min * 60;
@@ -316,6 +320,7 @@ export async function fetchTrashPage(page: number, size: number): Promise<{ rows
   }
   return {
     rows: rows.map((r) => ({ id: r.id, name: r.name, thumbUrl: links.get(r.thumb_path) ?? null, deletedAt: r.deleted_at, deletedByName: r.deleted_by_name })),
-    total: result.total,
+    total,
+    page: plan?.page ?? 1,
   };
 }
