@@ -74,7 +74,7 @@ export function ConfirmDialog({ message, confirmLabel, cancelLabel, busy, onConf
   );
 }
 
-export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId: string }) {
+export function UsersTable({ rows: initialRows, meId, searchable = true }: { rows: UserRow[]; meId: string; searchable?: boolean }) {
   const t = useMessages();
   const locale = useLocale();
   const u = t.admin.users;
@@ -165,14 +165,16 @@ export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId:
 
   return (
     <div className="space-y-3">
-      <input
-        type="search"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder={u.search}
-        aria-label={u.search}
-        className="w-full max-w-sm rounded-md border border-line bg-surface px-3 py-2 text-sm"
-      />
+      {searchable && (
+        <input
+          type="search"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder={u.search}
+          aria-label={u.search}
+          className="w-full max-w-sm rounded-md border border-line bg-surface px-3 py-2 text-sm"
+        />
+      )}
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="w-full min-w-[900px] text-sm">
           <thead className="bg-sunk text-left text-ink-2">

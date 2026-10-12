@@ -271,6 +271,10 @@ export const vi = {
       resetConfirm: "Cấp mật khẩu một lần mới? Người này bị đăng xuất khỏi mọi thiết bị.",
       resetYes: "Cấp mật khẩu mới",
       search: "Tìm theo tên hoặc email",
+      testAccounts: {
+        title: "Tài khoản kiểm thử ({n})",
+        lead: "Dành riêng cho kiểm thử tự động. Không xoá được vì nhật ký kiểm toán có nhắc tới; nên để ở trạng thái đình chỉ.",
+      },
       sheets: "Số phiếu đã tạo",
       makeAdmin: "Đặt làm quản trị viên",
       makeStaff: "Chuyển thành nhân viên",
