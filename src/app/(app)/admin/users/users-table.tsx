@@ -11,7 +11,7 @@ import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 import { Badge } from "../ui/badge";
 import { EmptyState } from "../ui/empty-state";
-import { Pagination } from "../ui/pagination";
+import { Pagination } from "@/ui/pagination";
 import { RelativeTime } from "../ui/relative-time";
 import { RowMenu, type RowMenuItem } from "../ui/row-menu";
 import { ResetPasswordDialog } from "./reset-password";

@@ -1,10 +1,7 @@
 import type { Detection, Edit } from "@/editor/types";
 import type { SourceType } from "@/lib/form/template";
 
-export const PAGE_SIZE = 50;
-
 export type SheetTab = "live" | "trash";
-export type Cursor = { time: string; id: string };
 
 export type SheetRow = {
   id: string;
@@ -20,8 +17,6 @@ export type SheetRow = {
   deletedAt: string | null;
   deletedByName: string | null;
 };
-
-export type SheetPage = { rows: SheetRow[]; next: Cursor | null };
 
 export type UploadSettings = { maxFileMb: number; lowresWarnPx: number; aspectTolerancePct: number };
 

@@ -3,31 +3,11 @@
 import { z } from "zod";
 import { requireUser } from "@/auth/session";
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { fetchSheetPage } from "./queries";
 import { saveInputSchema } from "@/editor/schema";
 import type { Detection, Edit } from "@/editor/types";
 import { saveResult, type SaveRow } from "./save-result";
 import { readStoredData } from "./stored-data";
-import type { EditorState, SaveResult, SheetPage, SheetTab } from "./types";
-
-const loadInput = z.object({
-  tab: z.enum(["live", "trash"]),
-  query: z.string().max(200),
-  after: z.object({ time: z.string().min(1).max(64), id: z.uuid() }).nullable(),
-});
-
-/** The next 50 rows, or a fresh first page after a tab or search change (UC-02 steps 2–3). */
-export async function loadSheets(input: { tab: SheetTab; query: string; after: { time: string; id: string } | null }): Promise<SheetPage | { error: "unknown" }> {
-  await requireUser("/sheets");
-  const parsed = loadInput.safeParse(input);
-  if (!parsed.success) return { error: "unknown" };
-  try {
-    return await fetchSheetPage(parsed.data.tab, parsed.data.query, parsed.data.after);
-  } catch (error) {
-    console.error("loadSheets failed:", error instanceof Error ? error.message : error);
-    return { error: "unknown" };
-  }
-}
+import type { EditorState, SaveResult } from "./types";
 
 type Result = { ok: true } | { error: "unknown" };
 

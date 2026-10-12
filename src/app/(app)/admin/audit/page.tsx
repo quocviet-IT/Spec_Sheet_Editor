@@ -11,7 +11,7 @@ import { requireAdmin } from "@/auth/session";
 import { getMessages } from "@/messages/server";
 import { EmptyState } from "../ui/empty-state";
 import { PageHeader } from "../ui/page-header";
-import { Pagination } from "../ui/pagination";
+import { Pagination } from "@/ui/pagination";
 import { RelativeTime } from "../ui/relative-time";
 
 const ICONS: Record<AuditIconKey, LucideIcon> = {
