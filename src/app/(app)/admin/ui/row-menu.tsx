@@ -3,7 +3,7 @@
 import { Ellipsis, type LucideIcon } from "lucide-react";
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { dismissAction, nextMenuIndex } from "@/admin/row-menu-keys";
+import { menuReaction, nextMenuIndex } from "@/admin/row-menu-keys";
 
 export type RowMenuItem = {
   key: string;
@@ -35,7 +35,8 @@ type Place = { right: number; top?: number; bottom?: number };
  * button, and opens upwards when there is not room below. Why a portal and not an absolutely positioned child:
  * an Admin table sits in an overflow-x-auto wrapper, which clips (and scrolls) any absolute child that sticks out
  * of it, so the menu of the last rows would be cut off. A fixed portal is outside every overflow ancestor. Because
- * a fixed menu does not follow its button, it closes on scroll and on resize.
+ * a fixed menu does not follow its button, it is repositioned on scroll and on resize, and closes (like Esc) only
+ * when its button is entirely out of the viewport.
  */
 export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] }) {
   const id = useId();
@@ -46,15 +47,19 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const startAt = useRef<"first" | "last">("first");
 
-  function openMenu(at: "first" | "last") {
-    const rect = button.current?.getBoundingClientRect();
-    if (!rect) return;
+  function placeFor(rect: DOMRect): Place {
     const need = items.length * ITEM_HEIGHT + MENU_PADDING;
     const below = window.innerHeight - rect.bottom;
     const right = document.documentElement.clientWidth - rect.right;
-    setPlace(below < need && rect.top > below
+    return below < need && rect.top > below
       ? { right, bottom: window.innerHeight - rect.top + MENU_GAP }
-      : { right, top: rect.bottom + MENU_GAP });
+      : { right, top: rect.bottom + MENU_GAP };
+  }
+
+  function openMenu(at: "first" | "last") {
+    const rect = button.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPlace(placeFor(rect));
     startAt.current = at;
     setOpen(true);
   }
@@ -71,7 +76,7 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
     (startAt.current === "last" ? list[list.length - 1] : list[0])?.focus();
   }, [open]);
 
-  // Outside click, scroll and resize close the menu.
+  // Outside click closes; scroll and resize keep the menu under its button, and close it only when the button is off-screen.
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
@@ -79,17 +84,27 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
       if (menu.current?.contains(target) || button.current?.contains(target)) return;
       setOpen(false);
     }
-    function dismissFor(kind: "scroll" | "resize") {
+    function follow(kind: "scroll" | "resize") {
       return (e: Event) => {
         const el = menu.current;
-        const action = dismissAction(kind, e.target instanceof Node && !!el?.contains(e.target), !!el?.contains(document.activeElement));
+        const btn = button.current;
+        if (!btn) return;
+        const rect = btn.getBoundingClientRect();
+        const action = menuReaction(kind, e.target instanceof Node && !!el?.contains(e.target), rect, {
+          width: document.documentElement.clientWidth,
+          height: window.innerHeight,
+        });
         if (action === "ignore") return;
-        if (action === "close-and-refocus") button.current?.focus({ preventScroll: true });
+        if (action === "reposition") {
+          setPlace(placeFor(rect));
+          return;
+        }
+        if (el?.contains(document.activeElement)) btn.focus({ preventScroll: true });
         setOpen(false);
       };
     }
-    const onScroll = dismissFor("scroll");
-    const onResize = dismissFor("resize");
+    const onScroll = follow("scroll");
+    const onResize = follow("resize");
     document.addEventListener("mousedown", onDown);
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onResize);

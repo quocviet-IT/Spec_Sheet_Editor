@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dismissAction, nextMenuIndex } from "@/admin/row-menu-keys";
+import { initials, menuReaction, nextMenuIndex } from "@/admin/row-menu-keys";
 
 describe("nextMenuIndex", () => {
   it("moves down and wraps from the last item to the first", () => {
@@ -27,19 +27,36 @@ describe("nextMenuIndex", () => {
   });
 });
 
-describe("dismissAction", () => {
+describe("menuReaction", () => {
+  const vp = { width: 1000, height: 800 };
+  const visible = { top: 100, bottom: 132, left: 900, right: 932 };
+  it("repositions on a scroll while the button is visible", () => {
+    expect(menuReaction("scroll", false, visible, vp)).toBe("reposition");
+  });
+  it("closes when a scroll takes the button fully off-screen", () => {
+    expect(menuReaction("scroll", false, { top: -60, bottom: -28, left: 900, right: 932 }, vp)).toBe("close");
+    expect(menuReaction("scroll", false, { top: 800, bottom: 832, left: 900, right: 932 }, vp)).toBe("close");
+  });
+  it("keeps the menu while the button is partly visible", () => {
+    expect(menuReaction("scroll", false, { top: -10, bottom: 22, left: 900, right: 932 }, vp)).toBe("reposition");
+  });
   it("ignores a scroll inside the menu itself", () => {
-    expect(dismissAction("scroll", true, true)).toBe("ignore");
+    expect(menuReaction("scroll", true, visible, vp)).toBe("ignore");
+    expect(menuReaction("scroll", true, { top: -60, bottom: -28, left: 0, right: 10 }, vp)).toBe("ignore");
   });
-  it("closes and returns focus to the button when focus is in the menu", () => {
-    expect(dismissAction("scroll", false, true)).toBe("close-and-refocus");
-    expect(dismissAction("resize", false, true)).toBe("close-and-refocus");
+  it("repositions on a resize, even when its target is inside the menu", () => {
+    expect(menuReaction("resize", false, visible, vp)).toBe("reposition");
+    expect(menuReaction("resize", true, visible, vp)).toBe("reposition");
   });
-  it("closes without moving focus when focus is elsewhere", () => {
-    expect(dismissAction("scroll", false, false)).toBe("close");
-    expect(dismissAction("resize", false, false)).toBe("close");
+});
+
+describe("initials", () => {
+  it("uses the first and last word of the name", () => {
+    expect(initials("Ta Quoc Viet", "viet@x.com")).toBe("TV");
   });
-  it("does not ignore a resize even if its target is inside the menu", () => {
-    expect(dismissAction("resize", true, false)).toBe("close");
+  it("falls back to the email name and to a single letter", () => {
+    expect(initials(null, "ngoc.dung@x.com")).toBe("ND");
+    expect(initials("  ", "viet@x.com")).toBe("V");
+    expect(initials("", "")).toBe("?");
   });
 });
