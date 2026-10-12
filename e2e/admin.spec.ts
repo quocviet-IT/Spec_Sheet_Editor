@@ -415,7 +415,7 @@ test("TC-68 / TC-72 every Admin action is audited once, and the CSV matches the 
     await page.waitForURL(/actor=/);
     const shown: Record<string, number> = {};
     for (;;) {
-      for (const action of await page.locator("tbody tr td:nth-child(3)").allTextContents()) shown[action] = (shown[action] ?? 0) + 1;
+      for (const action of await page.locator("tbody tr td[data-action]").evaluateAll((cells) => cells.map((c) => c.getAttribute("data-action") ?? ""))) shown[action] = (shown[action] ?? 0) + 1;
       const older = page.getByRole("link", { name: /^(Trang sau|Next page)$/ });
       if ((await older.count()) === 0) break;
       const here = page.url();

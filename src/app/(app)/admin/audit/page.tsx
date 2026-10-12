@@ -3,7 +3,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { AUDIT_GROUPS, filterQuery, parseAuditFilter } from "@/admin/audit-filter";
-import { auditIconKey, type AuditIconKey } from "@/admin/audit-icons";
+import { auditActionLabel, auditIconKey, type AuditIconKey } from "@/admin/audit-icons";
 import { pageInfo, parsePaging } from "@/admin/paging";
 import { AUDIT_CSV_MAX, fetchAuditPage, fetchAuditPeople } from "@/admin/queries";
 import { requireAdmin } from "@/auth/session";
@@ -61,6 +61,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
       <div className="rounded-lg border border-line bg-surface">
         <div className="flex flex-wrap items-end gap-3 border-b border-line p-4">
           <form method="get" className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+            <input type="hidden" name="size" value={size} />
             <label className="space-y-1 text-sm">
               <span className="block font-medium">{a.from}</span>
               <span className="relative block">
@@ -148,6 +149,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
                 <tbody>
                   {rows.map((r) => {
                     const Icon = ICONS[auditIconKey(r.action)];
+                    const label = auditActionLabel(a.actions, r.action);
                     const name = r.actorEmail ? nameOf.get(r.actorEmail.toLowerCase()) ?? null : null;
                     return (
                       <tr key={r.id} className="border-t border-line align-top">
@@ -170,10 +172,19 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
                             <span className="text-ink-2">{a.system}</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td data-action={r.action} className="px-4 py-3">
                           <span className="flex items-center gap-2">
                             <Icon size={16} aria-hidden="true" className="shrink-0 text-ink-2" />
-                            <span className="font-mono text-xs">{r.action}</span>
+                            <span className="flex flex-col">
+                              {label ? (
+                                <>
+                                  <span>{label}</span>
+                                  <span className="font-mono text-xs text-ink-2">{r.action}</span>
+                                </>
+                              ) : (
+                                <span className="font-mono text-xs">{r.action}</span>
+                              )}
+                            </span>
                           </span>
                         </td>
                         <td className="px-4 py-3 text-xs">
@@ -184,7 +195,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
                           <details>
                             <summary className="cursor-pointer">
                               {a.details}
-                              <span className="sr-only">{` ${r.action} ${localTime(r.occurredAt)}`}</span>
+                              <span className="sr-only">{` ${label ?? r.action} ${localTime(r.occurredAt)}`}</span>
                             </summary>
                             <pre tabIndex={0} className="mt-2 max-w-md overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-sunk p-2 text-xs">
                               {JSON.stringify(r.detail ?? {}, null, 2)}

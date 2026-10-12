@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AUDIT_GROUPS } from "@/admin/audit-filter";
-import { AUDIT_FALLBACK_ICON, AUDIT_ICON_KEYS, auditIconKey } from "@/admin/audit-icons";
+import { AUDIT_FALLBACK_ICON, AUDIT_ICON_KEYS, auditActionLabel, auditIconKey } from "@/admin/audit-icons";
+import { en, vi } from "@/messages";
 
 describe("auditIconKey", () => {
   it("gives every group except sheets an icon of its own from the prefix alone", () => {
@@ -25,5 +26,16 @@ describe("auditIconKey", () => {
     expect(auditIconKey("nothing.here")).toBe(AUDIT_FALLBACK_ICON);
     expect(auditIconKey("")).toBe(AUDIT_FALLBACK_ICON);
     expect(auditIconKey("constructor.x")).toBe(AUDIT_FALLBACK_ICON);
+  });
+});
+
+describe("auditActionLabel", () => {
+  const KNOWN = ["access.add", "access.remove", "auth.denied", "auth.login", "maintenance.orphan_cleanup", "maintenance.test_accounts_removed", "settings.update", "sheet.detect", "sheet.export_pdf", "sheet.export_png", "sheet.purge", "sheet.restore", "sheet.save", "sheet.trash", "sheet.upload", "user.create", "user.password_changed", "user.password_reset", "user.role_change", "user.suspend", "user.unsuspend"];
+  it("has a label for every known action in both languages", () => {
+    for (const dict of [vi, en]) for (const action of KNOWN) expect(auditActionLabel(dict.admin.audit.actions, action), action).toBeTruthy();
+  });
+  it("returns null for an unknown action, including inherited names", () => {
+    expect(auditActionLabel(en.admin.audit.actions, "sheet.unknown")).toBeNull();
+    expect(auditActionLabel(en.admin.audit.actions, "constructor")).toBeNull();
   });
 });

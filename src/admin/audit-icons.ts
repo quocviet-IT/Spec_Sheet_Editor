@@ -27,3 +27,8 @@ export function auditIconKey(action: string): AuditIconKey {
   const group = action.split(".")[0];
   return Object.hasOwn(BY_GROUP, group) ? BY_GROUP[group] : AUDIT_FALLBACK_ICON;
 }
+
+/** The readable label for an audit action from a dictionary's `admin.audit.actions`, or null so the page shows the raw name. */
+export function auditActionLabel(labels: Record<string, string>, action: string): string | null {
+  return Object.hasOwn(labels, action) ? labels[action] : null;
+}
