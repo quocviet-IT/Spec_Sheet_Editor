@@ -131,7 +131,10 @@ test.describe("Admin", () => {
 
     // Tab to a row's "..." button.
     await tabTo(page, "a row's ... button", (a) => a.popup === "menu" && /^(Thao tác cho|Actions for) /.test(a.label ?? ""));
-    const button = page.locator(":focus");
+    // Pin the button by its own name: a ":focus" locator would follow focus into the menu.
+    const label = (await active(page)).label!;
+    const button = page.getByRole("button", { name: label, exact: true });
+    await expect(button).toBeFocused();
     await expect(button).toHaveAttribute("aria-expanded", "false");
 
     // Enter opens the menu on its first item.
@@ -153,6 +156,7 @@ test.describe("Admin", () => {
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
     await expect(button).toBeFocused();
+    expect((await active(page)).label).toBe(label);
     await expect(button).toHaveAttribute("aria-expanded", "false");
   });
 });
