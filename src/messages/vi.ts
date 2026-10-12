@@ -236,7 +236,7 @@ export const vi = {
     lead: "Chỉ quản trị viên thấy khu này.",
     areas: {
       users: "Người dùng",
-      access: "Truy cập và cấu hình",
+      access: "Quyền truy cập và cài đặt",
       audit: "Nhật ký hoạt động",
       cleanup: "Thùng rác và dọn dẹp",
     },
@@ -508,7 +508,7 @@ export const vi = {
       adminUsersSearch: "Tìm theo tên hoặc email, hoặc thu hẹp danh sách bằng **Lọc theo vai trò** và **Lọc theo trạng thái**.",
       adminUsersStatus: "Nhãn trạng thái cho biết **Đang hoạt động**, **Bị đình chỉ** hoặc **Chờ đặt mật khẩu đầu tiên**.",
       adminUsersMenu: "Mở menu **⋯** trên dòng để thực hiện các thao tác với người đó. **Đặt làm quản trị viên** và **Chuyển thành nhân viên** đổi vai trò sau khi bạn xác nhận; luôn phải còn ít nhất một quản trị viên đang hoạt động. **Đình chỉ** chặn người đó từ lần thao tác kế tiếp, **Kích hoạt lại** cho họ vào lại; bạn không thể tự đình chỉ mình. **Cấp lại mật khẩu** cấp một mật khẩu một lần mới và đăng xuất người đó khỏi mọi thiết bị; chỉ áp dụng cho tài khoản dùng mật khẩu.",
-      adminAccess: "**Truy cập và cấu hình**: danh sách tên miền và email được phép chỉ cho phép đăng nhập bằng Google; tài khoản do quản trị viên tạo luôn đăng nhập bằng mật khẩu. Khi gỡ một mục, hệ thống cho biết bao nhiêu tài khoản sẽ mất quyền.",
+      adminAccess: "**Quyền truy cập và cài đặt**: danh sách tên miền và email được phép chỉ cho phép đăng nhập bằng Google; tài khoản do quản trị viên tạo luôn đăng nhập bằng mật khẩu. Khi gỡ một mục, hệ thống cho biết bao nhiêu tài khoản sẽ mất quyền.",
       adminSettings: "Các cài đặt hệ thống gồm dung lượng tệp tối đa, chiều rộng cảnh báo độ phân giải thấp, sai lệch tỉ lệ mẫu phiếu và thời hạn liên kết tải xuống. Mỗi cài đặt có khoảng cho phép, và thay đổi áp dụng với mọi người từ lần tải trang kế tiếp.",
       adminAudit: "**Nhật ký hoạt động** liệt kê mọi thay đổi và người thực hiện, mới nhất trước. Lọc theo ngày, người và loại thao tác, rồi dùng **Tải CSV** để lấy danh sách đã lọc.",
       adminTrashDelete: "**Thùng rác và dọn dẹp** liệt kê các phiếu trong Thùng rác. Mở menu **⋯** trên dòng: **Khôi phục** đưa phiếu trở lại, còn **Xoá vĩnh viễn** yêu cầu gõ tên phiếu, xoá tệp gốc, ảnh thu nhỏ và bản ghi, và không hoàn tác được.",

@@ -206,7 +206,7 @@ export function AccessLists({ domains, emails }: { domains: AccessEntry[]; email
   const shown = (kind: Kind) => (message.kind === kind ? message : { kind, status: "", alert: null });
   return (
     <div className="space-y-4">
-      <div className="grid items-start gap-6 lg:grid-cols-2">
+      <div className="grid items-start gap-6">{/* one card per row: five columns do not fit in half the width */}
         <ListCard kind="domain" icon={Globe} title={a.domains} addTitle={a.addDomain} entries={domains} status={shown("domain").status} alert={shown("domain").alert} onAdded={added("domain")} onRemove={ask} />
         <ListCard kind="email" icon={Mail} title={a.emails} addTitle={a.addEmail} entries={emails} status={shown("email").status} alert={shown("email").alert} onAdded={added("email")} onRemove={ask} />
       </div>
