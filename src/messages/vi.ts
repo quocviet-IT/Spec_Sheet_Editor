@@ -371,7 +371,6 @@ export const vi = {
       system: "Hệ thống",
       details: "Chi tiết",
       empty: "Không có mục nào với bộ lọc này.",
-      more: "Xem các mục cũ hơn",
       count: "Số mục: {n}",
     },
     trash: {

@@ -373,7 +373,6 @@ export const en: Messages = {
       system: "System",
       details: "Details",
       empty: "No entries for this filter.",
-      more: "Show older entries",
       count: "Entries: {n}",
     },
     trash: {

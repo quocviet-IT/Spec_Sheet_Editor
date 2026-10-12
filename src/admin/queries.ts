@@ -1,5 +1,6 @@
 import "server-only";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { pageInfo, rangeOf } from "./paging";
 import { auditRange, groupPrefix, type AuditFilter } from "./audit-filter";
 import { SETTING_DEFAULTS, type SettingKey } from "./settings-ranges";
 
@@ -152,7 +153,6 @@ export async function fetchSettings(): Promise<Record<SettingKey, number>> {
   return out;
 }
 
-export const AUDIT_PAGE = 100;
 export const AUDIT_CSV_MAX = 50_000;
 
 export type AuditRow = {
@@ -216,21 +216,30 @@ export async function maxAuditId(filter: AuditFilter): Promise<number | null> {
   return row ? row.id : null;
 }
 
-/** One page of the audit log, newest first; `before` is the id of the last entry already shown. */
-export async function fetchAudit(filter: AuditFilter, before: number | null): Promise<{ rows: AuditRow[]; next: number | null; total: number }> {
+/**
+ * One numbered page of the audit log, newest first, over a pinned snapshot: `upto` is the newest id the snapshot
+ * includes. When the caller has none (the first visit) it is read here and returned, so every later page link can
+ * carry it and entries written meanwhile do not shift the pages. A page past the end is clamped to the last one.
+ */
+export async function fetchAuditPage(
+  filter: AuditFilter,
+  upto: number | null,
+  page: number,
+  size: number,
+): Promise<{ rows: AuditRow[]; total: number; upto: number | null }> {
+  const pinned = upto ?? (await maxAuditId(filter));
+  if (pinned === null) return { rows: [], total: 0, upto: null };
+  const total = await countAudit(filter, pinned);
+  const { from, to } = rangeOf(pageInfo(total, page, size).page, size);
   const supabase = await createSupabaseServer();
   const f = auditParams(filter);
-  let q = supabase.from("audit_log").select(AUDIT_COLUMNS).gte("occurred_at", f.fromIso).lt("occurred_at", f.toIsoExclusive);
+  let q = supabase.from("audit_log").select(AUDIT_COLUMNS).gte("occurred_at", f.fromIso).lt("occurred_at", f.toIsoExclusive).lte("id", pinned);
   if (f.actor) q = q.eq("actor_id", f.actor);
   if (f.like) q = q.like("action", f.like);
   if (f.target) q = q.eq("target_id", f.target);
-  if (before !== null) q = q.lt("id", before);
-  const [page, total] = await Promise.all([q.order("id", { ascending: false }).limit(AUDIT_PAGE + 1), countAudit(filter)]);
-  if (page.error) throw page.error;
-  const rows = ((page.data ?? []) as unknown as AuditDbRow[]).map(toAuditRow);
-  const more = rows.length > AUDIT_PAGE;
-  const shown = more ? rows.slice(0, AUDIT_PAGE) : rows;
-  return { rows: shown, next: more ? shown[shown.length - 1].id : null, total };
+  const { data, error } = await q.order("id", { ascending: false }).range(from, to);
+  if (error) throw error;
+  return { rows: ((data ?? []) as unknown as AuditDbRow[]).map(toAuditRow), total, upto: pinned };
 }
 
 /**

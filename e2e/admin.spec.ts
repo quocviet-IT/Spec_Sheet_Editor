@@ -416,7 +416,7 @@ test("TC-68 / TC-72 every Admin action is audited once, and the CSV matches the 
     const shown: Record<string, number> = {};
     for (;;) {
       for (const action of await page.locator("tbody tr td:nth-child(3)").allTextContents()) shown[action] = (shown[action] ?? 0) + 1;
-      const older = page.getByRole("link", { name: /Xem các mục cũ hơn|Show older entries/ });
+      const older = page.getByRole("link", { name: /^(Trang sau|Next page)$/ });
       if ((await older.count()) === 0) break;
       const here = page.url();
       await older.click();
@@ -425,7 +425,7 @@ test("TC-68 / TC-72 every Admin action is audited once, and the CSV matches the 
     for (const action of WATCHED) expect(shown[action] ?? 0, `${action} on the page`).toBe(after[action]);
 
     // The CSV: UTF-8 BOM, the header, only the Admin's rows, and the sheet's name.
-    await page.goto(page.url().split("&before=")[0]);
+    await page.goto(page.url().split("&upto=")[0]);
     const count = Number((await page.getByText(/^(Số mục|Entries): /).innerText()).replace(/\D/g, ""));
     const downloading = page.waitForEvent("download");
     await page.getByRole("link", { name: /^(Tải CSV|Download CSV)$/ }).click();
