@@ -85,12 +85,16 @@ export async function fetchFeedbackCounts(): Promise<Record<FeedbackStatus, numb
   return out;
 }
 
-/** When the reader last opened the Feedback page, or null if never. Read before the page marks itself seen. */
+/**
+ * When the reader last opened the Feedback page, or null if never (the database answers '-infinity' then, which is
+ * not a time). Read before the page marks itself seen.
+ */
 export async function fetchFeedbackSeenAt(): Promise<string | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase.rpc("feedback_seen_at");
   if (error) throw error;
-  return typeof data === "string" ? data : null;
+  if (typeof data !== "string") return null;
+  return Number.isFinite(new Date(data).getTime()) ? data : null;
 }
 
 /** How many changes the reader has not seen yet. Never throws: the header must not fail because of a badge. */

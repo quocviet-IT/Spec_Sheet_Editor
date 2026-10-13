@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PageInfo } from "@/admin/paging";
 import { declineNeedsNote, FEEDBACK_STATUSES, NOTE_MAX, type FeedbackStatus } from "@/feedback/model";
 import { feedbackHref } from "@/feedback/list-url";
+import { isLocalPath, isUpdated } from "@/feedback/row";
 import { markFeedbackSeen, setFeedbackStatus } from "@/feedback/actions";
 import type { FeedbackRow } from "@/feedback/queries";
 import { useMessages } from "@/messages/client";
@@ -17,17 +18,6 @@ import { RelativeTime } from "../admin/ui/relative-time";
 
 const TONES: Record<FeedbackStatus, BadgeTone> = { new: "accent", looking: "warning", fixed: "success", declined: "neutral" };
 const control = "w-full rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink";
-
-/** A report's own address is stored by the app, but a link is only drawn for a path inside this site. */
-function isLocalPath(url: string): boolean {
-  return url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\");
-}
-
-function isUpdated(row: FeedbackRow, seenAt: string | null): boolean {
-  if (!row.triagedAt) return false;
-  if (!seenAt) return true;
-  return new Date(row.triagedAt).getTime() > new Date(seenAt).getTime();
-}
 
 export function FeedbackList({
   rows, info, status, counts, isAdmin, seenAt,
@@ -97,7 +87,7 @@ export function FeedbackList({
                 </thead>
                 <tbody className="max-md:block">
                   {rows.map((r) => (
-                    <FeedbackItem key={`${r.id}:${r.status}:${r.triageNote ?? ""}`} row={r} isAdmin={isAdmin} updated={!isAdmin && isUpdated(r, visitSeenAt)} />
+                    <FeedbackItem key={`${r.id}:${r.status}:${r.triageNote ?? ""}`} row={r} isAdmin={isAdmin} updated={!isAdmin && isUpdated(r.triagedAt, visitSeenAt)} />
                   ))}
                 </tbody>
               </table>
@@ -115,33 +105,37 @@ function FeedbackItem({ row, isAdmin, updated }: { row: FeedbackRow; isAdmin: bo
   const f = t.feedback;
   const router = useRouter();
   const [note, setNote] = useState(row.triageNote ?? "");
-  const [status, setStatus] = useState<FeedbackStatus>(row.status);
+  // What the server last confirmed; the select shows this, and only the value being saved while a save is in flight.
+  const [confirmed, setConfirmed] = useState<{ status: FeedbackStatus; note: string }>({ status: row.status, note: row.triageNote ?? "" });
+  const [pending, setPending] = useState<FeedbackStatus | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const selectRef = useRef<HTMLSelectElement>(null);
   const label = (text: string) => <span className="mb-1 block text-xs font-medium text-ink-2 md:hidden">{text}</span>;
   const cell = "px-4 py-3 max-md:block max-md:px-3 max-md:py-1.5";
 
   async function save(next: FeedbackStatus, text: string) {
+    // The select and the note are disabled while a save runs, so this is a second line of defence only.
     if (busy) return;
     if (declineNeedsNote(next, text)) {
-      setStatus(row.status);
       setProblem(f.needsReason);
       return;
     }
     setBusy(true);
+    setPending(next);
     setProblem(null);
     try {
       const result = await setFeedbackStatus(row.id, next, text);
       if ("error" in result) {
-        setStatus(row.status);
         setProblem(result.error === "needs_reason" ? f.needsReason : f.saveFailed);
       } else {
+        setConfirmed({ status: next, note: text });
         router.refresh();
       }
     } catch {
-      setStatus(row.status);
       setProblem(f.saveFailed);
     } finally {
+      setPending(null);
       setBusy(false);
     }
   }
@@ -191,13 +185,11 @@ function FeedbackItem({ row, isAdmin, updated }: { row: FeedbackRow; isAdmin: bo
           <div className="mt-2 space-y-2 md:w-56">
             <select
               aria-label={f.columns.status}
-              value={status}
+              ref={selectRef}
+              value={pending ?? confirmed.status}
+              disabled={busy}
               aria-busy={busy}
-              onChange={(e) => {
-                const next = e.target.value as FeedbackStatus;
-                setStatus(next);
-                void save(next, note);
-              }}
+              onChange={(e) => void save(e.target.value as FeedbackStatus, note)}
               className={control}
             >
               {FEEDBACK_STATUSES.map((s) => (
@@ -211,8 +203,11 @@ function FeedbackItem({ row, isAdmin, updated }: { row: FeedbackRow; isAdmin: bo
               value={note}
               maxLength={NOTE_MAX}
               onChange={(e) => setNote(e.target.value)}
-              onBlur={() => {
-                if (note !== (row.triageNote ?? "")) void save(status, note);
+              disabled={busy}
+              onBlur={(e) => {
+                // Moving to this row's select is not a save of its own: the select's change carries the note along.
+                if (e.relatedTarget === selectRef.current) return;
+                if (note !== confirmed.note) void save(confirmed.status, note);
               }}
               className={control}
             />
