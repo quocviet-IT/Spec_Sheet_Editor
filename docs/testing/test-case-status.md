@@ -120,6 +120,7 @@ error mapping is unit-tested).
 | NFR-07 Usability | `e2e/a11y.spec.ts`: axe scans for WCAG 2.2 AA in light and dark, Vietnamese and English, on the login page, the sheet list, the upload dialog, the editor and its layers, the trash, the password page, the guide, the Admin screens and the purge dialog (9 tests, all passing). `e2e/keyboard.spec.ts`: open, edit, save and export with the keyboard alone. | Pass (2026-10-10, e2e:prod) |
 | NFR-07 Usability, account menu | `e2e/keyboard.spec.ts`: the header's account menu is opened, moved through and closed with the keyboard alone. | Written, not yet run |
 | NFR-08 Test data | `samples/` is in `.gitignore`; all tests use generated sheets. | Pass (by inspection) |
+| NFR-07 Usability, theme | `e2e/theme.spec.ts`: Dark is chosen and kept after a reload, System follows the device and Light does not; `e2e/keyboard.spec.ts`: the theme menu is opened, moved through and closed with the keyboard alone. | Written, not yet run |
 | NFR-09 Traceability | `e2e/admin.spec.ts` TC-68 / TC-72 (one audit entry per action; the CSV matches the log); SQL TC-69 to TC-71 not run on this network. | Pass for the end-to-end part; SQL written, not run on this network |
 | NFR-10 Least privilege | `tests/unit/bundle-scan.test.ts` and the `postbuild` check `scripts/check-bundle.mts` (the production bundle holds no secret-key shape); `createSupabaseAdmin` gained no new use in M7a. | Pass (unit, build check) |
 

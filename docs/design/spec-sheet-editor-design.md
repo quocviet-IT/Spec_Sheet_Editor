@@ -1191,7 +1191,7 @@ The bottleneck is the input data, not the tool. When digits are 8 px tall and to
 | S11 | Report dialog | UC-19 |
 | S12 | Feedback | UC-19 |
 
-The header (the app shell on every signed-in page) is one bar on a desktop: the brand, then the page tabs (Sheets, Guide, Feedback, and Admin for an Admin) as icon-and-label links with the current page marked, then the "Report a problem" button, the VI | EN language switch and the account menu. The account menu opens from the person's initials and shows their name, email and role, Change password (accounts that sign in with a password only) and Sign out; on a phone the tabs move to a second row that scrolls inside itself and the language switch moves into the account menu. The menu follows the WAI-ARIA menu button pattern (arrow keys, Home/End, Esc closes and returns focus to the button).
+The header (the app shell on every signed-in page) is one bar on a desktop: the brand, then the page tabs (Sheets, Guide, Feedback, and Admin for an Admin) as icon-and-label links with the current page marked, then the "Report a problem" button, the VI | EN language switch, the theme button (a sun, a moon or a monitor for Light, Dark or System; it opens a three-item menu and the choice is kept in a cookie) and the account menu. The account menu opens from the person's initials and shows their name, email and role, Change password (accounts that sign in with a password only) and Sign out; on a phone the tabs move to a second row that scrolls inside itself and the language switch and the theme choice move into the account menu. The menu follows the WAI-ARIA menu button pattern (arrow keys, Home/End, Esc closes and returns focus to the button).
 
 ### 8.3 Wireframes
 

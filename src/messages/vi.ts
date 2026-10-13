@@ -515,7 +515,7 @@ export const vi = {
       signinEmail: "Nhập email công ty vào ô **Email**.",
       signinPassword: "Nhập mật khẩu quản trị viên đã cấp vào ô **Mật khẩu**.",
       signinSubmit: "Nhấn `Enter` hoặc nút **Đăng nhập**.",
-      signinLanguage: "**VI** và **EN** đổi ngôn ngữ. Lựa chọn được nhớ trên trình duyệt này, và nút chuyển cũng có ở đầu mọi trang. Mặc định là tiếng Việt.",
+      signinLanguage: "**VI** và **EN** đổi ngôn ngữ. Lựa chọn được nhớ trên trình duyệt này, và nút chuyển cũng có ở đầu mọi trang. Mặc định là tiếng Việt. Nút mặt trời / mặt trăng bên cạnh để chọn giao diện Sáng, Tối hoặc Theo máy (theo cài đặt của máy); trên điện thoại nút này nằm trong menu tài khoản.",
       signinForced: "Lần đầu, mật khẩu một lần chỉ dùng được một lần. Trang kế tiếp yêu cầu bạn đặt mật khẩu của riêng mình (ít nhất 10 ký tự); xong là vào được hệ thống.",
       signinChange: "Muốn đổi mật khẩu sau này, dùng **Đổi mật khẩu** trong menu tài khoản (chữ cái đầu tên bạn ở góc phải). Bạn cần nhập mật khẩu hiện tại. Tài khoản đăng nhập bằng Google không có mật khẩu nên không thấy liên kết này.",
       uploadOpen: "Ở trang **Phiếu**, nhấn **Tải phiếu lên**.",

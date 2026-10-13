@@ -517,7 +517,7 @@ export const en: Messages = {
       signinEmail: "Type your company email in **Email**.",
       signinPassword: "Type the password an administrator gave you in **Password**.",
       signinSubmit: "Press `Enter` or the **Sign in** button.",
-      signinLanguage: "**VI** and **EN** switch the language. The choice is remembered on this browser, and the same switch is in the header of every page. Vietnamese is the default.",
+      signinLanguage: "**VI** and **EN** switch the language. The choice is remembered on this browser, and the same switch is in the header of every page. Vietnamese is the default. The sun and moon button next to it chooses Light, Dark or System (follows your device); on a phone it is in the account menu.",
       signinForced: "The first time, the one-time password works once only. The next page asks you to choose your own password (at least 10 characters); after that you are in.",
       signinChange: "To change your password later, use **Change password** in the account menu (your initials at the top right). You need the current one. Accounts that sign in with Google have no password, so the link is not shown to them.",
       uploadOpen: "On the **Sheets** page press **Upload sheet**.",
