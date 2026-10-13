@@ -7,10 +7,11 @@ import { FeedbackButton } from "./feedback-button";
 import { LanguageSwitch } from "./language-switch";
 import { Logo } from "./logo";
 import { NavTabs } from "./nav-tabs";
+import { ThemeMenu } from "./theme-menu";
 
 /**
- * One bar on a desktop: brand, page tabs, then the report button, the language switch and the account menu.
- * On a phone the tabs move to a second, horizontally scrollable row and the language switch moves into the
+ * One bar on a desktop: brand, page tabs, then the report button, the language switch, the theme menu and the account menu.
+ * On a phone the tabs move to a second, horizontally scrollable row and the language switch and the theme choice move into the
  * account menu.
  */
 export function AppHeader({ me, t, feedbackUnseen = 0 }: { me: Profile; t: Messages; feedbackUnseen?: number }) {
@@ -39,6 +40,9 @@ export function AppHeader({ me, t, feedbackUnseen = 0 }: { me: Profile; t: Messa
           <FeedbackButton />
           <div className="max-md:hidden">
             <LanguageSwitch />
+          </div>
+          <div className="max-md:hidden">
+            <ThemeMenu />
           </div>
           <AccountMenu name={me.fullName} email={me.email} role={me.role} passwordAccount={me.passwordAccount} />
         </div>

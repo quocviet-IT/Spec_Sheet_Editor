@@ -8,12 +8,13 @@ import { signOut } from "@/auth/actions";
 import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 import { LanguageSwitch } from "./language-switch";
+import { ThemeSwitch } from "./theme-menu";
 
 const ITEM = "[role^='menuitem']";
 
 /**
  * The account button (initials avatar) and its menu: who is signed in, Change password (password accounts only),
- * the language switch on a phone, and Sign out. Follows the WAI-ARIA menu button pattern like RowMenu:
+ * the language switch and the theme choice on a phone, and Sign out. Follows the WAI-ARIA menu button pattern like RowMenu:
  * Enter, Space or ArrowDown open on the first item, ArrowUp on the last; inside, the arrows wrap and Home/End
  * jump; Esc closes and refocuses the button, Tab closes, a click outside closes.
  *
@@ -162,6 +163,7 @@ export function AccountMenu({
         </div>
         <div role="none" className="border-b border-line py-1 md:hidden">
           <LanguageSwitch variant="menu" />
+          <ThemeSwitch />
         </div>
         {passwordAccount && (
           <Link
