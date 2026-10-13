@@ -74,5 +74,8 @@ test("TC-36 a diagonal value marked by hand at 58 degrees is redrawn at 58 degre
   expect(Math.abs((changes.angle ?? 0) - 58)).toBeLessThanOrEqual(4);
   await page.keyboard.press("Control+s");
   await waitForVersion(id, 3);
-  expect((await storedSheet(id)).edits).toEqual([expect.objectContaining({ oldValue: "1.20", newValue: "1.25", angle: 58 })]);
+  const { edits } = await storedSheet(id);
+  expect(edits).toEqual([expect.objectContaining({ oldValue: "1.20", newValue: "1.25" })]);
+  // A free angle is turned to where the digits measure least tall, in half-degree steps, so it may move a little.
+  expect(Math.abs(edits[0].angle - 58)).toBeLessThanOrEqual(1);
 });

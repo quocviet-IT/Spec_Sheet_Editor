@@ -208,28 +208,30 @@ export const REFINE_STEP = 0.5;
 /** Another angle is taken only when the digits measure at least this many pixels less tall there. */
 export const REFINE_MIN_GAIN = 1;
 /**
- * The search stops going one way once the digits measure this many pixels taller than the least height
- * found, two steps running: it has climbed out of the value's own valley, and a farther one is a
- * neighbouring line. It also keeps a measurement (each one tightens the whole box) from running 49 times.
+ * The walls of the value's own valley: the digits measure this many pixels taller than the least height.
+ * The search stops going one way once it has climbed a wall (two steps running), since a farther valley
+ * is a neighbouring line; that also keeps a measurement (each one tightens the whole box) from running
+ * 49 times.
  */
-export const REFINE_STOP_RISE = 2;
+export const REFINE_RISE = 2;
 /**
- * A box at least this many times longer than tall has a direction of its own: a detector's quad, turned
- * with its text to within a few degrees. A box closer to a square (a rectangle drawn around a slanted
- * value) says little about the angle.
+ * The least height is taken only when a wall stands within this many steps beyond each end of its run.
+ * Heights are whole pixels: on a flat profile (a short value, or one a line touches) a 1-px dip far from
+ * the given angle is noise, and following it turns a good angle into a worse one.
  */
-export const TRUSTED_ASPECT = 2;
+export const REFINE_VALLEY = 10;
 
 /**
  * The angle at which a value's digits measure least tall, near the box's own free angle: measured across
  * slanted ink, digits come out too tall. `analyseBox` is measured at `angle + k·step` for |k·step| ≤ span,
- * walking out from the given angle both ways until REFINE_STOP_RISE. Heights are whole pixels, so the least
- * height holds over a run of steps; the middle of the run nearest the given angle is taken. The given
- * angle is kept when:
+ * walking out from the given angle both ways until it climbs a wall (REFINE_RISE). Heights are whole pixels,
+ * so the least height holds over a run of steps; the middle of the run nearest the given angle is taken.
+ * The given angle is kept when:
  * - it is 0, 90, -90 or 180: the box comes back unchanged;
  * - no angle measures at least REFINE_MIN_GAIN px less tall;
- * - the run reaches the end of the range while the box's own direction is trusted (TRUSTED_ASPECT): the
- *   search is then drifting along a crowded line, not finding the text.
+ * - the run is not a clear valley: no wall within REFINE_VALLEY steps beyond one of its ends. Nothing is
+ *   measured beyond the range, so a run at its end is never taken: the search would be drifting along a
+ *   crowded line, not finding the text.
  * Returns the box tightened to the digits at the chosen angle, or the box itself when it holds no text.
  */
 export function refineAngle(raster: Raster, box: PxBox, span = REFINE_SPAN, step = REFINE_STEP): PxBox {
@@ -246,7 +248,7 @@ export function refineAngle(raster: Raster, box: PxBox, span = REFINE_SPAN, step
       if (!found) continue;
       tight.set(k, found);
       least = Math.min(least, found.h);
-      rising = found.h >= least + REFINE_STOP_RISE ? rising + 1 : 0;
+      rising = found.h >= least + REFINE_RISE ? rising + 1 : 0;
     }
   }
   if (start.h - least < REFINE_MIN_GAIN) return start;
@@ -261,7 +263,11 @@ export function refineAngle(raster: Raster, box: PxBox, span = REFINE_SPAN, step
   // No run holds k = 0 (the given angle measures taller), so its nearer end is its distance.
   const distance = (r: { from: number; to: number }) => Math.min(Math.abs(r.from), Math.abs(r.to));
   const run = runs.reduce((a, b) => (distance(b) < distance(a) ? b : a));
-  if ((run.from === -n || run.to === n) && box.w >= TRUSTED_ASPECT * box.h) return start;
+  const wall = (end: number, way: 1 | -1) => {
+    for (let i = 1; i <= REFINE_VALLEY; i++) if ((tight.get(end + way * i)?.h ?? -Infinity) >= least + REFINE_RISE) return true;
+    return false;
+  };
+  if (!wall(run.from, -1) || !wall(run.to, 1)) return start;
   const middle = (run.from + run.to) / 2;
   return tight.get(middle > 0 ? Math.floor(middle) : Math.ceil(middle))!;
 }

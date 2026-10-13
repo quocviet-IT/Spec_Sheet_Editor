@@ -5,7 +5,7 @@ import type { Raster } from "@/lib/ocr/raster";
 import type { ScanResult } from "@/lib/ocr/scan";
 import type { PageTextItem } from "@/lib/page/text";
 import type { ExportSource } from "./export-plan";
-import { boxForDrawnRect, boxFromQuad, centreInDrawingArea, drawingAreaPx, roundAngle, roundBox, snapAngle, toBox, toPx } from "./geometry";
+import { boxForDrawnRect, boxFromQuad, centreInDrawingArea, drawingAreaPx, isAxisAngle, roundAngle, roundBox, snapAngle, toBox, toPx } from "./geometry";
 import { pdfTextValues } from "./pdf-text";
 import { analyseBox, refineAngle } from "./pixels";
 import type { Detection, Edit, PxBox } from "./types";
@@ -36,21 +36,38 @@ export function fromPdfText(page: LoadedPage, newId: () => string): Detection[] 
     .map((v) => toDetection(raster, v.px, { readValue: v.value, confidence: null, source: "pdf-text" }, newId));
 }
 
+type Reading = { quad: Quad; angle: number };
+
+/**
+ * A reading's quad as a box at the reading's angle, made exactly 0, 90, -90 or 180 within SNAP_TOLERANCE.
+ * A reading that close to an axis stays on it and its angle is not searched (by design): most values run
+ * along the page's axes, and a quad a few degrees off one is the detector's noise, not a slant.
+ */
+function quadBox(reading: Reading): PxBox {
+  return boxFromQuad(reading.quad, snapAngle(reading.angle));
+}
+
+/** The quad's box turned to where the digits measure least tall, made exact again if that lands near an axis. */
+function refinedQuadBox(raster: Raster, quad: Quad, px: PxBox): PxBox {
+  const angle = snapAngle(refineAngle(raster, px).angle);
+  return angle === px.angle ? px : boxFromQuad(quad, angle);
+}
+
 /**
  * A scan's or a click's reading as a box on the page, at the text's own angle. The reading's angle (its
- * quad's) becomes exactly 0, 90, -90 or 180 within SNAP_TOLERANCE; a free angle is then turned to where
- * the digits measure least tall (`refineAngle`), made exact again if that lands near an axis, and the box
- * is the quad's at that angle.
+ * quad's) becomes exactly 0, 90, -90 or 180 within SNAP_TOLERANCE (`quadBox`); a free angle is then turned
+ * to where the digits measure least tall (`refineAngle`), made exact again if that lands near an axis, and
+ * the box is the quad's at that angle.
  */
-export function readingBox(raster: Raster, reading: { quad: Quad; angle: number }): PxBox {
-  const px = boxFromQuad(reading.quad, snapAngle(reading.angle));
-  const angle = snapAngle(refineAngle(raster, px).angle);
-  return angle === px.angle ? px : boxFromQuad(reading.quad, angle);
+export function readingBox(raster: Raster, reading: Reading): PxBox {
+  return refinedQuadBox(raster, reading.quad, quadBox(reading));
 }
 
 /**
  * UC-07: the box for a rectangle drawn around a value, at the angle the person chose. An axis choice stays
- * exact; a free angle is turned to where the digits measure least tall (`refineAngle`).
+ * exact; a free angle is turned to where the digits measure least tall (`refineAngle`). Unlike
+ * `readingBox`, the result is not snapped to an axis: a free angle the person typed near one (say 2°)
+ * stays a free angle near it.
  */
 export function drawnBox(raster: Raster, rect: Rect, angle: number): PxBox {
   const px = boxForDrawnRect(rect, angle);
@@ -58,12 +75,22 @@ export function drawnBox(raster: Raster, rect: Rect, angle: number): PxBox {
   return refined === px.angle ? px : boxForDrawnRect(rect, refined);
 }
 
-/** UC-04 steps 3–5: OCR readings inside the drawing area (BR-02), tightened to the digits. */
-export function fromScan(scan: ScanResult, raster: Raster, newId: () => string): Detection[] {
+/** A new task, so the page can paint and answer input between two long measurements. */
+const nextTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/**
+ * UC-04 steps 3–5: OCR readings inside the drawing area (BR-02), tightened to the digits. The area is
+ * checked on the quad's box before the angle search, which costs several measurements per slanted value:
+ * the box's centre is the quad's own at any angle (to within a pixel for whole-pixel corners). Before each
+ * slanted value it waits for a new task, so a sheet full of them does not hold the page for seconds.
+ */
+export async function fromScan(scan: ScanResult, raster: Raster, newId: () => string): Promise<Detection[]> {
   const out: Detection[] = [];
   for (const reading of scan.detections) {
-    const px = readingBox(raster, reading);
-    if (!centreInDrawingArea(toBox(px, raster.width, raster.height))) continue;
+    const start = quadBox(reading);
+    if (!centreInDrawingArea(toBox(start, raster.width, raster.height))) continue;
+    if (!isAxisAngle(start.angle)) await nextTask();
+    const px = refinedQuadBox(raster, reading.quad, start);
     out.push(toDetection(raster, px, { readValue: reading.value, confidence: Math.round(reading.score * 100), source: "ocr" }, newId));
   }
   return out;
@@ -91,7 +118,7 @@ export async function detectValues(
   if (isCancelled()) return { ok: false, reason: "cancelled" };
   try {
     const scan = await reader.scan(drawingAreaPx(page.raster.width, page.raster.height));
-    return { ok: true, source: "ocr", detections: fromScan(scan, page.raster, newId) };
+    return { ok: true, source: "ocr", detections: await fromScan(scan, page.raster, newId) };
   } catch {
     return { ok: false, reason: "ocr_scan" };
   }

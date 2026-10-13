@@ -49,8 +49,8 @@ function ids() {
 const near = (a: number, b: number, eps = 0.6) => expect(Math.abs(a - b)).toBeLessThanOrEqual(eps);
 
 describe("fromScan", () => {
-  it("keeps readings inside the drawing area, tightened to the digits", () => {
-    const found = fromScan(scan(), page(), ids());
+  it("keeps readings inside the drawing area, tightened to the digits", async () => {
+    const found = await fromScan(scan(), page(), ids());
     expect(found.map((d) => d.readValue)).toEqual(["2.50", "6.90"]);
     const [h, v] = found;
     expect(h).toMatchObject({ id: "id-1", source: "ocr", confidence: 87, angle: 0 });
@@ -101,14 +101,28 @@ describe("readingBox (scan and click)", () => {
     near(px.h, 27, 1);
   });
 
-  it("stores the slanted value's angle and digit height through fromScan", () => {
+  it("stores the slanted value's angle and digit height through fromScan", async () => {
     const scan: ScanResult = {
       detections: [{ value: "1.20", text: "1.20", score: 0.9, angle: 26, quad: slantedQuad, box: { x: 0, y: 0, w: 0, h: 0 } }],
       timing: { horizontalMs: 1, verticalMs: 1 },
     };
-    const [d] = fromScan(scan, slantedPage(), ids());
+    const [d] = await fromScan(scan, slantedPage(), ids());
     near(d.angle, 30, 0.5);
     near(d.box.h * W, 13, 1);
+  });
+
+  it("lets a waiting task run before fromScan searches a slanted value's angle, and not for upright ones or values outside the drawing", async () => {
+    const reading = (quad: Quad) => ({ value: "1.20", text: "1.20", score: 0.9, angle: 26, quad, box: { x: 0, y: 0, w: 0, h: 0 } });
+    const timing = { horizontalMs: 1, verticalMs: 1 };
+    let ran = false;
+    setTimeout(() => (ran = true), 0);
+    await fromScan(scan(), page(), ids()); // 0° and -90° only
+    // A slanted value in the right-hand table is left out before its angle is searched.
+    const outside = orderClockwise(boxCorners({ cx: 900, cy: 300, w: 74, h: 27, angle: 30 }));
+    expect(await fromScan({ detections: [reading(outside)], timing }, slantedPage(), ids())).toEqual([]);
+    expect(ran).toBe(false);
+    await fromScan({ detections: [reading(slantedQuad)], timing }, slantedPage(), ids());
+    expect(ran).toBe(true);
   });
 });
 
@@ -213,16 +227,16 @@ describe("detectValues", () => {
 });
 
 describe("makeEdit", () => {
-  it("measures the edit on the original page: tight box, digit height and colours", () => {
-    const [d] = fromScan(scan(), page(), ids());
+  it("measures the edit on the original page: tight box, digit height and colours", async () => {
+    const [d] = await fromScan(scan(), page(), ids());
     const e = makeEdit(page(), d, "2.50", "2.60");
     expect(e).toMatchObject({ detectionId: d.id, oldValue: "2.50", newValue: "2.60", angle: 0, textColor: "#676672", bgColor: "#ffffff" });
     near(e.fontPx * W, 13);
     near(e.box.cx * W, 220);
   });
 
-  it("measures a vertical value along its own axes", () => {
-    const [, d] = fromScan(scan(), page(), ids());
+  it("measures a vertical value along its own axes", async () => {
+    const [, d] = await fromScan(scan(), page(), ids());
     expect(d.angle).toBe(-90);
     const e = makeEdit(page(), d, "6.90", "6.80");
     expect(e).toMatchObject({ detectionId: d.id, angle: -90, textColor: "#676672", bgColor: "#ffffff" });
@@ -233,18 +247,18 @@ describe("makeEdit", () => {
     near(e.box.h * W, 13);
   });
 
-  it("keeps the digit height when a line crosses the value, at detection and again at the edit", () => {
+  it("keeps the digit height when a line crosses the value, at detection and again at the edit", async () => {
     const r = page();
     ink(r, 196, 150, 197, 260); // an extension line through the horizontal value, far beyond its box
-    const [d] = fromScan(scan(), r, ids());
+    const [d] = await fromScan(scan(), r, ids());
     near(d.box.h * W, 13);
     const e = makeEdit(r, d, "2.50", "2.60");
     near(e.fontPx * W, 13);
     near(e.box.h * W, 13);
   });
 
-  it("falls back to the detection box and black on white when no text is found", () => {
-    const [d] = fromScan(scan(), page(), ids());
+  it("falls back to the detection box and black on white when no text is found", async () => {
+    const [d] = await fromScan(scan(), page(), ids());
     const e = makeEdit(createRaster(W, H), d, "2.50", "2.60");
     expect(e.box).toEqual(d.box);
     expect(e).toMatchObject({ textColor: "#000000", bgColor: "#ffffff" });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { orderClockwise } from "@/lib/ocr/geometry";
+import { normalizeAngle, orderClockwise } from "@/lib/ocr/geometry";
 import { createRaster, rotate90cw, type Raster } from "@/lib/ocr/raster";
-import { axes, boxCorners, boxFromQuad } from "@/editor/geometry";
+import { axes, boxCorners, boxForDrawnRect, boxFromQuad } from "@/editor/geometry";
 import { analyseBox, refineAngle } from "@/editor/pixels";
 
 function fill(r: Raster, x0: number, y0: number, x1: number, y1: number, rgb: [number, number, number]) {
@@ -219,25 +219,27 @@ describe("analyseBox: other angles", () => {
 
 describe("refineAngle", () => {
   /**
-   * A value at 30° around (150, 100): four digit blocks 12 px along the text and 13 px across, 3 px apart,
-   * and a dimension line 2 px thick, 4 px below the digits, that runs on well beyond them.
+   * A value at `angle` (30° unless said) around (150, 100): four digit blocks 12 px along the text and 13 px
+   * across, 3 px apart, and (unless left out) a dimension line 2 px thick, 4 px below the digits, that runs
+   * on well beyond them.
    */
-  function slanted(): Raster {
+  function slanted(angle = 30, withLine = true): Raster {
     const r = createRaster(300, 200);
-    const { u, v } = axes(30);
+    const { u, v } = axes(angle);
     for (let y = 0; y < r.height; y++) {
       for (let x = 0; x < r.width; x++) {
         const s = (x - 150) * u.x + (y - 100) * u.y;
         const t = (x - 150) * v.x + (y - 100) * v.y;
         const digit = Math.abs(s) < 30 && (s + 30) % 15 < 12 && Math.abs(t) < 6.5;
-        const line = Math.abs(s) < 140 && t >= 10.5 && t < 12.5;
+        const line = withLine && Math.abs(s) < 140 && t >= 10.5 && t < 12.5;
         if (digit || line) fill(r, x, y, x, y, INK);
       }
     }
     return r;
   }
   /** The detector's quad around that value: the text grown by 7 px on every side. */
-  const quad = orderClockwise(boxCorners({ cx: 150, cy: 100, w: 74, h: 27, angle: 30 }));
+  const quadAt = (angle: number) => orderClockwise(boxCorners({ cx: 150, cy: 100, w: 74, h: 27, angle }));
+  const quad = quadAt(30);
 
   it("turns a box given at 25° to the value's own 30°, tightened to the digits there", () => {
     const result = refineAngle(slanted(), boxFromQuad(quad, 25));
@@ -245,8 +247,30 @@ describe("refineAngle", () => {
     near(result.h, 13, 1);
   });
 
+  it("turns a box given at 25° to 30° on a clean value too, with no line beside it", () => {
+    const result = refineAngle(slanted(30, false), boxFromQuad(quad, 25));
+    near(result.angle, 30, 0.5);
+    near(result.h, 13, 1);
+  });
+
   it("finds the same angle from the other side", () => {
     near(refineAngle(slanted(), boxFromQuad(quad, 35)).angle, 30, 0.5);
+  });
+
+  /** How far apart two angles are, across the ±180° seam. */
+  const apart = (a: number, b: number) => Math.abs(normalizeAngle(a - b));
+
+  it("finds a value's angle below 0°", () => {
+    expect(apart(refineAngle(slanted(-40), boxFromQuad(quadAt(-40), -35)).angle, -40)).toBeLessThanOrEqual(0.5);
+  });
+
+  it("finds a value's angle near 180°, on either side of the ±180° seam", () => {
+    expect(apart(refineAngle(slanted(170), boxFromQuad(quadAt(170), 175)).angle, 170)).toBeLessThanOrEqual(0.5);
+    // Up from 178° the steps pass 180° and go on at -179.5°, -179°, … to the value's -175°.
+    const across = refineAngle(slanted(-175), boxFromQuad(quadAt(-175), 178));
+    expect(apart(across.angle, -175)).toBeLessThanOrEqual(0.5);
+    expect(across.angle).toBeLessThan(0); // normalised, never 185
+    near(across.h, 13, 1);
   });
 
   it("leaves a box along the page's axes alone, even on a slanted value", () => {
@@ -272,16 +296,45 @@ describe("refineAngle", () => {
     expect(refineAngle(createRaster(300, 200), box)).toBe(box);
   });
 
-  it("keeps a long box's own angle when the least height lies at the end of the range", () => {
-    // Given 15° off, the digits measure less and less tall up to 27°, the end of the ±12° range. A detector's
-    // quad is never that far from its text, so the search would only be drifting.
-    const result = refineAngle(slanted(), { cx: 150, cy: 100, w: 74, h: 27, angle: 15 });
-    expect(result.angle).toBe(15);
+  it("keeps the given angle when the least height lies at the end of the range, for a long box or a square one", () => {
+    // Given 15° off, the digits measure less and less tall up to 27°, the end of the ±12° range. Nothing is
+    // measured beyond it, so no wall shows the valley there: the search would only be drifting.
+    expect(refineAngle(slanted(), { cx: 150, cy: 100, w: 74, h: 27, angle: 15 }).angle).toBe(15);
+    expect(refineAngle(slanted(), { cx: 150, cy: 100, w: 74, h: 60, angle: 15 }).angle).toBe(15);
   });
 
-  it("follows the search to the end of the range for a box too square to have a direction of its own", () => {
-    const result = refineAngle(slanted(), { cx: 150, cy: 100, w: 74, h: 60, angle: 15 });
-    expect(result.angle).toBeGreaterThanOrEqual(26.5);
-    expect(result.angle).toBeLessThanOrEqual(27);
+  /**
+   * A short "1.20"-like value at 150° around (150.5, 100.25) that a dimension line touches: the "2" and the
+   * "0" reach down to the line, so they go with it as ink reaching the window's edge, and only the narrow
+   * "1", clear of the line, is measured. Its height hardly changes with the angle: 14 px at nearly every
+   * step, with a 13 here and there from whole pixels alone.
+   */
+  function touched(): Raster {
+    const r = createRaster(300, 200);
+    const { u, v } = axes(150);
+    for (let y = 0; y < r.height; y++) {
+      for (let x = 0; x < r.width; x++) {
+        const s = (x - 150.5) * u.x + (y - 100.25) * u.y;
+        const t = (x - 150.5) * v.x + (y - 100.25) * v.y;
+        const one = s >= -19 && s < -16 && t >= -7.3 && t < 6.5;
+        const twoAndZero = ((s >= -12 && s < -1) || (s >= 3 && s < 14)) && t >= -6.5 && t < 8;
+        const line = Math.abs(s) < 140 && t >= 8 && t < 10;
+        if (one || twoAndZero || line) fill(r, x, y, x, y, INK);
+      }
+    }
+    return r;
+  }
+  /** The detector's quad around it at the given angle, on whole pixels. */
+  const touchedQuad = (angle: number) =>
+    orderClockwise(boxCorners({ cx: 150.5, cy: 100.25, w: 48, h: 27, angle }).map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })));
+
+  it("keeps the given angle on a short value a line touches, where a 1-px dip far off is noise", () => {
+    // Given 2.5° off, the 13-px steps lie 9.5° and 10° away with no wall beside them: taking them would
+    // end 12° and 7.5° off the value's 150°, farther than the given angle.
+    const r = touched();
+    for (const given of [147.5, 152.5]) expect(refineAngle(r, boxFromQuad(touchedQuad(given), given)).angle).toBe(given);
+    // A rectangle drawn around it at a typed angle: the dips would take 148° to 137° and 154° to 166°.
+    const rect = { x: 120, y: 75, w: 60, h: 50 };
+    for (const typed of [148, 154]) expect(refineAngle(r, boxForDrawnRect(rect, typed)).angle).toBe(typed);
   });
 });

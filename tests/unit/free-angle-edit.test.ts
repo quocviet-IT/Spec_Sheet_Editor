@@ -71,7 +71,7 @@ describe("a value written at a free angle keeps that angle", () => {
       return [{ text: "1.20", score: 0.95, turn: cropTurnsQuarter(quad) ? 90 : 0, quad }];
     };
     const scan = await scanArea(models, page, area, area.w, read);
-    const [d] = fromScan(scan, page, ids());
+    const [d] = await fromScan(scan, page, ids());
     within(d.angle, angle, 1);
     const e = makeEdit(page, d, "1.20", "1.25");
     within(e.angle, angle, 1);
@@ -80,6 +80,30 @@ describe("a value written at a free angle keeps that angle", () => {
     // The control: measured upright, as the scan stored it before, the same value is far too tall.
     const upright = makeEdit(page, toDetection(page, boxFromQuad(onPage, 0), { readValue: "1.20", confidence: 95, source: "ocr" }, ids()), "1.20", "1.25");
     expect(upright.fontPx * W).toBeGreaterThan(2 * DIGIT_PX);
+  });
+
+  // 150°: a wide crop the reader reads upside down (turn 180). -105°: its quad is the one at 75°, a tall crop
+  // the reader turns a quarter and still reads upside down (turn 270).
+  it.each([
+    [150, 180],
+    [-105, 270],
+  ] as const)("a scan of an upside-down value at %i° (read at turn %i) stores that angle and measures 13-px digits", async (angle, turn) => {
+    const page = sheetWithValueAt(angle);
+    const onPage = detectorQuad(angle);
+    const area = drawingAreaPx(W, H);
+    const read: RegionReader = async (_m, image) => {
+      if (image.width !== area.w) return [];
+      const quad = onPage.map((p) => ({ x: p.x - area.x, y: p.y - area.y })) as Quad;
+      expect(cropTurnsQuarter(quad)).toBe(turn === 270);
+      return [{ text: "1.20", score: 0.95, turn, quad }];
+    };
+    const scan = await scanArea(models, page, area, area.w, read);
+    within(scan.detections[0].angle, angle, 1);
+    const [d] = await fromScan(scan, page, ids());
+    within(d.angle, angle, 1);
+    const e = makeEdit(page, d, "1.20", "1.25");
+    within(e.angle, angle, 1);
+    within(digitPx(e.fontPx), DIGIT_PX, 1);
   });
 
   it.each([30, -45, 60])("a click on a value at %i° stores that angle and measures 13-px digits", async (angle) => {
