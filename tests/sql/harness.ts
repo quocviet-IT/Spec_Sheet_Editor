@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import postgres from "postgres";
 import { expect } from "vitest";
 
@@ -130,6 +132,16 @@ export async function insertSheetAsOwner(
            values (${id}, ${opts.name ?? "Test sheet"}, 'png', ${`${id}/source.png`}, ${`${id}/thumb.jpg`}, 1135, 877,
                    ${tx.json(edits)}, ${owner.id}, ${owner.id}, ${opts.updatedAt ?? new Date()})`;
   return id;
+}
+
+/** Applies a migration's body inside the current transaction (the test's rollback undoes it): the rules are proven before they ship. */
+export async function applyMigration(tx: Tx, file: string): Promise<void> {
+  await tx.unsafe(readFileSync(path.join(process.cwd(), "supabase", "migrations", file), "utf8"));
+}
+
+/** A storage object as the storage service would record it, inserted as the table owner. */
+export async function insertObject(tx: Tx, name: string, uploader: TestUser): Promise<void> {
+  await tx`insert into storage.objects (bucket_id, name, owner, owner_id) values ('spec-sheets', ${name}, ${uploader.id}, ${uploader.id})`;
 }
 
 /** A fresh address on the default permitted domain. */

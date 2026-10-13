@@ -1,5 +1,5 @@
 import { DEFAULT_PAGE_SIZE } from "@/admin/paging";
-import type { SheetTab } from "./types";
+import type { SheetOwner, SheetTab } from "./types";
 
 /**
  * The text of a "name contains" search as a PostgreSQL regular expression for PostgREST's `imatch` (case-insensitive).
@@ -36,11 +36,23 @@ export function parseSheetTab(raw: string | string[] | undefined): SheetTab {
   return first(raw) === "trash" ? "trash" : "live";
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** `?owner=`: `me`, a person's id (lower-cased) or, for anything else, `all`. */
+export function parseSheetOwner(raw: string | string[] | undefined): SheetOwner {
+  const value = first(raw) ?? "";
+  if (value === "me") return "me";
+  return UUID.test(value) ? value.toLowerCase() : "all";
+}
+
 /** The address of one page of the sheet list; parameters that equal their defaults are left out. */
-export function sheetListHref({ tab, q, page, size }: { tab: SheetTab; q: string; page: number; size: number }): string {
+export function sheetListHref(
+  { tab, q, page, size, owner = "all" }: { tab: SheetTab; q: string; page: number; size: number; owner?: SheetOwner },
+): string {
   const params = new URLSearchParams();
   if (tab === "trash") params.set("tab", "trash");
   if (q.trim()) params.set("q", q.trim());
+  if (owner !== "all") params.set("owner", owner);
   if (page > 1) params.set("page", String(page));
   if (size !== DEFAULT_PAGE_SIZE) params.set("size", String(size));
   const qs = params.toString();

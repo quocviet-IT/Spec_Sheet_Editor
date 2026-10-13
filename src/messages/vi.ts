@@ -82,6 +82,8 @@ export const vi = {
     actionError: "Không thực hiện được. Thử lại.",
     trashNote: "Phiếu trong Thùng rác vẫn còn nguyên. Chỉ quản trị viên mới xoá hẳn được.",
     lowRes: "Ảnh độ phân giải thấp",
+    by: "của {name}",
+    owner: { label: "Người tạo", all: "Tất cả", mine: "Phiếu của tôi", option: "{name} ({n})" },
     noThumb: "Chưa có ảnh",
   },
   upload: {
@@ -122,6 +124,7 @@ export const vi = {
     toTrash: "Mở Thùng rác",
   },
   editor: {
+    uploadedBy: "Người tải lên: {name}",
     unsaved: "Chưa lưu",
     save: "Lưu",
     saving: "Đang lưu…",
@@ -436,9 +439,9 @@ export const vi = {
     sections: {
       signin: { title: "Đăng nhập và ngôn ngữ", lead: "Dùng email và mật khẩu một lần mà quản trị viên đã cấp. Lần đầu bạn tự đặt mật khẩu của mình." },
       upload: { title: "Tải phiếu lên", lead: "Một phiếu bắt đầu từ tệp PDF, PNG hoặc JPG của cả trang Product Specifications. Trình sửa số đọc trang và tìm các số kích thước trên bốn ô hình vẽ." },
-      find: { title: "Tìm phiếu", lead: "Trang Phiếu liệt kê mọi phiếu, mới nhất trước. Danh sách chia thành các trang đánh số, mặc định mỗi trang 25 phiếu (có thể chọn 10 hoặc 50). Tìm theo tên, và đưa phiếu không cần nữa vào Thùng rác." },
+      find: { title: "Tìm phiếu", lead: "Trang Phiếu liệt kê các phiếu bạn đã tải lên, mới nhất trước. Admin thấy phiếu của mọi người và lọc được theo Người tạo. Danh sách chia thành các trang đánh số, mặc định mỗi trang 25 phiếu (có thể chọn 10 hoặc 50). Tìm theo tên, và đưa phiếu không cần nữa vào Thùng rác." },
       edit: { title: "Sửa số", lead: "Sửa một số trên bản vẽ: chọn dấu của số đó, kiểm tra số máy đã đọc, nhập số mới. Chỉ bốn ô hình vẽ được sửa; phần còn lại của phiếu giữ nguyên như lúc tải lên." },
-      save: { title: "Lưu", lead: "Các thay đổi chỉ nằm trên màn hình của bạn cho đến khi bạn lưu. Phiếu đã lưu là dùng chung: ai có quyền cũng thấy bản mới nhất." },
+      save: { title: "Lưu", lead: "Các thay đổi chỉ nằm trên màn hình của bạn cho đến khi bạn lưu. Chỉ bạn và Admin thấy phiếu của bạn; khi mở lại, ai cũng thấy bản đã lưu mới nhất." },
       export: { title: "Xuất", lead: "Xuất biến phiếu, cùng các số đã sửa, thành ảnh PNG hoặc tệp PDF. Hộp thoại kiểm tra hiện trước để không xuất nhầm." },
       shortcuts: { title: "Phím tắt", lead: "Các phím này dùng được trong trình sửa số và danh sách phiếu. Bảng được lấy từ chính chương trình." },
       trouble: { title: "Khi có sự cố", lead: "Năm thông báo dễ gặp nhất, nguyên văn, và cách xử lý từng trường hợp." },

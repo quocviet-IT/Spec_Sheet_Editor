@@ -9,7 +9,7 @@ import { useMessages } from "@/messages/client";
 import { restoreSheet, trashSheet } from "@/sheets/actions";
 import { fileLabel, TIME_ZONE } from "@/sheets/format";
 import { parseSheetQuery, readUrlQuery, sheetListHref } from "@/sheets/list-url";
-import type { SheetRow, SheetTab, UploadSettings } from "@/sheets/types";
+import type { SheetOwner, SheetRow, SheetTab, UploadSettings } from "@/sheets/types";
 import { Pagination } from "@/ui/pagination";
 import { UploadDialog } from "./upload-dialog";
 
@@ -18,9 +18,10 @@ const TAB_KEYS = ["live", "trash"] as const;
 type Toast = { text: string; undo?: () => void } | null;
 
 export function SheetList({
-  rows, counts, info, tab, q, settings, locale,
+  rows, counts, info, tab, q, owner, owners, isAdmin, settings, locale,
 }: {
   rows: SheetRow[]; counts: { live: number; trash: number }; info: PageInfo; tab: SheetTab; q: string;
+  owner: SheetOwner; owners: { id: string; name: string; sheets: number }[]; isAdmin: boolean;
   settings: UploadSettings; locale: "vi" | "en";
 }) {
   const t = useMessages();
@@ -44,7 +45,9 @@ export function SheetList({
     [locale],
   );
 
-  const hrefFor = (page: number, size: number) => sheetListHref({ tab, q, page, size });
+  const numberFormat = useMemo(() => new Intl.NumberFormat(locale === "vi" ? "vi-VN" : "en-GB"), [locale]);
+
+  const hrefFor = (page: number, size: number) => sheetListHref({ tab, q, page, size, owner });
 
   // 300 ms after typing stops the address takes the search and returns to page 1 (UC-02 step 2)
   useEffect(() => {
@@ -54,11 +57,11 @@ export function SheetList({
       timerRef.current = null;
       lastPushed.current = typed;
       pushedRef.current = [...pushedRef.current, typed];
-      startTransition(() => router.replace(sheetListHref({ tab, q: typed, page: 1, size: info.size })));
+      startTransition(() => router.replace(sheetListHref({ tab, q: typed, page: 1, size: info.size, owner })));
     }, 300);
     timerRef.current = timer;
     return () => clearTimeout(timer);
-  }, [query, tab, info.size, router]);
+  }, [query, tab, owner, info.size, router]);
 
   // the address changed without typing here (back, forward, a link): the box follows it.
   // An echo of a search this box pushed, however late, is ignored so it cannot overwrite newer typing.
@@ -179,6 +182,35 @@ export function SheetList({
             className="w-full rounded-md border border-line bg-surface px-3 py-2"
           />
         </label>
+        {isAdmin && (
+          <label className="order-2 flex min-w-[160px] flex-col gap-1 text-sm">
+            <span className="text-ink-2">{s.owner.label}</span>
+            <select
+              value={owner}
+              onChange={(e) => {
+                setMenuFor(null);
+                // a search still waiting would otherwise land on the old creator's address
+                if (timerRef.current) clearTimeout(timerRef.current);
+                const next = e.target.value;
+                // the typed search goes with it, recorded as this box's own push so its echo never overwrites the box
+                const typed = parseSheetQuery(query);
+                if (typed !== lastPushed.current) {
+                  lastPushed.current = typed;
+                  pushedRef.current = [...pushedRef.current, typed];
+                }
+                // replace, not push: arrow keys on a closed select change it once per press, and each must not become a history entry
+                startTransition(() => router.replace(sheetListHref({ tab, q: typed, page: 1, size: info.size, owner: next })));
+              }}
+              className="min-h-[42px] w-full rounded-md border border-line bg-surface px-3 py-2"
+            >
+              <option value="all">{s.owner.all}</option>
+              <option value="me">{s.owner.mine}</option>
+              {owners.map((o) => (
+                <option key={o.id} value={o.id}>{fill(s.owner.option, { name: o.name, n: numberFormat.format(o.sheets) })}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <button type="button" onClick={() => setUploadOpen(true)} className="order-3 rounded-md bg-accent px-4 py-2 font-semibold text-accent-ink hover:opacity-90">
           {s.upload}
         </button>
@@ -187,7 +219,7 @@ export function SheetList({
             <Link
               key={key}
               id={`sheet-tab-${key}`}
-              href={sheetListHref({ tab: key, q, page: 1, size: info.size })}
+              href={sheetListHref({ tab: key, q, page: 1, size: info.size, owner })}
               aria-current={tab === key ? "page" : undefined}
               onClick={() => {
                 setMenuFor(null);
@@ -224,6 +256,7 @@ export function SheetList({
                   : <span className="font-semibold">{row.name}</span>}
                 <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-xs text-ink-2">
                   <span>{fileLabel(row.sourceType, row.pageW, row.pageH)}</span>
+                  {isAdmin && <span className="font-sans">{fill(s.by, { name: row.createdByName })}</span>}
                   {row.pageW < settings.lowresWarnPx && <span className="rounded bg-warn-soft px-1.5 py-0.5 font-sans">{s.lowRes}</span>}
                 </div>
               </div>

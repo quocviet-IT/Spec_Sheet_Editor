@@ -3,6 +3,9 @@ import type { SourceType } from "@/lib/form/template";
 
 export type SheetTab = "live" | "trash";
 
+/** Whose sheets the list shows (Admins only): everyone's, the signed-in user's own, or one person's id. */
+export type SheetOwner = "all" | "me" | string;
+
 export type SheetRow = {
   id: string;
   name: string;
@@ -14,6 +17,7 @@ export type SheetRow = {
   version: number;
   updatedAt: string;
   updatedByName: string;
+  createdByName: string;
   deletedAt: string | null;
   deletedByName: string | null;
 };
@@ -35,6 +39,8 @@ export type EditorSheet = {
   broken: boolean;
   sourceUrl: string | null;
   lowRes: boolean;
+  /** The creator's name when the sheet is someone else's (only an Admin can open it), else null. */
+  uploadedBy: string | null;
 };
 
 export type SaveResult =

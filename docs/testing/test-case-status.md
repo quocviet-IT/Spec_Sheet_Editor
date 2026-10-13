@@ -54,7 +54,7 @@ Sources:
 | TC-35 | Empty box | E2E | `e2e/tools.spec.ts` TC-35 | Pass (2026-10-10, e2e:prod) |
 | TC-36 | Diagonal value | Visual | `e2e/pixels.spec.ts` TC-36 | Pass (2026-10-10, e2e:prod) |
 | TC-37 | Normal save | E2E | `e2e/editor.spec.ts` TC-37 | Pass (2026-10-10, e2e:prod) |
-| TC-38 | Two people save | E2E | `e2e/editor.spec.ts` TC-38 | Pass (2026-10-10, e2e:prod) |
+| TC-38 | The owner and an Admin save | E2E | `e2e/editor.spec.ts` TC-38 | Rewritten for sheet ownership on 2026-10-12; written, not yet run (passed in its earlier form on 2026-10-10) |
 | TC-39 | Leave unsaved | E2E | `e2e/editor.spec.ts` TC-39 | Pass (2026-10-10, e2e:prod) |
 | TC-40 | Offline save | E2E | `e2e/editor.spec.ts` TC-40 | Pass (2026-10-10, e2e:prod) |
 | TC-41 | Sheet trashed while open | E2E | `e2e/editor.spec.ts` TC-41 | Pass (2026-10-10, e2e:prod) |
@@ -94,8 +94,11 @@ Sources:
 | TC-75 | File deletion fails midway | Unit | `tests/unit/admin-purge.test.ts`, `tests/unit/admin-orphans.test.ts` | Pass (unit) |
 | TC-76 | Orphan clean-up | E2E | `e2e/admin.spec.ts` TC-76; `tests/unit/admin-orphans.test.ts` | Pass (2026-10-10, e2e:prod) |
 | TC-77 | Service-role key not exposed | Unit | `tests/unit/bundle-scan.test.ts`; the `postbuild` check `scripts/check-bundle.mts` | Pass (unit) |
+| TC-78 | Staff see only their own sheets | E2E | `e2e/ownership.spec.ts` TC-78 | Written, not yet run |
+| TC-79 | An Admin sees every sheet and filters by creator | E2E | `e2e/ownership.spec.ts` TC-79 | Written, not yet run |
+| TC-80 | Ownership in the database | SQL | `tests/sql/ownership.test.ts` | Written, not yet run (needs migration 0004 and the office network) |
 
-Counts: 3 x Waived until Google sign-in is switched on (owner to confirm); 15 x Written; SQL not run on this network; 47 x Pass (2026-10-10, e2e:prod); 9 x Pass (unit); 1 x Bench (M2 result); 1 x Needs a macOS machine (owner); 1 x Release step (M7b).
+Counts: 3 x Waived until Google sign-in is switched on (owner to confirm); 15 x Written; SQL not run on this network; 47 x Pass (2026-10-10, e2e:prod); 9 x Pass (unit); 1 x Bench (M2 result); 1 x Needs a macOS machine (owner); 1 x Release step (M7b). Not counted above: 3 x Written, not yet run (TC-78 to TC-80, sheet ownership), and TC-38, rewritten and not yet run.
 
 Not covered by a test: TC-17 has no full upload path (the test-file generator cannot encrypt a PDF; the
 error mapping is unit-tested).
