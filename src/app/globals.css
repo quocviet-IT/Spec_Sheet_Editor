@@ -92,3 +92,11 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* A horizontally scrolling strip without a visible scrollbar; keep vertical padding on it so focus rings are not clipped. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
