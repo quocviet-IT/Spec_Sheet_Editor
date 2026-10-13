@@ -221,7 +221,7 @@ Priority: **Must** is required in the first release; **Should** is built if time
 | F-01 | Sign-in | Sign in with an email and password an Admin issued; a one-time password must be replaced at the first sign-in. Google sign-in (permitted domains and emails) can be switched on later and runs alongside. | UC-01 | Must |
 | F-02 | Sign out | End the session in the current browser. | UC-12 | Must |
 | **Sheet management** |  |  |  |  |
-| F-03 | Sheet list | Thumbnail, name, number of edits, last editor, time; newest first; 50 more rows per load. | UC-02 | Must |
+| F-03 | Sheet list | Thumbnail, name, number of edits, last editor, time; newest first; numbered pages of 10, 25 (default) or 50 rows, with the tab, search and page in the address. | UC-02 | Must |
 | F-04 | Search by name | Partial, case-insensitive match on the sheet name. | UC-02 | Must |
 | F-05 | Upload sheet | Accept PDF, PNG, JPG; check type, size and template; create a thumbnail; store the original. | UC-03 | Must |
 | F-06 | Rename sheet | Edit the name in the editor toolbar; the sheet list menu does not rename. | UC-02, UC-08 | Should |
@@ -370,14 +370,14 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Main flow:**
 
-1. The system shows 50 sheets not in the Trash, most recently edited first, with thumbnail, name, number of edits, last editor and time.
-2. The user types in the search box; 300 ms after typing stops, the system filters by name.
-3. The user scrolls to the end; the system loads 50 more rows.
+1. The system shows the first page of 25 sheets not in the Trash, most recently edited first, with thumbnail, name, number of edits, last editor and time, and under the list "Showing 1–25 of n".
+2. The user types in the search box; 300 ms after typing stops, the system puts the search in the address, returns to page 1 and filters by name.
+3. The user uses the numbered paging under the list: "Previous page" and "Next page", and "Rows per page" (10, 25 or 50). The tab, the search, the page and the size are in the address (`?tab=trash&q=…&page=2&size=25`), so a page can be bookmarked and the Back button returns to it.
 4. The user clicks a sheet; the system opens the editor.
 
 **Extensions:** 1a. No sheets yet: an empty state with an "Upload sheet" button.<br>2a. No matches: "No sheet names contain '…'."<br>4a. The user chooses "Rename": enters a new name (1–200 characters) and saves as in UC-08.
 
-**Exceptions:** 1b. Network error: message with a "Try again" button; rows already loaded remain.
+**Exceptions:** 1b. Network error: message with a "Try again" button.
 
 #### UC-03 · Upload a sheet
 
@@ -785,10 +785,11 @@ Permissions are checked at three independent layers. No layer trusts the one bef
 SPEC_SHEET_WEBAPP/
 ├─ src/
 │  ├─ app/
+│  │  ├─ icon.svg · apple-icon.tsx         browser tab icon and home-screen icon (the app logo)
 │  │  ├─ login/page.tsx                    S1 · Sign in
 │  │  ├─ auth/callback/route.ts            code exchange · touch_profile · auth.denied
 │  │  ├─ (app)/layout.tsx                  blocks signed-out or suspended users
-│  │  ├─ (app)/sheets/page.tsx             S2 · Sheet list + Trash
+│  │  ├─ (app)/sheets/page.tsx             S2 · Sheet list + Trash (numbered pages)
 │  │  ├─ (app)/sheets/[id]/page.tsx        S4 · Editor
 │  │  └─ (app)/admin/                      Admin only (layout checks the role)
 │  │     ├─ users/page.tsx                 S7 · Users
@@ -989,7 +990,7 @@ Every change to roles, status, access and settings goes through a `security defi
 | save_sheet(…) | function (invoker) | Staff | Saves with a version check in a single statement (BR-10). |
 | log_client_event(…) | function | Staff | Accepts only `sheet.export_png` and `sheet.export_pdf`; other actions cannot be forged. |
 | sheet_list | view (security invoker) | Staff | Sheet rows for the list, read with the caller's own rights so RLS applies. |
-| list_sheets(…) | function (invoker) | Staff | Keyset paging for the sheet list (50 rows per load); search treats `%` and `_` as literal characters. |
+| list_sheets(…) | function (invoker) | Staff | Keyset paging (50 rows per load). The sheet list page no longer calls it: it counts and reads one numbered range of `sheet_list`, with the name search as a case-insensitive regular expression in which every character matches as itself. |
 | sheet_counts() | function (invoker) | Staff | Counts of active and trashed sheets for the list tabs. |
 | my_access_status() | function | server | Access state of the caller; adds `must_change_password`. |
 | admin_register_password_account(…) | function | Admin (via server) | Registers a password account an Admin created. |
@@ -1282,8 +1283,8 @@ Priority: High blocks go-live; Med medium; Low.
 | TC-49 | — | Users cannot delete files | Valid JWT calls update / remove on `storage.objects` | Rejected; file intact | SQL | High |
 | TC-50 | — | Reading files without permission | JWT from another domain, known file path | Cannot read; cannot create a link | SQL | High |
 | TC-51 | — | Expired link | Use a link after the configured lifetime | Storage returns an error | E2E | Med |
-| TC-52 | UC-02 | More than 1,000 sheets | 1,120 synthetic sheets, scroll to the end | All 1,120 shown | E2E | Med |
-| TC-53 | — | Narrow screens | `/sheets/<id>` at 390 px; `/sheets` at 360 px | Editor asks for a desktop; list usable without horizontal scroll | E2E | Low |
+| TC-52 | UC-02 | More than 1,000 sheets | 1,120 synthetic sheets, 50 per page, follow "Next page" to the end | 23 pages; the last shows "Showing 1101–1120 of 1120" | E2E | Med |
+| TC-53 | — | Narrow screens | `/sheets/<id>` at 390 px; `/sheets` at 360 px | Editor asks for a desktop; list and its pagination usable without horizontal scroll | E2E | Low |
 | **Admin: users** |  |  |  |  |  |  |
 | TC-54 | UC-13 | First Admin | Run the Appendix A statement after the first sign-in | That user sees the Admin link | E2E | High |
 | TC-55 | UC-13 | Staff opens the Admin area | Staff opens `/admin/users` | "Not found"; no Admin link in the bar | E2E | High |

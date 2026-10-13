@@ -2,8 +2,10 @@ import "server-only";
 import { cache } from "react";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import type { SourceType } from "@/lib/form/template";
+import { pageRead } from "@/admin/paging";
+import { nameContainsPattern } from "./list-url";
 import { readStoredData } from "./stored-data";
-import { PAGE_SIZE, type Cursor, type EditorSheet, type SheetPage, type SheetRow, type SheetTab, type UploadSettings } from "./types";
+import { type EditorSheet, type SheetRow, type SheetTab, type UploadSettings } from "./types";
 
 type ListRow = {
   id: string; name: string; source_type: SourceType; thumb_path: string; page_px_w: number; page_px_h: number;
@@ -32,40 +34,50 @@ export async function fetchUploadSettings(): Promise<UploadSettings> {
 }
 
 /**
- * One page of the list (50 rows) with short-lived thumbnail links (signed_url_ttl_min).
- * A cursor must carry both time and id; the app always sends both (zod). A cursor with a time but no
- * id returns no rows; one with an id but no time returns the first page.
+ * One numbered page of the list with short-lived thumbnail links (signed_url_ttl_min). Count first, then read
+ * one range: a range that starts past the end, read together with an exact count, is refused by PostgREST (416),
+ * and the count also lets a page number past the end land on the last page. The order is the one of list_sheets:
+ * last change (live) or deletion time (Trash), newest first, then id.
  */
-export async function fetchSheetPage(tab: SheetTab, query: string, after: Cursor | null): Promise<SheetPage> {
+export async function fetchSheetPageNumbered(
+  tab: SheetTab, query: string, page: number, size: number,
+): Promise<{ rows: SheetRow[]; total: number; page: number }> {
   const supabase = await createSupabaseServer();
-  const [{ data, error }, cfg] = await Promise.all([
-    supabase.rpc("list_sheets", {
-      p_trash: tab === "trash",
-      p_query: query.trim() || null,
-      p_after_time: after?.time ?? null,
-      p_after_id: after?.id ?? null,
-      p_limit: PAGE_SIZE + 1,
-    }),
-    settings(),
-  ]);
+  const trash = tab === "trash";
+  const pattern = nameContainsPattern(query);
+  let counting = supabase.from("sheet_list").select("id", { count: "exact", head: true });
+  counting = trash ? counting.not("deleted_at", "is", null) : counting.is("deleted_at", null);
+  if (pattern) counting = counting.filter("name", "imatch", pattern);
+  const [{ count, error: countError }, cfg] = await Promise.all([counting, settings()]);
+  if (countError) throw countError;
+  const total = count ?? 0;
+  const plan = pageRead(total, page, size);
+  if (!plan) return { rows: [], total, page: 1 };
+  let reading = supabase
+    .from("sheet_list")
+    .select("id, name, source_type, thumb_path, page_px_w, page_px_h, edit_count, version, updated_at, updated_by_name, deleted_at, deleted_by_name");
+  reading = trash ? reading.not("deleted_at", "is", null) : reading.is("deleted_at", null);
+  if (pattern) reading = reading.filter("name", "imatch", pattern);
+  const { data, error } = await reading
+    .order(trash ? "deleted_at" : "updated_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(plan.from, plan.to);
   if (error) throw error;
-  const all = (data ?? []) as ListRow[];
-  const rows = all.slice(0, PAGE_SIZE);
-  const ttl = cfg.signed_url_ttl_min * 60;
+  const found = (data ?? []) as unknown as ListRow[];
   const links = new Map<string, string>();
-  if (rows.length > 0) {
-    const { data: signed, error: signError } = await supabase.storage.from("spec-sheets").createSignedUrls(rows.map((r) => r.thumb_path), ttl);
+  if (found.length > 0) {
+    const { data: signed, error: signError } = await supabase.storage
+      .from("spec-sheets")
+      .createSignedUrls(found.map((r) => r.thumb_path), cfg.signed_url_ttl_min * 60);
     if (signError) console.error("createSignedUrls failed:", signError.message);
     for (const s of signed ?? []) if (s.path && s.signedUrl && !s.error) links.set(s.path, s.signedUrl);
   }
-  const out: SheetRow[] = rows.map((r) => ({
+  const rows: SheetRow[] = found.map((r) => ({
     id: r.id, name: r.name, sourceType: r.source_type, thumbUrl: links.get(r.thumb_path) ?? null,
     pageW: r.page_px_w, pageH: r.page_px_h, editCount: r.edit_count, version: r.version,
     updatedAt: r.updated_at, updatedByName: r.updated_by_name, deletedAt: r.deleted_at, deletedByName: r.deleted_by_name,
   }));
-  const last = rows[rows.length - 1];
-  const next = all.length > PAGE_SIZE && last ? { time: (tab === "trash" ? last.deleted_at : last.updated_at) as string, id: last.id } : null;
-  return { rows: out, next };
+  return { rows, total, page: plan.page };
 }
 
 export async function fetchCounts(): Promise<{ live: number; trash: number }> {

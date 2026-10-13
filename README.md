@@ -60,6 +60,14 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 | `npm run admin:create` | Create the first Admin (once) |
 | `npm run admin:reset-password` | New one-time password for an Admin who cannot sign in |
 
+## Sheet list and logo
+
+The sheet list (`/sheets`) shows numbered pages: 10, 25 (default) or 50 rows, with "Previous page" / "Next page"
+and "Rows per page" under the list. The tab, the search and the page are in the address
+(`?tab=trash&q=…&page=2&size=25`); the search box updates it 300 ms after typing and returns to page 1.
+The app logo is drawn by `src/ui/logo.tsx` (header and sign-in page); the browser tab icon is
+`src/app/icon.svg` and the home-screen icon is `src/app/apple-icon.tsx`.
+
 ## Admin area
 
 Admin → Users, Access and settings, Audit log, and Trash and clean-up share one layout: a page header, tabs,

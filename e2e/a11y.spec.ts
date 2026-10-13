@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { adminId, staffId } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
-import { TOP_LEFT, dragBox, editValue, marker, openExportCheck, openValuesSheet } from "./support/sheets";
+import { TOP_LEFT, dragBox, editValue, marker, openExportCheck, openValuesSheet, searchSheets } from "./support/sheets";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 const THEMES = ["light", "dark"] as const;
@@ -47,7 +47,7 @@ function steps(page: Page, locale: Locale) {
 
 async function trashFromList(page: Page, name: string): Promise<void> {
   await page.goto("/sheets");
-  await page.getByRole("searchbox").fill(name);
+  await searchSheets(page, name);
   await page.getByRole("button", { name: new RegExp(escape(name)) }).click(); // the row's menu
   await page.getByRole("menuitem", { name: /Đưa vào Thùng rác|Move to Trash/ }).click();
   // The outcome, not the timed toast: the row leaves the active list. A cold dev server can take a while.
@@ -120,7 +120,7 @@ test.describe("as Staff", () => {
       await step("sheets");
 
       await trashFromList(page, name);
-      await page.getByRole("tab", { name: /Thùng rác|Trash/ }).click();
+      await page.getByRole("navigation").getByRole("link", { name: /Thùng rác|Trash/ }).click();
       await expect(page.locator("li", { hasText: name }).getByRole("button", { name: /Khôi phục|Restore/ })).toBeVisible();
       await step("trash");
 

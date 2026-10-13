@@ -4,6 +4,7 @@ import { getEnv } from "@/lib/env";
 import type { Messages } from "@/messages";
 import { getMessages } from "@/messages/server";
 import { LanguageSwitch } from "@/ui/language-switch";
+import { Logo } from "@/ui/logo";
 import { PasswordSignInForm } from "./password-form";
 
 /** Reasons a guard or the Google callback sends people back here with. */
@@ -29,7 +30,8 @@ export default async function LoginPage({
       <div className="w-full max-w-sm space-y-5 rounded-xl border border-line bg-surface p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold">{t.app.name}</h1>
+            <Logo size={48} />
+            <h1 className="mt-3 text-xl font-bold">{t.app.name}</h1>
             <p className="mt-1 text-sm text-ink-2">{t.login.lead}</p>
           </div>
           <LanguageSwitch />

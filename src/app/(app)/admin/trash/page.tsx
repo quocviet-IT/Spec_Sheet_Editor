@@ -4,7 +4,7 @@ import { fetchTrashPage } from "@/admin/queries";
 import { requireAdmin } from "@/auth/session";
 import { getMessages } from "@/messages/server";
 import { PageHeader } from "../ui/page-header";
-import { Pagination } from "../ui/pagination";
+import { Pagination } from "@/ui/pagination";
 import { OrphanPanel } from "./orphan-panel";
 import { TrashTable } from "./trash-table";
 

@@ -46,7 +46,7 @@ export function PaginationView({ info, links, onChange }: {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-sm text-ink-2">
       <p>{fill(t.admin.ui.showing, { from: info.from, to: info.to, total: info.total })}</p>
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex items-center gap-2">
           <label htmlFor={`${id}-size`}>{t.admin.ui.rowsPerPage}</label>
           {links ? (

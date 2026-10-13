@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import type { PageInfo } from "@/admin/paging";
 import { fill } from "@/messages/format";
 import { useMessages } from "@/messages/client";
-import { loadSheets, restoreSheet, trashSheet } from "@/sheets/actions";
+import { restoreSheet, trashSheet } from "@/sheets/actions";
 import { fileLabel, TIME_ZONE } from "@/sheets/format";
-import type { Cursor, SheetPage, SheetRow, SheetTab, UploadSettings } from "@/sheets/types";
+import { parseSheetQuery, readUrlQuery, sheetListHref } from "@/sheets/list-url";
+import type { SheetRow, SheetTab, UploadSettings } from "@/sheets/types";
+import { Pagination } from "@/ui/pagination";
 import { UploadDialog } from "./upload-dialog";
 
 const TAB_KEYS = ["live", "trash"] as const;
@@ -14,45 +18,58 @@ const TAB_KEYS = ["live", "trash"] as const;
 type Toast = { text: string; undo?: () => void } | null;
 
 export function SheetList({
-  initial, counts: initialCounts, settings, locale,
-}: { initial: SheetPage; counts: { live: number; trash: number }; settings: UploadSettings; locale: "vi" | "en" }) {
+  rows, counts, info, tab, q, settings, locale,
+}: {
+  rows: SheetRow[]; counts: { live: number; trash: number }; info: PageInfo; tab: SheetTab; q: string;
+  settings: UploadSettings; locale: "vi" | "en";
+}) {
   const t = useMessages();
   const s = t.sheets;
-  const [tab, setTab] = useState<SheetTab>("live");
-  const [query, setQuery] = useState("");
-  const [applied, setApplied] = useState("");
-  const [rows, setRows] = useState<SheetRow[]>(initial.rows);
-  const [next, setNext] = useState<Cursor | null>(initial.next);
-  const [counts, setCounts] = useState(initialCounts);
-  const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [failedAfter, setFailedAfter] = useState<Cursor | null>(null);
+  const router = useRouter();
+  const [refreshing, startTransition] = useTransition();
+  const [query, setQuery] = useState(q);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [holdToast, setHoldToast] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [brokenThumbs, setBrokenThumbs] = useState<ReadonlySet<string>>(new Set());
-  const first = useRef(true);
-  const requestId = useRef(0);
-  const latestFetch = useRef<(after: Cursor | null) => Promise<void>>(async () => {});
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const sentinel = useRef<HTMLDivElement | null>(null);
+  const lastPushed = useRef(q);
+  const pushedRef = useRef<string[]>([q]);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const when = useMemo(
     () => new Intl.DateTimeFormat(locale === "vi" ? "vi-VN" : "en-GB", { dateStyle: "short", timeStyle: "short", timeZone: TIME_ZONE }),
     [locale],
   );
 
-  // 300 ms after typing stops (UC-02 step 2)
+  const hrefFor = (page: number, size: number) => sheetListHref({ tab, q, page, size });
+
+  // 300 ms after typing stops the address takes the search and returns to page 1 (UC-02 step 2)
   useEffect(() => {
+    const typed = parseSheetQuery(query);
+    if (typed === lastPushed.current) return;
     const timer = setTimeout(() => {
-      const q = query.trim();
-      if (q !== applied) clearList();
-      setApplied(q);
+      timerRef.current = null;
+      lastPushed.current = typed;
+      pushedRef.current = [...pushedRef.current, typed];
+      startTransition(() => router.replace(sheetListHref({ tab, q: typed, page: 1, size: info.size })));
     }, 300);
+    timerRef.current = timer;
     return () => clearTimeout(timer);
-  }, [query, applied]);
+  }, [query, tab, info.size, router]);
+
+  // the address changed without typing here (back, forward, a link): the box follows it.
+  // An echo of a search this box pushed, however late, is ignored so it cannot overwrite newer typing.
+  useEffect(() => {
+    const seen = readUrlQuery(q, pushedRef.current);
+    pushedRef.current = seen.pushed;
+    if (seen.adopt) {
+      lastPushed.current = q;
+      setQuery(q);
+    }
+  }, [q]);
 
   // an unmounted toast never fires its leave/blur events, so every change resets the pause
   function showToast(next: Toast) {
@@ -60,57 +77,9 @@ export function SheetList({
     setToast(next);
   }
 
-  function clearList() {
-    setRows([]);
-    setNext(null);
-    setFailed(false);
+  function refresh() {
+    startTransition(() => router.refresh());
   }
-
-  function selectTab(key: SheetTab) {
-    if (key !== tab) clearList();
-    setTab(key);
-    setMenuFor(null);
-  }
-
-  const fetchPage = useCallback(async (after: Cursor | null) => {
-    const id = ++requestId.current;
-    setLoading(true);
-    setFailed(false);
-    const result = await loadSheets({ tab, query: applied, after });
-    if (id !== requestId.current) return; // a newer request owns the list
-    setLoading(false);
-    if ("error" in result) {
-      setFailed(true);
-      setFailedAfter(after);
-      return;
-    }
-    setRows((old) => (after ? [...old, ...result.rows] : result.rows));
-    setNext(result.next);
-  }, [tab, applied]);
-
-  // a new tab or search starts from an empty list and the first page; the server already rendered the first live page
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    void fetchPage(null);
-  }, [fetchPage]);
-
-  useEffect(() => {
-    latestFetch.current = fetchPage;
-  }, [fetchPage]);
-
-  // load the next 50 when the end of the list scrolls into view (UC-02 step 3)
-  useEffect(() => {
-    const el = sentinel.current;
-    if (!el || !next || loading || failed) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) void fetchPage(next);
-    }, { rootMargin: "400px" });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [next, loading, failed, fetchPage]);
 
   // the toast stays 10 s; the timer pauses while the pointer or focus is on it
   useEffect(() => {
@@ -134,18 +103,6 @@ export function SheetList({
 
   function focusPanel() {
     document.getElementById("sheet-panel")?.focus();
-  }
-
-  function onTabKey(e: React.KeyboardEvent, index: number) {
-    let to = -1;
-    if (e.key === "ArrowRight") to = (index + 1) % TAB_KEYS.length;
-    else if (e.key === "ArrowLeft") to = (index + TAB_KEYS.length - 1) % TAB_KEYS.length;
-    else if (e.key === "Home") to = 0;
-    else if (e.key === "End") to = TAB_KEYS.length - 1;
-    if (to < 0) return;
-    e.preventDefault();
-    selectTab(TAB_KEYS[to]);
-    document.getElementById(`sheet-tab-${TAB_KEYS[to]}`)?.focus();
   }
 
   function onMenuKey(e: React.KeyboardEvent, rowId: string) {
@@ -174,8 +131,7 @@ export function SheetList({
       document.getElementById(`sheet-menu-btn-${row.id}`)?.focus();
       return;
     }
-    setRows((old) => old.filter((r) => r.id !== row.id));
-    setCounts((c) => ({ live: c.live - 1, trash: c.trash + 1 }));
+    refresh();
     focusPanel();
     showToast({
       text: fill(s.trashed, { name: row.name }),
@@ -186,8 +142,7 @@ export function SheetList({
           showToast({ text: s.actionError });
           return;
         }
-        setCounts((c) => ({ live: c.live + 1, trash: c.trash - 1 }));
-        await latestFetch.current(null);
+        refresh();
       },
     });
   }
@@ -200,67 +155,61 @@ export function SheetList({
       showToast({ text: s.actionError });
       return;
     }
-    setRows((old) => old.filter((r) => r.id !== row.id));
-    setCounts((c) => ({ live: c.live + 1, trash: c.trash - 1 }));
+    refresh();
     focusPanel();
     showToast({ text: fill(s.restored, { name: row.name }) });
   }
 
   const empty =
-    rows.length === 0 && !loading && !failed
-      ? applied ? fill(s.noMatch, { q: applied }) : tab === "trash" ? s.emptyTrash : s.empty
+    rows.length === 0
+      ? q ? fill(s.noMatch, { q }) : tab === "trash" ? s.emptyTrash : s.empty
       : null;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div role="tablist" aria-label={s.title} className="flex gap-6 border-b border-line">
-          {TAB_KEYS.map((key, index) => (
-            <button
+      {/* DOM order is the Tab order: search, upload, tabs; `order-*` keeps the tabs on the left */}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="relative order-2 min-w-[200px] flex-1 sm:ml-auto sm:max-w-xs sm:flex-none sm:basis-80">
+          <span className="sr-only">{s.search}</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={s.search}
+            className="w-full rounded-md border border-line bg-surface px-3 py-2"
+          />
+        </label>
+        <button type="button" onClick={() => setUploadOpen(true)} className="order-3 rounded-md bg-accent px-4 py-2 font-semibold text-accent-ink hover:opacity-90">
+          {s.upload}
+        </button>
+        <nav aria-label={s.title} className="order-1 flex gap-6 border-b border-line sm:mr-auto">
+          {TAB_KEYS.map((key) => (
+            <Link
               key={key}
               id={`sheet-tab-${key}`}
-              type="button"
-              role="tab"
-              aria-selected={tab === key}
-              aria-controls="sheet-panel"
-              tabIndex={tab === key ? 0 : -1}
-              onKeyDown={(e) => onTabKey(e, index)}
-              onClick={() => selectTab(key)}
-              className={"-mb-px border-b-2 px-1 pb-2 text-sm font-medium " + (tab === key ? "border-accent text-ink" : "border-transparent text-ink-2 hover:text-ink")}
+              href={sheetListHref({ tab: key, q, page: 1, size: info.size })}
+              aria-current={tab === key ? "page" : undefined}
+              onClick={() => {
+                setMenuFor(null);
+                // a search still waiting must not undo a tab change; the other tab then takes it in turn.
+                // On the open tab nothing changes, so the waiting search is left to run.
+                if (key !== tab && timerRef.current) clearTimeout(timerRef.current);
+              }}
+              className={"-mb-px inline-flex min-h-6 items-center border-b-2 px-1 pb-2 text-sm font-medium " + (tab === key ? "border-accent text-ink" : "border-transparent text-ink-2 hover:text-ink")}
             >
               {s.tabs[key]} <span className="ml-1 rounded-full bg-sunk px-2 py-0.5 font-mono text-xs">{counts[key]}</span>
-            </button>
+            </Link>
           ))}
-        </div>
-        <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-          <label className="relative min-w-[200px] flex-1 sm:max-w-xs">
-            <span className="sr-only">{s.search}</span>
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={s.search}
-              className="w-full rounded-md border border-line bg-surface px-3 py-2"
-            />
-          </label>
-          <button type="button" onClick={() => setUploadOpen(true)} className="rounded-md bg-accent px-4 py-2 font-semibold text-accent-ink hover:opacity-90">
-            {s.upload}
-          </button>
-        </div>
+        </nav>
       </div>
 
       <div
-        role="tabpanel"
         id="sheet-panel"
-        aria-labelledby={`sheet-tab-${tab}`}
-        aria-busy={loading}
+        aria-busy={refreshing}
         tabIndex={-1}
-        className="overflow-hidden rounded-lg border border-line bg-surface outline-none"
+        className={"overflow-hidden rounded-lg border border-line bg-surface outline-none transition-opacity " + (refreshing ? "opacity-60" : "")}
       >
         <ul>
-          {loading && rows.length === 0 && (
-            <li className="px-4 py-10 text-center text-ink-2">{s.loading}</li>
-          )}
           {rows.map((row) => (
             <li key={row.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-4 py-3 first:border-t-0">
               <div className="h-14 w-[72px] flex-none overflow-hidden rounded border border-line bg-paper">
@@ -342,28 +291,14 @@ export function SheetList({
         {empty && (
           <div className="space-y-3 px-4 py-10 text-center text-ink-2">
             <p>{empty}</p>
-            {tab === "live" && !applied && (
+            {tab === "live" && !q && (
               <button type="button" onClick={() => setUploadOpen(true)} className="rounded-md bg-accent px-4 py-2 font-semibold text-accent-ink">
                 {s.upload}
               </button>
             )}
           </div>
         )}
-        {failed && (
-          <div role="alert" className="flex flex-wrap items-center justify-center gap-3 border-t border-line px-4 py-4 text-sm">
-            <span>{s.loadError}</span>
-            <button type="button" onClick={() => void fetchPage(failedAfter)} className="rounded border border-line px-3 py-1 hover:bg-sunk">
-              {s.retry}
-            </button>
-          </div>
-        )}
-        {next && !failed && (
-          <div ref={sentinel} className="border-t border-line px-4 py-3 text-center">
-            <button type="button" disabled={loading} onClick={() => void fetchPage(next)} className="rounded border border-line px-3 py-1 text-sm hover:bg-sunk disabled:opacity-60">
-              {loading ? s.loading : s.loadMore}
-            </button>
-          </div>
-        )}
+        {info.total > 0 && <Pagination info={info} hrefFor={hrefFor} />}
         {tab === "trash" && <p className="border-t border-line bg-sunk px-4 py-3 text-sm text-ink-2">{s.trashNote}</p>}
       </div>
 
