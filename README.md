@@ -60,6 +60,12 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 | `npm run admin:create` | Create the first Admin (once) |
 | `npm run admin:reset-password` | New one-time password for an Admin who cannot sign in |
 
+## Reporting a problem
+
+The **Report** button in the header (any page) sends a problem or a suggestion with a picture of the screen; people follow their
+own reports under **Feedback**, where a red number marks the ones an Admin has moved. Admins triage them on the same page. The
+design is in `docs/design/2026-10-13-feedback.md`; migration `0005_feedback.sql` creates the table and the screenshot bucket.
+
 ## Sheet list and logo
 
 The sheet list (`/sheets`) shows numbered pages: 10, 25 (default) or 50 rows, with "Previous page" / "Next page"

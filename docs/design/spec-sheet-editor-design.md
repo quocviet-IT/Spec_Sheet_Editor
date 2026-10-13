@@ -188,6 +188,7 @@ Editable and locked zones are fixed by position on the template. Coordinates wer
 | BR-16 | Permanent deletion applies only to sheets already in the Trash, requires the sheet name to be typed to confirm, and cannot be undone. The audit log keeps the sheet name, its creator and who deleted it. | An irreversible action must be protected against mis-clicks. |
 | BR-17 | No access change may lock the acting Admin out of the system. | Prevents self-lockout. |
 | BR-18 | A sheet, its original file and its thumbnail can be read and changed only by the person who uploaded it (`created_by`) and by Admins. This covers the list, the counts, the editor, saving, the Trash and restoring. Permanent deletion stays Admin-only (BR-16). | Requirement added on 12 October 2026: each person's sheets are their own work. |
+| BR-19 | A filed report cannot be edited; only an Admin moves it, and declining one needs a reason the reporter can read. | Requirement added on 13 October 2026: a report is evidence of what the person saw, and a refusal must be explained. |
 
 ### 2.5 Roles and permission matrix
 
@@ -199,6 +200,8 @@ Editable and locked zones are fixed by position on the template. Coordinates wer
 | Upload, edit values, save | ✓ | ✓ | UC-03 – UC-08 |
 | Export PNG / PDF | ✓ | ✓ | UC-09 |
 | Move to Trash, restore | ✓ | ✓ | UC-11 |
+| Report a problem or a suggestion; follow one's own reports | ✓ | ✓ | UC-19 |
+| Triage every report | — | ✓ | UC-19 |
 | Manage users (role, suspension) | — | ✓ | UC-13 |
 | Manage permitted domains and emails | — | ✓ | UC-14 |
 | Change system settings | — | ✓ | UC-15 |
@@ -254,6 +257,8 @@ Priority: **Must** is required in the first release; **Should** is built if time
 | F-28 | Permanent deletion | Delete the record and files of a sheet in the Trash, with typed confirmation. | UC-17 | Must |
 | F-29 | Orphan file clean-up | Delete storage folders with no matching record that are older than 24 hours. | UC-18 | Should |
 | F-30 | Password accounts | Create an account (name, email, role) with a one-time password shown once; issue a new one-time password, which signs the person out everywhere. | UC-13 | Must |
+| F-31 | Report a problem or a suggestion | A header button opens a short form (kind, impact, description) from any page; the page address and, unless unticked, a picture of the screen go with it. Staff follow their own reports, with the Admin's note, and a red count marks the ones that moved. | UC-19 | Should |
+| F-32 | Triage feedback | An Admin sees every report on the Feedback page, filters by status, moves a report between New, Looking at it, Fixed and Not doing, and writes a note for the reporter; Not doing needs a note (BR-19). | UC-19 | Should |
 
 ### 3.2 Non-functional requirements
 
@@ -285,7 +290,7 @@ Security requirements target the access-control risk category (Broken Access Con
 | Actor | Role |
 |---|---|
 | **Staff** | Anyone permitted under BR-08; the default role. |
-| **Admin** | A specialisation of Staff: can perform every Staff use case plus UC-13 to UC-18. |
+| **Admin** | A specialisation of Staff: can perform every Staff use case plus UC-13 to UC-18; UC-19 is open to both roles, with the triage steps for Admins. |
 | **Google OAuth** | External system that authenticates the Google account and returns the email to Supabase Auth (Supabase, n.d.c). |
 
 ### 4.2 Use case diagrams
@@ -668,6 +673,24 @@ All use cases below share these preconditions: signed in, role Admin, account ac
 **Extensions:** 2a. None found: "No orphan files."
 
 **Note:** The 24-hour threshold avoids deleting uploads in progress, because UC-03 uploads the file before creating the record.
+#### UC-19 · Report a problem and triage it
+
+*Traces to: F-31 · F-32 · BR-19*
+
+**Actors:** Staff (reporting), Admin (triage)
+
+**Main flow:**
+
+1. On any page the person presses "Report" in the header. The system starts taking a picture of the screen and opens the dialog (S11).
+2. The person chooses what it is and how much it gets in the way, writes a description of at least five characters and presses "Send". The page address and a label for the page go with it.
+3. The system stores the report as New, attaches the picture if the person kept it ticked, and says it was sent.
+4. An Admin opens Feedback (S12), reads the report, opens the picture and moves the report to Looking at it, Fixed or Not doing, with a note for the reporter.
+5. The reporter sees a red count on the Feedback link. On the Feedback page the report shows the note under the description and an "Updated" badge; the visit clears the count.
+
+**Extensions:** 2a. The description is shorter than five characters: "Send" stays disabled.<br>2b. The picture could not be taken or the person unticks it: the report is sent without it.<br>3a. The report is stored but the picture cannot be: the report stays, and the dialog says the screenshot was not stored.<br>4a. An Admin chooses Not doing with no note: "Write the reason for the reporter first"; the status does not change.
+
+**Note:** A filed report cannot be edited (BR-19). Staff read only their own reports; Admins read all.
+
 
 <a id="chapter-5"></a>
 
@@ -1165,6 +1188,8 @@ The bottleneck is the input data, not the tool. When digits are 8 px tall and to
 | S8 | Admin · Access & settings | UC-14, 15 |
 | S9 | Admin · Audit log | UC-16 |
 | S10 | Admin · Trash & clean-up | UC-17, 18 |
+| S11 | Report dialog | UC-19 |
+| S12 | Feedback | UC-19 |
 
 ### 8.3 Wireframes
 
@@ -1318,6 +1343,11 @@ Priority: High blocks go-live; Med medium; Low.
 | TC-78 | UC-02 | Staff see only their own sheets | B searches a prefix shared by A's and B's sheets; B opens A's link | One row, B's; A's link gives 404 and its name appears nowhere | E2E | High |
 | TC-79 | UC-02 | An Admin sees every sheet and filters by creator | Admin searches the prefix; chooses B in "Creator"; opens A's sheet | Rows show "by {name}"; `owner` in the address, one row, the tab count follows; the editor shows "Uploaded by {A}" | E2E | High |
 | TC-80 | — | Ownership in the database | Staff A and B and an Admin read, save, trash, restore and fetch files of each other's sheets; counts and owners | A reaches only A's sheets and files; an Admin reaches all; counts and owners follow the rule | SQL | High |
+| **Feedback** |  |  |  |  |  |  |
+| TC-81 | UC-19 | A report is filed with a screenshot from the editor | Staff open a sheet, press Report, wait for the preview, choose "A value was read wrongly or missed", write a description and send | Thank-you shown; the row has kind `misread`, route `/sheets/[id]`, a screenshot path, and the picture exists in storage | E2E | High |
+| TC-82 | UC-19 | An Admin triages; declining needs a reason; the reporter sees the note and the count | A report with a picture exists; the Admin chooses Not doing with no note, then with a note; the reporter opens the app | The Admin's count is at least 1 and the row has a Screenshot link; with no note the reason prompt shows and the status stays New; with a note it saves; the reporter's link shows 1, the page shows the note and "Updated", and the count is gone after a reload | E2E | High |
+| TC-83 | UC-19 | Another staff member cannot see the report | A second Staff user opens Feedback and reads the row through the REST interface with their own session | The report is not listed and the direct read returns no rows | E2E | High |
+| TC-84 | UC-19 | Feedback in the database | `tests/sql/feedback.test.ts`: filing, reading, evidence, triage, picture, counts, applying the migration twice | Staff file only their own New reports and read only those; an Admin reads all; content never changes; only an Admin moves a report and declining needs a reason; a picture is attached once; counts follow | SQL | High |
 
 ### 9.3 Test data
 
