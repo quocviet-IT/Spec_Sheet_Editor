@@ -22,14 +22,14 @@ export function AppHeader({ me, t }: { me: Profile; t: Messages }) {
             <Link href="/admin" className="hover:text-ink">{t.common.admin}</Link>
           )}
         </nav>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
           <FeedbackButton />
           <LanguageSwitch />
           <span className="hidden text-sm text-ink-2 sm:inline" title={me.email}>
             {me.fullName ?? me.email}
           </span>
           {me.passwordAccount && (
-            <Link href="/account/password" className="text-sm text-ink-2 hover:text-ink">
+            <Link href="/account/password" className="inline-flex min-h-6 items-center text-sm text-ink-2 hover:text-ink">
               {t.common.changePassword}
             </Link>
           )}

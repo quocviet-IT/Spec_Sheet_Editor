@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireUser } from "@/auth/session";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { feedbackInput } from "./model";
+import { clipLabel } from "./page-label";
 
 const idSchema = z.uuid();
 const UUID_V4 = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -11,7 +12,12 @@ const UUID_V4 = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 /** Files a report as the signed-in person. The row is theirs by RLS; nothing else about them is taken from the browser. */
 export async function fileFeedback(input: unknown): Promise<{ ok: true; id: string } | { error: "invalid" | "unknown" }> {
   const me = await requireUser("/feedback");
-  const parsed = feedbackInput.safeParse(input);
+  // A label that is too long is cut here rather than refused, so a long sheet name never blocks a report.
+  const raw =
+    input && typeof input === "object" && typeof (input as { pageLabel?: unknown }).pageLabel === "string"
+      ? { ...input, pageLabel: clipLabel((input as { pageLabel: string }).pageLabel) }
+      : input;
+  const parsed = feedbackInput.safeParse(raw);
   if (!parsed.success) return { error: "invalid" };
   try {
     const supabase = await createSupabaseServer();

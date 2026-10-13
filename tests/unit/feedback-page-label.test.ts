@@ -29,4 +29,19 @@ describe("pageLabelOf", () => {
   it("returns an unknown path as it is", () => {
     expect(pageLabelOf("/somewhere/else", en)).toBe("/somewhere/else");
   });
+  it("never exceeds 200 characters for a long sheet name and ends with an ellipsis", () => {
+    for (const t of [en, vi]) {
+      const label = pageLabelOf(`/sheets/${ID}`, t, "x".repeat(200));
+      expect(label.length).toBeLessThanOrEqual(200);
+      expect(label.endsWith("…")).toBe(true);
+    }
+  });
+  it("counts characters, not bytes", () => {
+    const label = pageLabelOf(`/sheets/${ID}`, vi, "Nhẫn vàng ".repeat(30));
+    expect(label.length).toBeLessThanOrEqual(200);
+    expect(label.endsWith("…")).toBe(true);
+  });
+  it("leaves a short sheet name unchanged", () => {
+    expect(pageLabelOf(`/sheets/${ID}`, vi, "Nhẫn 12")).toBe(vi.feedback.editorPage.replace("{name}", "Nhẫn 12"));
+  });
 });

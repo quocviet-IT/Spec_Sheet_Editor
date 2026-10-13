@@ -24,8 +24,9 @@ const PRIMARY = "inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 t
 type Phase = "form" | "sending" | "sent";
 
 /**
- * The report form. `shot` is the picture taken before the dialog opened (null when it could not be taken);
- * `capturing` is true while that is still running. The form is remounted (key) for "Report something else".
+ * The report form. `shot` is the picture of the page behind (null when it could not be taken, or took over 10 s);
+ * `capturing` is true while that is still running. It runs alongside the opening, and this dialog is not in it
+ * because it sits inside the data-feedback-chrome wrapper. The form is remounted (key) for "Report something else".
  */
 export function ReportDialog({
   shot,
@@ -48,7 +49,13 @@ export function ReportDialog({
   const [error, setError] = useState<string | null>(null);
   const [shotNotStored, setShotNotStored] = useState(false);
   const imgRef = useRef<HTMLImageElement | null>(null);
-  const showPreview = !capturing && !!shot && keepShot;
+  const thanksRef = useRef<HTMLParagraphElement | null>(null);
+  const showPreview = phase === "form" && !capturing && !!shot && keepShot;
+
+  // After sending, focus moves to the thank-you so a screen reader reads it out.
+  useEffect(() => {
+    if (phase === "sent") thanksRef.current?.focus();
+  }, [phase]);
 
   // An object URL for the picture, set on the image directly and revoked when the picture changes or the dialog closes.
   useEffect(() => {
@@ -109,7 +116,7 @@ export function ReportDialog({
     <Dialog title={t.feedback.dialogTitle} open onClose={onClose} requireClose={busy}>
       {phase === "sent" ? (
         <div className="space-y-4">
-          <p role="status" className="text-sm">{t.feedback.thanks}</p>
+          <p ref={thanksRef} tabIndex={-1} className="text-sm outline-none">{t.feedback.thanks}</p>
           {shotNotStored && <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{t.feedback.shotNotStored}</p>}
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={onAnother} className={`${CONTROL} inline-flex items-center gap-2`}>
@@ -133,7 +140,7 @@ export function ReportDialog({
           <fieldset className="space-y-1">
             <legend className="mb-1 text-sm font-medium">{t.feedback.kindLegend}</legend>
             {FEEDBACK_KINDS.map((k) => (
-              <label key={k} className="flex items-center gap-2 text-sm">
+              <label key={k} className="flex min-h-6 items-center gap-2 text-sm">
                 <input type="radio" name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} />
                 {t.feedback.kinds[k]}
               </label>
@@ -143,16 +150,18 @@ export function ReportDialog({
           <fieldset className="space-y-1">
             <legend className="mb-1 text-sm font-medium">{t.feedback.impactLegend}</legend>
             {FEEDBACK_IMPACTS.map((i) => (
-              <label key={i} className="flex items-center gap-2 text-sm">
+              <label key={i} className="flex min-h-6 items-center gap-2 text-sm">
                 <input type="radio" name="impact" value={i} checked={impact === i} onChange={() => setImpact(i)} />
                 {t.feedback.impacts[i]}
               </label>
             ))}
           </fieldset>
 
-          <label className="block space-y-1">
-            <span className="text-sm font-medium">{t.feedback.description}</span>
+          <div className="space-y-1">
+            <label htmlFor="feedback-description" className="block text-sm font-medium">{t.feedback.description}</label>
             <textarea
+              id="feedback-description"
+              aria-describedby={description.length > 0 && !long ? "feedback-too-short" : undefined}
               rows={5}
               maxLength={DESCRIPTION_MAX}
               value={description}
@@ -160,8 +169,8 @@ export function ReportDialog({
               onChange={(e) => setDescription(e.target.value)}
               className="block w-full rounded-md border border-line bg-surface px-3 py-2 text-sm"
             />
-            {description.length > 0 && !long && <span className="block text-sm text-ink-2">{t.feedback.tooShort}</span>}
-          </label>
+            {description.length > 0 && !long && <p id="feedback-too-short" className="text-sm text-ink-2">{t.feedback.tooShort}</p>}
+          </div>
 
           <p className="text-sm text-ink-2">{t.feedback.filedFrom.replace("{page}", page)}</p>
 
@@ -170,7 +179,7 @@ export function ReportDialog({
             {!capturing && !shot && <p className="text-sm text-ink-2">{t.feedback.captureFailed}</p>}
             {!capturing && shot && (
               <>
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex min-h-6 items-center gap-2 text-sm">
                   <input type="checkbox" checked={keepShot} onChange={(e) => setKeepShot(e.target.checked)} />
                   {t.feedback.sendShot}
                 </label>

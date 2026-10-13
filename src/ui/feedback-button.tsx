@@ -7,8 +7,9 @@ import { ReportDialog } from "@/feedback/report-dialog";
 import { useMessages } from "@/messages/client";
 
 /**
- * The header's report button. The picture is taken first, then the dialog opens over the page, so the
- * dialog is never in it; while the picture is still being drawn the dialog says so.
+ * The header's report button. The picture is taken alongside the dialog opening; the dialog and its backdrop sit
+ * inside the data-feedback-chrome wrapper, which the capture filters out, so they are never in it. While the
+ * picture is still being drawn the dialog says so; a capture that gives up after 10 s sends without one.
  */
 export function FeedbackButton() {
   const t = useMessages();
