@@ -40,7 +40,8 @@ export function useLeaveGuard(active: boolean, message: string): void {
     function onSubmit(e: SubmitEvent) {
       const form = e.target;
       if (!(form instanceof HTMLFormElement) || e.defaultPrevented) return;
-      if (form.closest("[data-editor-root]") || form.querySelector("input[name='locale']")) return;
+      // the language and theme switches refresh the page in place and keep the unsaved work
+      if (form.closest("[data-editor-root]") || form.querySelector("input[name='locale'], input[name='theme']")) return;
       if (!window.confirm(message)) {
         e.preventDefault();
         e.stopPropagation();

@@ -153,6 +153,39 @@ test("the account menu is opened, moved through and closed with the keyboard alo
   await expect(button).toHaveAttribute("aria-expanded", "false");
 });
 
+test("the theme menu is opened, moved through and closed with the keyboard alone", async ({ page }) => {
+  await page.goto("/sheets");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+  // Tab to the theme button (every control passed on the way shows focus).
+  await tabTo(page, "the theme button", (a) => a.popup === "menu" && /^(Giao diện|Theme): /.test(a.label ?? ""));
+  const label = (await active(page)).label!;
+  const button = page.getByRole("button", { name: label, exact: true });
+  await expect(button).toBeFocused();
+  await expect(button).toHaveAttribute("aria-expanded", "false");
+
+  // Enter opens the menu on its first item.
+  await page.keyboard.press("Enter");
+  const menu = page.getByRole("menu", { name: /^(Giao diện|Theme)$/ });
+  await expect(menu).toBeVisible();
+  await expect(button).toHaveAttribute("aria-expanded", "true");
+  const items = menu.getByRole("menuitemradio");
+  await expect(items).toHaveCount(3);
+  await expect(items.first()).toBeFocused();
+  await expectFocusRing(page, "the first theme item");
+
+  // ArrowDown moves to the next item.
+  await page.keyboard.press("ArrowDown");
+  await expect(items.nth(1)).toBeFocused();
+  await expectFocusRing(page, "the second theme item");
+
+  // Escape closes the menu and focus is back on the button.
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(button).toBeFocused();
+  await expect(button).toHaveAttribute("aria-expanded", "false");
+});
+
 test.describe("Admin", () => {
   test.use({ storageState: "e2e/.auth/admin.json" });
 

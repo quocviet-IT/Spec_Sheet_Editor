@@ -28,8 +28,34 @@
   color-scheme: light;
 }
 
+/* The two dark blocks below must stay byte-identical apart from their selector. */
+:root[data-theme="dark"] {
+  --paper: #0f1412;
+  --surface: #161d1a;
+  --sunk: #1c2521;
+  --ink: #e3ebe6;
+  --ink-2: #a8b4ae;
+  --ink-3: #8b978f;
+  --line: #2a3530;
+  --accent: #62c194;
+  --accent-ink: #0a1510;
+  --accent-soft: #16291f;
+  --mark: #86a8ff;
+  --mark-ink: #0a1510;
+  --edit: #f4a35c;
+  --edit-ink: #0a1510;
+  --danger: #ff8d80;
+  --danger-ink: #0a1510;
+  --danger-soft: #3a1714;
+  --warn-soft: #2d240c;
+  --success: #6fd39a;
+  --success-soft: #14301f;
+  --admin: #b9a6ff;
+  --admin-soft: #251c45;
+  color-scheme: dark;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root[data-theme="system"] {
     --paper: #0f1412;
     --surface: #161d1a;
     --sunk: #1c2521;
