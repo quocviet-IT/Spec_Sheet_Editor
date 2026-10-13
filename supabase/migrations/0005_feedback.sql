@@ -92,6 +92,8 @@ begin
   if not found then raise exception 'not_found'; end if;
   v_note := case when p_note is null then v_old_note else nullif(btrim(p_note), '') end;
   if p_status = 'declined' and v_note is null then raise exception 'decline_needs_reason'; end if;
+  -- nothing changes: no new triage time (it would tell the reporter something moved) and no audit entry
+  if p_status = v_before and v_note is not distinct from v_old_note then return; end if;
   update feedback_reports
      set status = p_status, triage_note = v_note, triaged_by = auth.uid(), triaged_at = now()
    where id = p_id;

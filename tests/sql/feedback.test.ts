@@ -57,8 +57,8 @@ describe.skipIf(!hasDb)("feedback (0005)", () => {
       const { a } = await world(tx);
       const id = await insertReportAsOwner(tx, a);
       await actAs(tx, a);
-      const changed = await tx`update public.feedback_reports set description = 'Something else entirely' where id = ${id} returning id`;
-      expect(changed.length).toBe(0); // no update policy
+      // clients hold no UPDATE privilege at all, so the statement is refused before any policy is consulted
+      await expectError(tx, (sp) => sp`update public.feedback_reports set description = 'Something else entirely' where id = ${id} returning id`, "permission denied");
       await actAsOwner(tx);
       await expectError(tx, (sp) => sp`update public.feedback_reports set description = 'Rewritten afterwards' where id = ${id}`, "feedback_is_evidence");
       await tx`update public.feedback_reports set screenshot_path = ${`${id}/${randomUUID()}.png`} where id = ${id}`;
@@ -78,6 +78,7 @@ describe.skipIf(!hasDb)("feedback (0005)", () => {
       await tx`select public.set_feedback_status(${id}::uuid, 'looking', 'Reproduced on the test sheet')`;
       await tx`select public.set_feedback_status(${id}::uuid, 'declined', null)`; // the kept note is the reason
       await expectError(tx, (sp) => sp`select public.set_feedback_status(${id}::uuid, 'gone', null)`, "invalid_status");
+      await tx`select public.set_feedback_status(${id}::uuid, 'declined', null)`; // a no-op: no audit entry below, no new triage time
       await actAsOwner(tx);
       const [row] = await tx<{ status: string; triage_note: string; triaged_by: string }[]>`select status, triage_note, triaged_by from public.feedback_reports where id = ${id}`;
       expect(row).toEqual({ status: "declined", triage_note: "Reproduced on the test sheet", triaged_by: admin.id });
@@ -109,7 +110,9 @@ describe.skipIf(!hasDb)("feedback (0005)", () => {
       await expectError(tx, (sp) => sp`select public.attach_feedback_screenshot(${mine}::uuid, ${path})`, "file_missing");
       await expectError(tx, (sp) => sp`insert into storage.objects (bucket_id, name, owner, owner_id) values (${BUCKET}, ${`${theirs}/${randomUUID()}.png`}, ${a.id}, ${a.id})`, "row-level security");
       await expectError(tx, (sp) => sp`insert into storage.objects (bucket_id, name, owner, owner_id) values (${BUCKET}, ${`${mine}/not-a-uuid.png`}, ${a.id}, ${a.id})`, "row-level security");
-      await tx`insert into storage.objects (bucket_id, name, owner, owner_id) values (${BUCKET}, ${path}, ${a.id}, ${a.id})`;
+      // RETURNING, as the storage service inserts: the new row must also pass the read policy before it is attached
+      const [uploaded] = await tx<{ name: string }[]>`insert into storage.objects (bucket_id, name, owner, owner_id) values (${BUCKET}, ${path}, ${a.id}, ${a.id}) returning name`;
+      expect(uploaded.name).toBe(path);
       await expectError(tx, (sp) => sp`insert into storage.objects (bucket_id, name, owner, owner_id) values (${BUCKET}, ${`${mine}/${randomUUID()}.png`}, ${a.id}, ${a.id})`, "row-level security");
       await expectError(tx, (sp) => sp`select public.attach_feedback_screenshot(${theirs}::uuid, ${path})`, "not_found");
       await tx`select public.attach_feedback_screenshot(${mine}::uuid, ${path})`;
@@ -128,7 +131,7 @@ describe.skipIf(!hasDb)("feedback (0005)", () => {
   it("the unread count: New reports for an Admin, one's own moved reports for Staff, cleared by marking seen", async () => {
     await rollback(async (tx) => {
       const { a, admin } = await world(tx);
-      await insertReportAsOwner(tx, a, { status: "looking", note: "On it", triagedAt: new Date(Date.now() - 60_000) }); // in the past, so a clock skew cannot put it after the visit
+      await insertReportAsOwner(tx, a, { status: "looking", note: "On it", triagedAt: new Date("2020-01-01T00:00:00Z") }); // long past, so no clock skew can put it after the visit
       await insertReportAsOwner(tx, a);
       await actAs(tx, a);
       const unseen = async () => (await tx<{ n: number }[]>`select public.feedback_unseen() as n`)[0].n;
