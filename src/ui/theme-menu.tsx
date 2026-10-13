@@ -128,7 +128,8 @@ export function ThemeMenu() {
         {THEMES.map((theme) => {
           const Icon = ICON[theme];
           return (
-            <form key={theme} action={setTheme}>
+            // choosing closes the menu and gives focus back to its button; the form still posts
+            <form key={theme} action={setTheme} onSubmit={() => close(true)}>
               <input type="hidden" name="theme" value={theme} />
               <button
                 type="submit"
@@ -157,15 +158,16 @@ export function ThemeSwitch() {
   const current = useTheme();
   const t = useMessages();
   return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink-2">
-      <span>{t.common.theme}</span>
+    // the label above, the three choices sharing the full width below: "Theo máy" never wraps inside its segment
+    <div className="space-y-1.5 px-3 py-2 text-sm text-ink-2">
+      <span className="block">{t.common.theme}</span>
       <div
         role="group"
         aria-label={t.common.theme}
-        className="inline-flex items-center gap-0.5 rounded-md border border-line bg-surface p-0.5 text-xs"
+        className="grid grid-cols-3 gap-0.5 rounded-md border border-line bg-surface p-0.5 text-xs"
       >
         {THEMES.map((theme) => (
-          <form key={theme} action={setTheme}>
+          <form key={theme} action={setTheme} className="contents">
             <input type="hidden" name="theme" value={theme} />
             <button
               type="submit"
@@ -174,7 +176,7 @@ export function ThemeSwitch() {
               aria-current={theme === current ? "true" : undefined}
               tabIndex={-1}
               className={
-                "min-h-6 rounded px-2 font-semibold " +
+                "min-h-7 whitespace-nowrap rounded px-1 font-semibold " +
                 (theme === current ? "bg-accent-soft text-accent" : "text-ink-2 hover:bg-sunk hover:text-ink")
               }
             >
