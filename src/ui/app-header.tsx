@@ -1,53 +1,46 @@
 import Link from "next/link";
 import type { Profile } from "@/auth/access";
-import { signOut } from "@/auth/actions";
 import type { Messages } from "@/messages";
+import { fill } from "@/messages/format";
+import { AccountMenu } from "./account-menu";
 import { FeedbackButton } from "./feedback-button";
 import { LanguageSwitch } from "./language-switch";
 import { Logo } from "./logo";
+import { NavTabs } from "./nav-tabs";
 
+/**
+ * One bar on a desktop: brand, page tabs, then the report button, the language switch and the account menu.
+ * On a phone the tabs move to a second, horizontally scrollable row and the language switch moves into the
+ * account menu.
+ */
 export function AppHeader({ me, t, feedbackUnseen = 0 }: { me: Profile; t: Messages; feedbackUnseen?: number }) {
   return (
     <header className="border-b border-line bg-surface">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-3">
-        <Link href="/sheets" className="flex items-center gap-2 font-bold tracking-tight">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 md:flex-nowrap md:gap-x-4">
+        <Link href="/sheets" className="flex min-w-0 items-center gap-2 font-bold tracking-tight">
           <Logo size={28} />
-          {t.app.name}
+          <span className="truncate">{t.app.name}</span>
         </Link>
-        <nav className="flex items-center gap-3 text-sm text-ink-2">
-          <Link href="/sheets" className="hover:text-ink">{t.common.sheets}</Link>
-          <Link href="/guide" className="hover:text-ink">{t.common.guide}</Link>
-          <Link href="/feedback" className="inline-flex items-center gap-1.5 hover:text-ink">
-            {t.common.feedback}
-            {feedbackUnseen > 0 && (
-              <>
-                <span aria-hidden="true" className="inline-flex min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-xs font-semibold leading-5 text-danger-ink">
-                  {feedbackUnseen > 99 ? "99+" : feedbackUnseen}
-                </span>
-                <span className="sr-only">{t.feedback.waiting.replace("{n}", String(feedbackUnseen))}</span>
-              </>
-            )}
-          </Link>
-          {me.role === "admin" && (
-            <Link href="/admin" className="hover:text-ink">{t.common.admin}</Link>
-          )}
-        </nav>
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+        <div className="order-last w-full md:order-none md:w-auto">
+          <NavTabs
+            isAdmin={me.role === "admin"}
+            feedbackUnseen={feedbackUnseen}
+            labels={{
+              mainMenu: t.common.mainMenu,
+              sheets: t.common.sheets,
+              guide: t.common.guide,
+              feedback: t.common.feedback,
+              admin: t.common.admin,
+              waiting: fill(t.feedback.waiting, { n: feedbackUnseen }),
+            }}
+          />
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-3">
           <FeedbackButton />
-          <LanguageSwitch />
-          <span className="hidden text-sm text-ink-2 sm:inline" title={me.email}>
-            {me.fullName ?? me.email}
-          </span>
-          {me.passwordAccount && (
-            <Link href="/account/password" className="inline-flex min-h-6 items-center text-sm text-ink-2 hover:text-ink">
-              {t.common.changePassword}
-            </Link>
-          )}
-          <form action={signOut}>
-            <button type="submit" className="rounded border border-line px-3 py-1 text-sm hover:bg-sunk">
-              {t.common.signOut}
-            </button>
-          </form>
+          <div className="max-md:hidden">
+            <LanguageSwitch />
+          </div>
+          <AccountMenu name={me.fullName} email={me.email} role={me.role} passwordAccount={me.passwordAccount} />
         </div>
       </div>
     </header>

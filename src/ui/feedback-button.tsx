@@ -41,10 +41,10 @@ export function FeedbackButton() {
         type="button"
         onClick={openDialog}
         aria-label={t.feedback.reportLabel}
-        className="inline-flex items-center gap-1.5 rounded border border-line px-2.5 py-1 text-sm hover:bg-sunk"
+        className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-accent px-2.5 py-1 text-sm font-medium text-accent hover:bg-accent-soft"
       >
         <MessageSquareWarning size={16} aria-hidden="true" />
-        <span className="hidden sm:inline">{t.feedback.report}</span>
+        <span className="hidden md:inline">{t.feedback.report}</span>
       </button>
       {open && (
         <ReportDialog

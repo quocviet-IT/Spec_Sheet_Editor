@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { staffId } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
+import { signOutFromMenu } from "./support/header";
 import { BOTTOM_RIGHT, TOP_LEFT, TOP_RIGHT, auditCount, dragBox, editValue, marker, markers, openValuesSheet, searchSheets, storedSheet, waitForVersion } from "./support/sheets";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -244,7 +245,7 @@ test("Sign out with unsaved changes asks first", async ({ page }) => {
   const { id } = await openValuesSheet(page, "signout");
   await editValue(page, "6.90", TOP_LEFT, "7.1");
   const asked = answerNext(page, false);
-  await page.getByRole("button", { name: /^(Đăng xuất|Sign out)$/ }).click();
+  await signOutFromMenu(page);
   await expect.poll(() => asked.message()).toMatch(discard);
   await page.waitForTimeout(500);
   await expect(page).toHaveURL(new RegExp(`/sheets/${id}$`)); // still signed in, still here
