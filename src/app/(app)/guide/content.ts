@@ -10,7 +10,7 @@ export type Step = { key: StepKey; n?: number };
 /** A screenshot with its numbered steps, or steps on their own. */
 export type Block = { shot?: ShotName; steps: Step[] };
 
-export const SECTION_IDS = ["signin", "upload", "find", "edit", "save", "export", "shortcuts", "trouble", "admin"] as const;
+export const SECTION_IDS = ["signin", "upload", "find", "edit", "save", "export", "report", "shortcuts", "trouble", "admin"] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
 
 /** Sections with steps. `shortcuts` and `trouble` are tables and have no blocks. */
@@ -114,6 +114,7 @@ export const BLOCKS: Record<SectionId, Block[]> = {
       ],
     },
   ],
+  report: [{ steps: [{ key: "reportSend" }, { key: "reportFollow" }] }],
   shortcuts: [],
   trouble: [],
   admin: [

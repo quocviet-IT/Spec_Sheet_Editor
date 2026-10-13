@@ -73,7 +73,7 @@ function OpenDialog({ title, onClose, requireClose, children }: { title: string;
         aria-modal="true"
         aria-labelledby={`${id}-title`}
         onKeyDown={onKeyDown}
-        className="w-full max-w-md space-y-4 rounded-lg bg-surface p-6 text-ink shadow-xl outline-none"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-md space-y-4 overflow-y-auto rounded-lg bg-surface p-6 text-ink shadow-xl outline-none"
       >
         <div className="flex items-start justify-between gap-4">
           <h2 id={`${id}-title`} className="text-lg font-bold">{title}</h2>

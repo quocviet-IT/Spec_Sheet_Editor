@@ -51,7 +51,8 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 |---|---|
 | `npm run dev` | Development server |
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
-| `npm test` | Unit tests; SQL tests too when `DATABASE_URL` is set (always rolled back) |
+| `npm test` | Unit tests, then the SQL tests when `DATABASE_URL` is set (always rolled back) |
+| `npm run test:sql` | The SQL tests alone, one file at a time: several of them apply a migration inside their transaction, and two such files at once deadlock on the tables they lock |
 | `npm run build` | Production build; the `postbuild` step (`scripts/check-bundle.mts`) fails the build if the secret key, its name or its prefix appears in the browser bundle (TC-77) |
 | `npm run e2e` | End-to-end tests (Playwright) against the development project; needs the dev server and `.env.local`; creates and cleans up the accounts `e2e-staff@ctyhp.vn`, `e2e-staff-b@ctyhp.vn` and `e2e-admin@ctyhp.vn` and their sheets |
 | `npm run e2e:prod` | The same end-to-end suite against a production build (`next build` + `next start`), which also records the NFR-01 `[timing]` lines and checks the Content-Security-Policy. Stop any dev server on port 3000 first; Playwright starts its own server and never reuses one |
@@ -59,6 +60,13 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 | `npm run db:migrate` | Apply pending migrations |
 | `npm run admin:create` | Create the first Admin (once) |
 | `npm run admin:reset-password` | New one-time password for an Admin who cannot sign in |
+
+## Reporting a problem
+
+The **Report** button in the header (any page) sends a problem or a suggestion with a picture of the screen; people follow their
+own reports under **Feedback**, where a red number marks the ones an Admin has moved. Admins triage them on the same page. The
+design is in `docs/design/2026-10-13-feedback.md`; migration `0005_feedback.sql` creates the table and the screenshot bucket.
+Apply migrations 0004 and 0005 before this code deploys; until then the Report button says the report was not sent and Feedback says it could not be loaded; no other page is affected.
 
 ## Sheet list and logo
 

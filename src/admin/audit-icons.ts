@@ -1,5 +1,5 @@
 /** Which icon an audit entry's action gets. Pure, so it can be tested; the page maps each key to a lucide component. */
-export const AUDIT_ICON_KEYS = ["upload", "save", "export", "trash", "restore", "purge", "signin", "user", "access", "settings", "maintenance", "activity"] as const;
+export const AUDIT_ICON_KEYS = ["upload", "save", "export", "trash", "restore", "purge", "signin", "user", "access", "settings", "feedback", "maintenance", "activity"] as const;
 export type AuditIconKey = (typeof AUDIT_ICON_KEYS)[number];
 
 const EXACT: Record<string, AuditIconKey> = {
@@ -17,6 +17,7 @@ const BY_GROUP: Record<string, AuditIconKey> = {
   user: "user",
   access: "access",
   settings: "settings",
+  feedback: "feedback",
   maintenance: "maintenance",
 };
 

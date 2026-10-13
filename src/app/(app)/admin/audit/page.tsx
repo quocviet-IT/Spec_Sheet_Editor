@@ -1,5 +1,5 @@
 import {
-  Activity, CalendarRange, Download, Eraser, FileText, History, ListFilter, LogIn, RotateCcw, Save, ShieldCheck, SlidersHorizontal, Trash2, Upload, User, UserCog, Wrench,
+  Activity, CalendarRange, Download, Eraser, FileText, History, ListFilter, LogIn, MessageSquareWarning, RotateCcw, Save, ShieldCheck, SlidersHorizontal, Trash2, Upload, User, UserCog, Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { AUDIT_GROUPS, filterQuery, parseAuditFilter } from "@/admin/audit-filter";
@@ -16,7 +16,7 @@ import { RelativeTime } from "../ui/relative-time";
 
 const ICONS: Record<AuditIconKey, LucideIcon> = {
   upload: Upload, save: Save, export: Download, trash: Trash2, restore: RotateCcw, purge: Eraser, signin: LogIn,
-  user: UserCog, access: ShieldCheck, settings: SlidersHorizontal, maintenance: Wrench, activity: Activity,
+  user: UserCog, access: ShieldCheck, settings: SlidersHorizontal, feedback: MessageSquareWarning, maintenance: Wrench, activity: Activity,
 };
 
 const field = "w-full rounded-md border border-line bg-surface py-2 pl-9 pr-3 text-sm text-ink";

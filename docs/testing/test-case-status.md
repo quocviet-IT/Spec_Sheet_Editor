@@ -97,8 +97,12 @@ Sources:
 | TC-78 | Staff see only their own sheets | E2E | `e2e/ownership.spec.ts` TC-78 | Written, not yet run |
 | TC-79 | An Admin sees every sheet and filters by creator | E2E | `e2e/ownership.spec.ts` TC-79 | Written, not yet run |
 | TC-80 | Ownership in the database | SQL | `tests/sql/ownership.test.ts` | Written, not yet run (needs migration 0004 and the office network) |
+| TC-81 | A report is filed with a screenshot from the editor | E2E | `e2e/feedback.spec.ts` TC-81 | Written, not yet run |
+| TC-82 | An Admin triages; declining needs a reason; the reporter sees the note and the count | E2E | `e2e/feedback.spec.ts` TC-82 | Written, not yet run |
+| TC-83 | Another staff member cannot see the report | E2E | `e2e/feedback.spec.ts` TC-83 | Written, not yet run |
+| TC-84 | Feedback in the database | SQL | `tests/sql/feedback.test.ts` | Written, not yet run (needs migration 0005 and the office network) |
 
-Counts: 3 x Waived until Google sign-in is switched on (owner to confirm); 15 x Written; SQL not run on this network; 47 x Pass (2026-10-10, e2e:prod); 9 x Pass (unit); 1 x Bench (M2 result); 1 x Needs a macOS machine (owner); 1 x Release step (M7b). Not counted above: 3 x Written, not yet run (TC-78 to TC-80, sheet ownership), and TC-38, rewritten and not yet run.
+Counts: 3 x Waived until Google sign-in is switched on (owner to confirm); 15 x Written; SQL not run on this network; 47 x Pass (2026-10-10, e2e:prod); 9 x Pass (unit); 1 x Bench (M2 result); 1 x Needs a macOS machine (owner); 1 x Release step (M7b). Not counted above: 3 x Written, not yet run (TC-78 to TC-80, sheet ownership), TC-81 to TC-84 (feedback), and TC-38, rewritten and not yet run.
 
 Not covered by a test: TC-17 has no full upload path (the test-file generator cannot encrypt a PDF; the
 error mapping is unit-tested).

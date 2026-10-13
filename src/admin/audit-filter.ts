@@ -2,7 +2,7 @@ const TIME_ZONE = "Asia/Ho_Chi_Minh";
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const AUDIT_GROUPS = ["all", "auth", "sheet", "user", "access", "settings", "maintenance"] as const;
+export const AUDIT_GROUPS = ["all", "auth", "sheet", "user", "access", "settings", "feedback", "maintenance"] as const;
 export type AuditGroup = (typeof AUDIT_GROUPS)[number];
 export type AuditFilter = { from: string; to: string; actor: string | null; group: AuditGroup; target: string | null };
 

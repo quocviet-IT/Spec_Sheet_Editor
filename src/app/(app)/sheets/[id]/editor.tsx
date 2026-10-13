@@ -627,7 +627,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const errorText = loadError === "font" ? t.editor.fontFailed : loadError === "size" ? t.editor.sizeMismatch : t.sheet.loadError;
 
   return (
-    <section aria-label={name} data-wide data-editor-root data-reader-state={reader.state} className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col gap-3">
+    <section aria-label={name} data-wide data-editor-root data-feedback-sheet={name} data-reader-state={reader.state} className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col gap-3">
       <header className="flex flex-wrap items-center gap-3">
         <Link href="/sheets" className="text-sm text-ink-2 hover:text-ink">← {t.sheet.back}</Link>
         <NameField key={nameKey} name={name} onRename={rename} />

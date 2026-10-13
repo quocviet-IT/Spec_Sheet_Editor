@@ -33,7 +33,7 @@ function assertDevProject(): void {
   checked = true;
 }
 
-export function need(name: "NEXT_PUBLIC_SUPABASE_URL" | "SUPABASE_SECRET_KEY"): string {
+export function need(name: "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" | "SUPABASE_SECRET_KEY"): string {
   assertDevProject();
   const value = process.env[name];
   if (!value) throw new Error(`${name} is not set in .env.local; end-to-end tests need the development project.`);
