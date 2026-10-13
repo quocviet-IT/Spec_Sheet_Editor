@@ -120,6 +120,39 @@ test("NFR-07 a sheet is opened, a value edited and saved, and exported with the 
   expect(download.suggestedFilename()).toMatch(/\.png$/);
 });
 
+test("the account menu is opened, moved through and closed with the keyboard alone", async ({ page }) => {
+  await page.goto("/sheets");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+  // Tab to the account button (every control passed on the way shows focus).
+  await tabTo(page, "the account button", (a) => a.popup === "menu" && /^(Tài khoản|Account): /.test(a.label ?? ""));
+  const label = (await active(page)).label!;
+  const button = page.getByRole("button", { name: label, exact: true });
+  await expect(button).toBeFocused();
+  await expect(button).toHaveAttribute("aria-expanded", "false");
+
+  // Enter opens the menu on its first item.
+  await page.keyboard.press("Enter");
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  await expect(button).toHaveAttribute("aria-expanded", "true");
+  const items = menu.locator("[role^='menuitem']:visible");
+  await expect(items.first()).toBeFocused();
+  await expectFocusRing(page, "the first account menu item");
+
+  // ArrowDown moves to the next item (and wraps when the menu has one item only).
+  const count = await items.count();
+  await page.keyboard.press("ArrowDown");
+  await expect(items.nth(1 % count)).toBeFocused();
+  await expectFocusRing(page, "the second account menu item");
+
+  // Escape closes the menu and focus is back on the button.
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(button).toBeFocused();
+  await expect(button).toHaveAttribute("aria-expanded", "false");
+});
+
 test.describe("Admin", () => {
   test.use({ storageState: "e2e/.auth/admin.json" });
 

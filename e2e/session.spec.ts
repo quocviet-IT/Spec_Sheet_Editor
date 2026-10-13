@@ -3,6 +3,7 @@ import { expect, test, type Browser, type BrowserContext } from "@playwright/tes
 import { STAFF_B_EMAIL, STAFF_EMAIL, resetPassword, resign, restoreAll, staffBId, staffId, submitSignIn } from "./support/account";
 import { admin, deleteSheetsOf } from "./support/db";
 import { framedPng } from "./support/files";
+import { signOutFromMenu } from "./support/header";
 import { uploadSheet } from "./support/sheets";
 
 // Every test here starts signed out. A new password ends the account's saved sessions, so each test signs the
@@ -69,7 +70,7 @@ test("TC-07 after signing out, Back does not show the sheet list", async ({ brow
       expect(document?.headers()["cache-control"] ?? "").toContain("no-store");
     }
 
-    await page.getByRole("button", { name: /^(Đăng xuất|Sign out)$/ }).click();
+    await signOutFromMenu(page);
     await page.waitForURL("**/login");
     await page.goBack();
     await page.waitForLoadState("domcontentloaded");
@@ -90,7 +91,7 @@ test("TC-07 signing out on one computer does not sign the person out on another"
   try {
     contexts.push(await signedIn(browser, STAFF_B_EMAIL, password), await signedIn(browser, STAFF_B_EMAIL, password));
     const [first, second] = contexts.map((c) => c.pages()[0]);
-    await first.getByRole("button", { name: /^(Đăng xuất|Sign out)$/ }).click();
+    await signOutFromMenu(first);
     await first.waitForURL("**/login");
     await second.goto("/sheets");
     await expect(second).toHaveURL(/\/sheets$/);
@@ -125,6 +126,14 @@ test("TC-53 on a phone the editor shows its desktop notice and the list fits the
     await expect(page.getByRole("button", { name: /Trang sau|Next page/ })).toBeVisible();
     const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
     expect(fits, "the list and its pagination must not scroll sideways").toBe(true);
+    // the header fits too: its tab strip may scroll inside itself, never the page; the two buttons stay on screen
+    await expect(page.getByRole("button", { name: /^(Tài khoản|Account): / })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Báo lỗi hoặc góp ý cải tiến|Report a problem or suggest an improvement/ })).toBeVisible();
+    const headerFits = await page.evaluate(() => {
+      const header = document.querySelector("header") as HTMLElement;
+      return header.scrollWidth <= header.clientWidth && document.documentElement.scrollWidth <= document.documentElement.clientWidth;
+    });
+    expect(headerFits, "the header must not scroll the page sideways").toBe(true);
   } finally {
     await restoreAll([async () => context?.close(), () => deleteSheetsOf(owner), () => resign(browser, STAFF_EMAIL, STAFF_STATE)]);
   }

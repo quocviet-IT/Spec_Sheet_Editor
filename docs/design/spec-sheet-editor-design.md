@@ -561,7 +561,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Main flow:**
 
-1. The user chooses "Sign out" in the avatar menu; if there are unsaved changes, the system asks first.
+1. The user chooses "Sign out" in the account menu (the initials at the top right); if there are unsaved changes, the system asks first.
 2. The system ends the session on this computer and goes to Sign in; the browser's back button does not show the list again. Sessions of the same person on other computers stay signed in (changed in M7a: sign-out uses `scope: "local"`, not every session).
 
 ### 4.4 Admin use case specifications
@@ -1190,6 +1190,8 @@ The bottleneck is the input data, not the tool. When digits are 8 px tall and to
 | S10 | Admin · Trash & clean-up | UC-17, 18 |
 | S11 | Report dialog | UC-19 |
 | S12 | Feedback | UC-19 |
+
+The header (the app shell on every signed-in page) is one bar on a desktop: the brand, then the page tabs (Sheets, Guide, Feedback, and Admin for an Admin) as icon-and-label links with the current page marked, then the "Report a problem" button, the VI | EN language switch and the account menu. The account menu opens from the person's initials and shows their name, email and role, Change password (accounts that sign in with a password only) and Sign out; on a phone the tabs move to a second row that scrolls inside itself and the language switch moves into the account menu. The menu follows the WAI-ARIA menu button pattern (arrow keys, Home/End, Esc closes and returns focus to the button).
 
 ### 8.3 Wireframes
 
