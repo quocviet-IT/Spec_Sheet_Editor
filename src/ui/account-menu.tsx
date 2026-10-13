@@ -107,7 +107,7 @@ export function AccountMenu({
         aria-label={fill(t.common.account, { name: shownName })}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-controls={open ? `${id}-menu` : undefined}
+        aria-controls={`${id}-menu`}
         onClick={() => (open ? close(true) : openMenu("first"))}
         onKeyDown={onButtonKeyDown}
         className="inline-flex items-center gap-1 rounded-full p-0.5 pr-1.5 text-ink-2 hover:bg-sunk hover:text-ink aria-expanded:bg-sunk aria-expanded:text-ink"
@@ -120,60 +120,75 @@ export function AccountMenu({
         </span>
         <ChevronDown size={16} aria-hidden="true" className={open ? "rotate-180 transition-transform" : "transition-transform"} />
       </button>
-      {open && (
-        <div
-          ref={menu}
-          id={`${id}-menu`}
-          role="menu"
-          aria-label={fill(t.common.account, { name: shownName })}
-          onKeyDown={onMenuKeyDown}
-          className="absolute right-0 top-full z-30 mt-2 w-64 overflow-hidden rounded-lg border border-line bg-surface py-1 shadow-lg"
-        >
-          <div role="none" className="flex items-center gap-3 border-b border-line px-3 py-3">
+      {/* Without JavaScript the button cannot open the menu, so the panel shows as it is: Sign out and the
+          language switch still work as plain forms. */}
+      <noscript>
+        {/* unlayered, so it outranks the layered `hidden` utility (an `!important` rule would lose to Tailwind's base layer) */}
+        <style>{"[data-account-panel]{display:block}"}</style>
+      </noscript>
+      {/* Always in the page, hidden while closed, so its forms exist even before (or without) JavaScript. */}
+      <div
+        ref={menu}
+        id={`${id}-menu`}
+        data-account-panel=""
+        role="menu"
+        aria-label={fill(t.common.account, { name: shownName })}
+        onKeyDown={onMenuKeyDown}
+        className={
+          "absolute right-0 top-full z-30 mt-2 w-64 overflow-hidden rounded-lg border border-line bg-surface py-1 shadow-lg" +
+          (open ? "" : " hidden")
+        }
+      >
+        <div role="none" className="flex items-center gap-3 border-b border-line px-3 py-3">
+          <span
+            aria-hidden="true"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent"
+          >
+            {initials(name, email)}
+          </span>
+          <div role="none" className="min-w-0">
+            <div role="none" className="truncate font-medium text-ink">{shownName}</div>
+            <div role="none" className="truncate text-sm text-ink-2" title={email}>{email}</div>
             <span
-              aria-hidden="true"
-              className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent"
+              role="none"
+              className={
+                "mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium " +
+                (role === "admin" ? "bg-admin-soft text-admin" : "bg-sunk text-ink-2")
+              }
             >
-              {initials(name, email)}
+              {role === "admin" ? t.common.roleAdmin : t.common.roleStaff}
             </span>
-            <div role="none" className="min-w-0">
-              <div role="none" className="truncate font-medium text-ink">{shownName}</div>
-              <div role="none" className="truncate text-sm text-ink-2" title={email}>{email}</div>
-              <span
-                role="none"
-                className={
-                  "mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium " +
-                  (role === "admin" ? "bg-admin-soft text-admin" : "bg-sunk text-ink-2")
-                }
-              >
-                {role === "admin" ? t.common.roleAdmin : t.common.roleStaff}
-              </span>
-            </div>
           </div>
-          <div role="none" className="border-b border-line py-1 md:hidden">
-            <LanguageSwitch variant="menu" />
-          </div>
-          {passwordAccount && (
-            <Link
-              href="/account/password"
-              role="menuitem"
-              tabIndex={-1}
-              onClick={() => setOpen(false)}
-              className={`${itemClass} text-ink`}
-            >
-              <KeyRound size={16} aria-hidden="true" className="shrink-0" />
-              {t.common.changePassword}
-            </Link>
-          )}
-          <div role="separator" className="my-1 border-t border-line" />
-          <form action={signOut}>
-            <button type="submit" role="menuitem" tabIndex={-1} className={`${itemClass} text-danger`}>
-              <LogOut size={16} aria-hidden="true" className="shrink-0" />
-              {t.common.signOut}
-            </button>
-          </form>
         </div>
-      )}
+        <div role="none" className="border-b border-line py-1 md:hidden">
+          <LanguageSwitch variant="menu" />
+        </div>
+        {passwordAccount && (
+          <Link
+            href="/account/password"
+            role="menuitem"
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+            onKeyDown={(e) => {
+              // a link answers Enter only; a menu item also answers Space
+              if (e.key !== " ") return;
+              e.preventDefault();
+              e.currentTarget.click();
+            }}
+            className={`${itemClass} text-ink`}
+          >
+            <KeyRound size={16} aria-hidden="true" className="shrink-0" />
+            {t.common.changePassword}
+          </Link>
+        )}
+        <div role="separator" className="my-1 border-t border-line" />
+        <form action={signOut}>
+          <button type="submit" role="menuitem" tabIndex={-1} className={`${itemClass} text-danger`}>
+            <LogOut size={16} aria-hidden="true" className="shrink-0" />
+            {t.common.signOut}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
