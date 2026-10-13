@@ -21,6 +21,10 @@ describe("auditIconKey", () => {
     expect(auditIconKey("sheet.purge")).toBe("purge");
     expect(auditIconKey("auth.login")).toBe("signin");
   });
+  it("gives the feedback actions the feedback icon", () => {
+    expect(auditIconKey("feedback.file")).toBe("feedback");
+    expect(auditIconKey("feedback.status")).toBe("feedback");
+  });
   it("falls back for unknown actions", () => {
     expect(auditIconKey("sheet.detect")).toBe(AUDIT_FALLBACK_ICON);
     expect(auditIconKey("nothing.here")).toBe(AUDIT_FALLBACK_ICON);
@@ -30,7 +34,7 @@ describe("auditIconKey", () => {
 });
 
 describe("auditActionLabel", () => {
-  const KNOWN = ["access.add", "access.remove", "auth.denied", "auth.login", "maintenance.orphan_cleanup", "maintenance.test_accounts_removed", "settings.update", "sheet.detect", "sheet.export_pdf", "sheet.export_png", "sheet.purge", "sheet.restore", "sheet.save", "sheet.trash", "sheet.upload", "user.create", "user.password_changed", "user.password_reset", "user.role_change", "user.suspend", "user.unsuspend"];
+  const KNOWN = ["access.add", "access.remove", "auth.denied", "auth.login", "feedback.file", "feedback.status", "maintenance.orphan_cleanup", "maintenance.test_accounts_removed", "settings.update", "sheet.detect", "sheet.export_pdf", "sheet.export_png", "sheet.purge", "sheet.restore", "sheet.save", "sheet.trash", "sheet.upload", "user.create", "user.password_changed", "user.password_reset", "user.role_change", "user.suspend", "user.unsuspend"];
   it("has a label for every known action in both languages", () => {
     for (const dict of [vi, en]) for (const action of KNOWN) expect(auditActionLabel(dict.admin.audit.actions, action), action).toBeTruthy();
   });

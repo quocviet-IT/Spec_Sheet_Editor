@@ -1,9 +1,9 @@
 "use server";
 
 import { z } from "zod";
-import { requireUser } from "@/auth/session";
+import { requireAdmin, requireUser } from "@/auth/session";
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { feedbackInput } from "./model";
+import { FEEDBACK_STATUSES, NOTE_MAX, feedbackInput, type FeedbackStatus } from "./model";
 import { clipLabel } from "./page-label";
 
 const idSchema = z.uuid();
@@ -62,5 +62,47 @@ export async function attachFeedbackScreenshot(reportId: string, path: string): 
   } catch (e) {
     console.error("attachFeedbackScreenshot failed:", e instanceof Error ? e.message : "unknown");
     return { error: "unknown" };
+  }
+}
+
+function has(message: string, word: string): boolean {
+  return new RegExp(`(?<![a-z_])${word}(?![a-z_])`).test(message);
+}
+
+type SetStatusError = "invalid" | "forbidden" | "needs_reason" | "unknown";
+
+/**
+ * Moves a report to a status for the reporter to read about. An Admin only; the database checks that too. A null note
+ * keeps the one already there, an empty one clears it, and declining needs a reason.
+ */
+export async function setFeedbackStatus(id: string, status: FeedbackStatus, note: string | null): Promise<{ ok: true } | { error: SetStatusError }> {
+  await requireAdmin("/feedback");
+  const uuid = idSchema.safeParse(id);
+  if (!uuid.success || !(FEEDBACK_STATUSES as readonly string[]).includes(status)) return { error: "invalid" };
+  if (note !== null && (typeof note !== "string" || note.length > NOTE_MAX)) return { error: "invalid" };
+  try {
+    const supabase = await createSupabaseServer();
+    const { error } = await supabase.rpc("set_feedback_status", { p_id: uuid.data, p_status: status, p_note: note });
+    if (!error) return { ok: true };
+    if (has(error.message, "forbidden")) return { error: "forbidden" };
+    if (has(error.message, "decline_needs_reason")) return { error: "needs_reason" };
+    if (has(error.message, "invalid_status") || has(error.message, "note_too_long") || has(error.message, "not_found")) return { error: "invalid" };
+    console.error("setFeedbackStatus failed:", error.message);
+    return { error: "unknown" };
+  } catch (e) {
+    console.error("setFeedbackStatus failed:", e instanceof Error ? e.message : "unknown");
+    return { error: "unknown" };
+  }
+}
+
+/** Marks the reader's Feedback page as seen now, which clears the count in the header. Failure is not shown to anyone. */
+export async function markFeedbackSeen(): Promise<void> {
+  await requireUser("/feedback");
+  try {
+    const supabase = await createSupabaseServer();
+    const { error } = await supabase.rpc("mark_feedback_seen");
+    if (error) console.error("markFeedbackSeen failed:", error.message);
+  } catch (e) {
+    console.error("markFeedbackSeen failed:", e instanceof Error ? e.message : "unknown");
   }
 }

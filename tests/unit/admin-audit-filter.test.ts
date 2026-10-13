@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { auditRange, filterQuery, groupPrefix, parseAuditFilter } from "@/admin/audit-filter";
+import { AUDIT_GROUPS, auditRange, filterQuery, groupPrefix, parseAuditFilter } from "@/admin/audit-filter";
 
 const NOW = new Date("2026-10-09T03:00:00Z"); // 10:00 in Ho Chi Minh City
 const UUID = "8f0f8a52-4b6e-4f5e-9d55-7d1f3c2a9b10";
@@ -52,6 +52,8 @@ describe("auditRange and groups", () => {
     expect(groupPrefix("all")).toBeNull();
     expect(groupPrefix("sheet")).toBe("sheet.");
     expect(groupPrefix("maintenance")).toBe("maintenance.");
+    expect(groupPrefix("feedback")).toBe("feedback.");
+    expect(AUDIT_GROUPS).toContain("feedback");
   });
 
   it("writes the filter back as a query string", () => {
