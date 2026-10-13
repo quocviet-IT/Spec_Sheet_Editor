@@ -51,7 +51,8 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 |---|---|
 | `npm run dev` | Development server |
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
-| `npm test` | Unit tests; SQL tests too when `DATABASE_URL` is set (always rolled back) |
+| `npm test` | Unit tests, then the SQL tests when `DATABASE_URL` is set (always rolled back) |
+| `npm run test:sql` | The SQL tests alone, one file at a time: several of them apply a migration inside their transaction, and two such files at once deadlock on the tables they lock |
 | `npm run build` | Production build; the `postbuild` step (`scripts/check-bundle.mts`) fails the build if the secret key, its name or its prefix appears in the browser bundle (TC-77) |
 | `npm run e2e` | End-to-end tests (Playwright) against the development project; needs the dev server and `.env.local`; creates and cleans up the accounts `e2e-staff@ctyhp.vn`, `e2e-staff-b@ctyhp.vn` and `e2e-admin@ctyhp.vn` and their sheets |
 | `npm run e2e:prod` | The same end-to-end suite against a production build (`next build` + `next start`), which also records the NFR-01 `[timing]` lines and checks the Content-Security-Policy. Stop any dev server on port 3000 first; Playwright starts its own server and never reuses one |
