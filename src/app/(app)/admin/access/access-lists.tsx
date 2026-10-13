@@ -7,7 +7,7 @@ import type { AccessEntry } from "@/admin/queries";
 import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 import { Badge } from "../ui/badge";
-import { Dialog } from "../ui/dialog";
+import { Dialog } from "@/ui/dialog";
 import { EmptyState } from "../ui/empty-state";
 import { RelativeTime } from "../ui/relative-time";
 import { RowMenu } from "../ui/row-menu";

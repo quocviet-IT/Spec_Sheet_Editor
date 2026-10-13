@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { resetPassword, type ResetPasswordState } from "@/admin/user-actions";
 import { useMessages } from "@/messages/client";
-import { Dialog } from "../ui/dialog";
+import { Dialog } from "@/ui/dialog";
 import { IssuedPasswordNotice } from "./issued-password";
 
 const initial: ResetPasswordState = { error: null, issued: null };

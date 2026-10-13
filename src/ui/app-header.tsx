@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Profile } from "@/auth/access";
 import { signOut } from "@/auth/actions";
 import type { Messages } from "@/messages";
+import { FeedbackButton } from "./feedback-button";
 import { LanguageSwitch } from "./language-switch";
 import { Logo } from "./logo";
 
@@ -16,11 +17,13 @@ export function AppHeader({ me, t }: { me: Profile; t: Messages }) {
         <nav className="flex items-center gap-3 text-sm text-ink-2">
           <Link href="/sheets" className="hover:text-ink">{t.common.sheets}</Link>
           <Link href="/guide" className="hover:text-ink">{t.common.guide}</Link>
+          <Link href="/feedback" className="hover:text-ink">{t.common.feedback}</Link>
           {me.role === "admin" && (
             <Link href="/admin" className="hover:text-ink">{t.common.admin}</Link>
           )}
         </nav>
         <div className="ml-auto flex items-center gap-3">
+          <FeedbackButton />
           <LanguageSwitch />
           <span className="hidden text-sm text-ink-2 sm:inline" title={me.email}>
             {me.fullName ?? me.email}

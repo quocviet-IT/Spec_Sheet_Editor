@@ -4,7 +4,7 @@ import { UserPlus } from "lucide-react";
 import { useState } from "react";
 import type { IssuedPassword } from "@/admin/user-actions";
 import { useMessages } from "@/messages/client";
-import { Dialog } from "../ui/dialog";
+import { Dialog } from "@/ui/dialog";
 import { AddUserForm } from "./add-user-form";
 import { IssuedPasswordNotice } from "./issued-password";
 
