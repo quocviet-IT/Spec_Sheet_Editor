@@ -18,6 +18,10 @@ describe("feedbackInput", () => {
     expect(feedbackInput.safeParse({ ...valid, description: "  abcd  " }).success).toBe(false);
     expect(feedbackInput.parse({ ...valid, description: "  abcde  " }).description).toBe("abcde");
   });
+  it("counts characters as the database does, not UTF-16 units", () => {
+    expect(feedbackInput.safeParse({ ...valid, description: "a😀😀" }).success).toBe(false);
+    expect(feedbackInput.safeParse({ ...valid, description: "a😀😀😀😀" }).success).toBe(true);
+  });
   it("rejects more than 4000 characters", () => {
     expect(feedbackInput.safeParse({ ...valid, description: "a".repeat(4000) }).success).toBe(true);
     expect(feedbackInput.safeParse({ ...valid, description: "a".repeat(4001) }).success).toBe(false);

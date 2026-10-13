@@ -12,10 +12,18 @@ export const DESCRIPTION_MAX = 4000;
 export const NOTE_MAX = 2000;
 export const SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024;
 
+/** Characters as the database counts them (code points), not UTF-16 units. */
+export function charCount(text: string): number {
+  return [...text].length;
+}
+
 export const feedbackInput = z.object({
   kind: z.enum(FEEDBACK_KINDS),
   impact: z.enum(FEEDBACK_IMPACTS),
-  description: z.string().trim().min(DESCRIPTION_MIN).max(DESCRIPTION_MAX),
+  description: z
+    .string()
+    .trim()
+    .refine((text) => charCount(text) >= DESCRIPTION_MIN && charCount(text) <= DESCRIPTION_MAX),
   pageUrl: z.string().max(500).startsWith("/"),
   pageRoute: z.string().max(200),
   pageLabel: z.string().max(200),

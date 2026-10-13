@@ -65,6 +65,7 @@ Next.js 16 · React 19 · Tailwind CSS 4 · Supabase (Postgres + RLS, Storage, A
 The **Report** button in the header (any page) sends a problem or a suggestion with a picture of the screen; people follow their
 own reports under **Feedback**, where a red number marks the ones an Admin has moved. Admins triage them on the same page. The
 design is in `docs/design/2026-10-13-feedback.md`; migration `0005_feedback.sql` creates the table and the screenshot bucket.
+Apply migrations 0004 and 0005 before this code deploys; until then the Report button says the report was not sent and Feedback says it could not be loaded; no other page is affected.
 
 ## Sheet list and logo
 

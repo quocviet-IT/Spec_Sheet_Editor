@@ -94,8 +94,9 @@ begin
   if p_status = 'declined' and v_note is null then raise exception 'decline_needs_reason'; end if;
   -- nothing changes: no new triage time (it would tell the reporter something moved) and no audit entry
   if p_status = v_before and v_note is not distinct from v_old_note then return; end if;
+  -- clock_timestamp(), not now(): the visit time (feedback_seen) is also clock time, so a move made after a visit compares later
   update feedback_reports
-     set status = p_status, triage_note = v_note, triaged_by = auth.uid(), triaged_at = now()
+     set status = p_status, triage_note = v_note, triaged_by = auth.uid(), triaged_at = clock_timestamp()
    where id = p_id;
   perform _audit('feedback.status', 'feedback', p_id::text,
                  jsonb_build_object('from', v_before, 'to', p_status, 'note_changed', v_note is distinct from v_old_note));

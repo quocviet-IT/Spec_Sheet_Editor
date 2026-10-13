@@ -10,6 +10,7 @@ import { attachFeedbackScreenshot, fileFeedback } from "./actions";
 import {
   DESCRIPTION_MAX,
   DESCRIPTION_MIN,
+  charCount,
   FEEDBACK_IMPACTS,
   FEEDBACK_KINDS,
   type FeedbackImpact,
@@ -71,7 +72,7 @@ export function ReportDialog({
     pageLabelOf(pathname, t, document.querySelector("[data-feedback-sheet]")?.getAttribute("data-feedback-sheet")),
   );
 
-  const long = description.trim().length >= DESCRIPTION_MIN;
+  const long = charCount(description.trim()) >= DESCRIPTION_MIN;
   const busy = phase === "sending";
 
   async function send() {
@@ -99,7 +100,10 @@ export function ReportDialog({
           const { error: uploadError } = await supabaseBrowser().storage.from(BUCKET).upload(path, shot, { contentType: "image/png", upsert: false });
           if (uploadError && !/already exists|duplicate/i.test(uploadError.message)) throw uploadError;
           let attached = await attachFeedbackScreenshot(filed.id, path);
-          if (!("ok" in attached)) attached = await attachFeedbackScreenshot(filed.id, path);
+          if (!("ok" in attached)) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            attached = await attachFeedbackScreenshot(filed.id, path);
+          }
           if (!("ok" in attached)) throw new Error("attach");
         } catch {
           setShotNotStored(true);

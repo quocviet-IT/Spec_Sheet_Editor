@@ -35,6 +35,8 @@ async function cleanFeedback(): Promise<void> {
   }
   const deleted = await client.from("feedback_reports").delete().in("reporter_id", reporters);
   if (deleted.error) throw new Error(`test reports not deleted: ${deleted.error.message}`);
+  const seen = await client.from("feedback_seen").delete().in("user_id", reporters);
+  if (seen.error) throw new Error(`test visit times not deleted: ${seen.error.message}`);
 }
 
 test.afterEach(async () => {
@@ -84,6 +86,13 @@ function feedbackLink(page: Page): Locator {
 
 const WAITING = /(\d+) (waiting|đang chờ)/;
 
+/** The unread count from the link's screen-reader text alone; 0 when no count is shown. */
+async function unreadCount(page: Page): Promise<number> {
+  const hidden = feedbackLink(page).locator(".sr-only");
+  if ((await hidden.count()) === 0) return 0;
+  return Number(WAITING.exec((await hidden.textContent()) ?? "")?.[1] ?? 0);
+}
+
 test("TC-81 a report is filed with a screenshot from the editor", async ({ page }) => {
   await openValuesSheet(page, "fb");
   const description = uniqueText("misread");
@@ -118,9 +127,8 @@ test("TC-82 an Admin triages; declining needs a reason; the reporter sees the no
     const adminPage = await context.newPage();
     await adminPage.goto("/feedback?status=new");
     // At least one: the count may include real reports, so it is never compared with an exact number.
-    await expect(feedbackLink(adminPage)).toHaveText(WAITING);
-    const waiting = (await feedbackLink(adminPage).textContent())?.match(WAITING);
-    expect(Number(waiting?.[1] ?? 0)).toBeGreaterThanOrEqual(1);
+    await expect(feedbackLink(adminPage).locator(".sr-only")).toHaveText(WAITING);
+    expect(await unreadCount(adminPage)).toBeGreaterThanOrEqual(1);
 
     const row = adminPage.getByRole("row").filter({ hasText: description });
     await expect(row).toHaveCount(1);
@@ -133,6 +141,9 @@ test("TC-82 an Admin triages; declining needs a reason; the reporter sees the no
     expect((await reportByText(description))?.status).toBe("new");
 
     await row.getByRole("textbox", { name: /A note for the reporter|Phản hồi cho người gửi/ }).fill(note);
+    await adminPage.keyboard.press("Tab");
+    // The note is saved on its own before the status is chosen.
+    await expect.poll(async () => (await reportByText(description))?.triage_note, { timeout: 30_000 }).toBe(note);
     await status.selectOption("declined");
     await expect.poll(async () => (await reportByText(description))?.status, { timeout: 30_000 }).toBe("declined");
     expect((await reportByText(description))?.triage_note).toBe(note);
@@ -142,7 +153,7 @@ test("TC-82 an Admin triages; declining needs a reason; the reporter sees the no
 
   // The reporter: the link counts the moved report, the page shows the note and the badge, and a visit clears the count.
   await page.goto("/sheets");
-  await expect(feedbackLink(page)).toHaveText(/1 (waiting|đang chờ)/);
+  await expect.poll(() => unreadCount(page), { timeout: 15_000 }).toBe(1);
   await feedbackLink(page).click();
   await page.waitForURL("**/feedback");
   const mine = page.getByRole("row").filter({ hasText: description });
@@ -150,7 +161,7 @@ test("TC-82 an Admin triages; declining needs a reason; the reporter sees the no
   await expect(mine).toContainText(/Updated|Mới cập nhật/);
   await expect(async () => {
     await page.reload();
-    await expect(feedbackLink(page)).not.toHaveText(WAITING, { timeout: 3_000 });
+    await expect(feedbackLink(page).locator(".sr-only")).toHaveCount(0, { timeout: 3_000 });
   }).toPass({ timeout: 30_000 });
 });
 

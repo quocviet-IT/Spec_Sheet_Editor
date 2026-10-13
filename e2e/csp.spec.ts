@@ -83,6 +83,18 @@ test("Staff: OCR detection and PNG and PDF export run under the policy", async (
   await expectNoViolations(watch);
 });
 
+test("Staff: the Report button's screenshot is taken under the policy", async ({ page }) => {
+  const watch = await watchPolicy(page);
+  await page.goto("/sheets");
+  await page.getByRole("button", { name: /Báo lỗi hoặc góp ý cải tiến|Report a problem or suggest an improvement/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("img", { name: /Màn hình lúc gửi|The screen as it was/ })).toBeVisible({ timeout: 20_000 });
+  await expectNoViolations(watch);
+  // Nothing is sent: the dialog is closed with Escape.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+});
+
 test.describe("Admin pages", () => {
   test.use({ storageState: "e2e/.auth/admin.json" });
 
