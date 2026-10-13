@@ -145,3 +145,21 @@ export function normalizeAngle(degrees: number): number {
   const a = ((degrees % 360) + 360) % 360;
   return a > 180 ? a - 360 : a;
 }
+
+/**
+ * The reading direction of a text line, in degrees on the page (y down, 0 = left to right, the editor's
+ * convention), from its quad. `quad` is in the pixels of the image that was read, in the detector's order
+ * (`orderClockwise`: tl, tr, br, bl); `turn` is the reader's own turn of the crop (`Reading.turn`); and
+ * `imageTurn` is the page angle of that image's left-to-right direction (0 upright, -90 for the scan's
+ * clockwise pass, `a` for a click image turned `a` degrees counter-clockwise).
+ *
+ * `cropQuad` samples tl → tr along the crop's width and tl → bl along its height. A crop read as it is
+ * runs tl → tr; a tall crop is first turned a quarter counter-clockwise, after which its text runs tl → bl.
+ * An upside-down reading (turn 180 or 270) runs the other way.
+ */
+export function angleFromQuad(quad: Quad, turn: 0 | 90 | 180 | 270, imageTurn: number): number {
+  const [tl, tr, , bl] = quad;
+  const end = turn === 0 || turn === 180 ? tr : bl;
+  const along = (Math.atan2(end.y - tl.y, end.x - tl.x) * 180) / Math.PI;
+  return normalizeAngle(along + (turn >= 180 ? 180 : 0) + imageTurn);
+}

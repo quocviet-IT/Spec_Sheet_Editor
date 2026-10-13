@@ -31,6 +31,28 @@ export function roundAngle(angle: number): number {
   return r === -180 ? 180 : r; // the schema accepts (-180, 180]
 }
 
+/** A reading's angle from its quad (defined beside the detector's corner order, which it relies on). */
+export { angleFromQuad } from "@/lib/ocr/geometry";
+
+/**
+ * A reading's angle within this many degrees of 0, 90, -90 or 180 is that axis: the detector's quad is
+ * turned with the text only to within a few degrees, and a value along the page's axes must stay exact.
+ */
+export const SNAP_TOLERANCE = 4;
+
+/** 0, 90, -90 or 180 when the angle lies within `tolerance` degrees of it; otherwise the angle, normalised. */
+export function snapAngle(angle: number, tolerance = SNAP_TOLERANCE): number {
+  const a = normalizeAngle(angle);
+  const axis = normalizeAngle(Math.round(a / 90) * 90);
+  if (Math.abs(normalizeAngle(a - axis)) <= tolerance) return axis;
+  return angle > -180 && angle <= 180 ? angle : a; // normalising an angle already in range only adds rounding noise
+}
+
+/** Whether the angle is exactly 0, 90, -90 or 180: a value along the page's axes. */
+export function isAxisAngle(angle: number): boolean {
+  return normalizeAngle(angle) % 90 === 0;
+}
+
 /** Unit vectors: `u` along the reading direction, `v` across it (from the top of the digits to their foot). */
 export function axes(angle: number): { u: Point; v: Point } {
   const rad = (angle * Math.PI) / 180;

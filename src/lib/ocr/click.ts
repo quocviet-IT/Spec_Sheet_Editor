@@ -1,5 +1,5 @@
 import { toDimension } from "./dimension-text";
-import { bounds, normalizeAngle, rectCentre, type Point, type Quad, type Rect } from "./geometry";
+import { angleFromQuad, bounds, rectCentre, type Point, type Quad, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type RegionReader } from "./pipeline";
 import { crop, resizeBicubic, rotateExpand, unrotatePoint, type Raster } from "./raster";
 
@@ -13,7 +13,7 @@ export const CLICK_DEADLINE_MS = 5000;
 
 /**
  * `box` (page pixels, axis-aligned) is for hit-testing; `quad` is the text's own box in page pixels;
- * `angle` is the text's angle in the design's convention (§6.3).
+ * `angle` is the text's angle in the design's convention (§6.3), taken from its quad.
  */
 export type ClickReading = { value: string; text: string; score: number; angle: number; box: Rect; quad: Quad };
 export type ReadResult = { reading: ClickReading | null; ms: number; anglesTried: number };
@@ -65,7 +65,8 @@ export async function readAtPoint(
       const nearer = d < bestDistance - 0.5;
       const asNear = Math.abs(d - bestDistance) <= 0.5;
       if (best === null || nearer || (asNear && reading.score > best.score)) {
-        best = { value, text: reading.text, score: reading.score, angle: normalizeAngle(angle + reading.turn), box, quad };
+        // From the quad as read in the turned image, so a quad along its axes gives exactly the image's turn.
+        best = { value, text: reading.text, score: reading.score, angle: angleFromQuad(reading.quad, reading.turn, angle), box, quad };
         bestDistance = d;
       }
     }

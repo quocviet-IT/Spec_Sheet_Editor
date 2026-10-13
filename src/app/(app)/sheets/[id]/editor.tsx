@@ -6,8 +6,8 @@ import { loadArimo, type FontMetrics } from "@/editor/canvas";
 import { encodePdf, encodePng, downloadBlob, releaseCanvas, renderResult } from "@/editor/export";
 import { exportFileName, exportSuggestions, type ExportSource, type Suggestion } from "@/editor/export-plan";
 import { matchingValues } from "@/editor/matching";
-import { detectValues, makeEdit, ocrFailureReason, toDetection, type LoadedPage } from "@/editor/detections";
-import { boxForDrawnRect, boxFromQuad, detectionAt, MIN_DRAWN_PX, panelOf, pointInDrawingArea, readingOrder, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
+import { detectValues, drawnBox, makeEdit, ocrFailureReason, readingBox, toDetection, type LoadedPage } from "@/editor/detections";
+import { detectionAt, MIN_DRAWN_PX, panelOf, pointInDrawingArea, readingOrder, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
 import { analyseBox } from "@/editor/pixels";
 import type { Detection, Edit } from "@/editor/types";
 import { zoomIn, zoomOut, type Zoom } from "@/editor/zoom";
@@ -501,7 +501,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   function onAngle(angle: number) {
     if (!loaded || !drawn) return;
     closeMatch(true);
-    const px = boxForDrawnRect(drawn, angle);
+    const px = drawnBox(loaded.page.raster, drawn, angle);
     setDrawn(null);
     if (!analyseBox(loaded.page.raster, px)) {
       notify({ kind: "alert", text: (m) => m.editor.drawEmpty, draw: true });
@@ -542,7 +542,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       if (!alive.current) return;
       if (crashed) reader.reset(); // the Worker is gone; the next click starts a new one
       const r = result?.reading ?? null;
-      const px = r ? boxFromQuad(r.quad, r.angle) : null;
+      const px = r ? readingBox(loaded.page.raster, r) : null;
       if (!r || !px || !pointInDrawingArea({ x: px.cx, y: px.cy }, W, H)) {
         notify({ kind: "alert", text: (m) => m.editor.clickNoRead });
         return;

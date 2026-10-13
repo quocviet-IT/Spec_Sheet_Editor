@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { OcrFailure } from "@/lib/ocr/protocol";
-import type { Quad } from "@/lib/ocr/geometry";
+import { orderClockwise, type Quad } from "@/lib/ocr/geometry";
 import { createRaster, type Raster } from "@/lib/ocr/raster";
 import type { ScanResult } from "@/lib/ocr/scan";
 import type { PageTextItem } from "@/lib/page/text";
-import { detectValues, fromPdfText, fromScan, makeEdit, ocrFailureReason, type LoadedPage, type OcrLike } from "@/editor/detections";
+import {
+  detectValues, drawnBox, fromPdfText, fromScan, makeEdit, ocrFailureReason, readingBox, type LoadedPage, type OcrLike,
+} from "@/editor/detections";
+import { axes, boxCorners, boxForDrawnRect } from "@/editor/geometry";
 
 const W = 1100; // a small page with the template's ratio keeps the tests fast
 const H = 850;
@@ -58,6 +61,73 @@ describe("fromScan", () => {
     expect(v).toMatchObject({ id: "id-2", source: "ocr", confidence: 90, angle: -90 });
     near(v.box.w * W, 41); // along the text, which runs up the page
     near(v.box.h * W, 13);
+  });
+});
+
+/** A value at 30° around (300, 300): four blocks 12 px along and 13 px across, and a dimension line 4 px below them. */
+function slantedPage(): Raster {
+  const r = createRaster(W, H);
+  const { u, v } = axes(30);
+  for (let y = 150; y <= 450; y++) {
+    for (let x = 150; x <= 450; x++) {
+      const s = (x - 300) * u.x + (y - 300) * u.y;
+      const t = (x - 300) * v.x + (y - 300) * v.y;
+      const digit = Math.abs(s) < 30 && (s + 30) % 15 < 12 && Math.abs(t) < 6.5;
+      const line = Math.abs(s) < 140 && t >= 10.5 && t < 12.5;
+      if (digit || line) ink(r, x, y, x, y);
+    }
+  }
+  return r;
+}
+/** The detector's quad around it: the text grown by 7 px on every side. */
+const slantedQuad = orderClockwise(boxCorners({ cx: 300, cy: 300, w: 74, h: 27, angle: 30 }));
+
+describe("readingBox (scan and click)", () => {
+  it("makes a reading within 4° of an axis exactly that axis", () => {
+    expect(readingBox(page(), { quad: quad(190, 194, 250, 218), angle: 2.5 }).angle).toBe(0);
+    expect(readingBox(page(), { quad: quad(396, 292, 416, 348), angle: -87 }).angle).toBe(-90);
+    expect(readingBox(page(), { quad: quad(190, 194, 250, 218), angle: -176.5 }).angle).toBe(180);
+  });
+
+  it("makes a value along an axis exact even when its quad is more than 4° off", () => {
+    // 5.3° does not snap; the search lands at 0.3° or -0.2°, and that is made exactly 0.
+    expect(readingBox(page(), { quad: quad(190, 194, 250, 218), angle: 5.3 }).angle).toBe(0);
+  });
+
+  it("keeps a free angle, turned to where the digits measure least tall, with the quad's box at that angle", () => {
+    const px = readingBox(slantedPage(), { quad: slantedQuad, angle: 26 }); // the quad's own angle, a few degrees off
+    near(px.angle, 30, 0.5);
+    near(px.w, 74, 1);
+    near(px.h, 27, 1);
+  });
+
+  it("stores the slanted value's angle and digit height through fromScan", () => {
+    const scan: ScanResult = {
+      detections: [{ value: "1.20", text: "1.20", score: 0.9, angle: 26, quad: slantedQuad, box: { x: 0, y: 0, w: 0, h: 0 } }],
+      timing: { horizontalMs: 1, verticalMs: 1 },
+    };
+    const [d] = fromScan(scan, slantedPage(), ids());
+    near(d.angle, 30, 0.5);
+    near(d.box.h * W, 13, 1);
+  });
+});
+
+describe("drawnBox (UC-07)", () => {
+  const rect = { x: 260, y: 270, w: 80, h: 60 }; // drawn around the 30° value
+
+  it("keeps an axis choice exact, even around a slanted value", () => {
+    const r = slantedPage();
+    for (const angle of [0, 90, -90]) expect(drawnBox(r, rect, angle)).toEqual(boxForDrawnRect(rect, angle));
+  });
+
+  it("turns a free angle to where the digits measure least tall, covering the drawn rectangle at that angle", () => {
+    const px = drawnBox(slantedPage(), rect, 27);
+    near(px.angle, 30, 0.5);
+    expect(px).toEqual(boxForDrawnRect(rect, px.angle));
+  });
+
+  it("leaves an empty rectangle at the chosen angle", () => {
+    expect(drawnBox(createRaster(W, H), rect, 27)).toEqual(boxForDrawnRect(rect, 27));
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Quad } from "@/lib/ocr/geometry";
+import { orderClockwise, type Quad } from "@/lib/ocr/geometry";
 import type { OcrModels, Reading, RegionReader } from "@/lib/ocr/pipeline";
 import { createRaster } from "@/lib/ocr/raster";
 import { mergeOverlapping, scanArea, type Detection } from "@/lib/ocr/scan";
@@ -11,6 +11,12 @@ const square = (x: number, y: number, s: number): Quad => [
   { x: x + s, y: y + s },
   { x, y: y + s },
 ];
+/** A w × h text box turned `degrees` (y down) around (cx, cy), in the detector's corner order. */
+const turnedBox = (cx: number, cy: number, w: number, h: number, degrees: number): Quad => {
+  const a = (degrees * Math.PI) / 180;
+  const at = (s: number, t: number) => ({ x: cx + s * Math.cos(a) - t * Math.sin(a), y: cy + s * Math.sin(a) + t * Math.cos(a) });
+  return orderClockwise([at(-w / 2, -h / 2), at(w / 2, -h / 2), at(w / 2, h / 2), at(-w / 2, h / 2)]);
+};
 
 describe("scanArea", () => {
   it("maps readings from both orientations back to page pixels", async () => {
@@ -44,6 +50,17 @@ describe("scanArea", () => {
       image.width === 400 ? [{ text: "16.30", score: 0.9, turn: 270, quad: square(40, 20, 10) }] : [];
     const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
     expect(detections[0].angle).toBe(-90);
+  });
+
+  it("keeps a slanted value's own angle, from its quad, in either pass", async () => {
+    // At 30° in the upright image; at 20° in the clockwise-turned image, which is 20 - 90 = -70° on the page.
+    const read: RegionReader = async (_models, image) =>
+      image.width === 400
+        ? [{ text: "16.30", score: 0.9, turn: 0, quad: turnedBox(100, 60, 40, 12, 30) }]
+        : [{ text: "2.50", score: 0.8, turn: 0, quad: turnedBox(100, 200, 40, 12, 20) }];
+    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
+    expect(detections.find((d) => d.value === "16.30")!.angle).toBeCloseTo(30, 6);
+    expect(detections.find((d) => d.value === "2.50")!.angle).toBeCloseTo(-70, 6);
   });
 
   it("enlarges by the whole number nearest the target width", async () => {

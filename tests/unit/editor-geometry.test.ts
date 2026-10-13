@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DRAWING_AREA } from "@/lib/form/template";
-import type { Quad } from "@/lib/ocr/geometry";
+import { normalizeAngle, orderClockwise, type Quad } from "@/lib/ocr/geometry";
+import { createRaster, cropQuad, cropTurnsQuarter } from "@/lib/ocr/raster";
 import {
-  axes, boxCorners, boxForDrawnRect, boxFromQuad, centreInDrawingArea, detectionAt, drawingAreaPx, panelOf,
-  pointInDrawingArea, readingOrder, rectFromDrag, rectInDrawingArea, roundAngle, roundBox, sameSize, toBox, toPx,
+  angleFromQuad, axes, boxCorners, boxForDrawnRect, boxFromQuad, centreInDrawingArea, detectionAt, drawingAreaPx,
+  isAxisAngle, panelOf, pointInDrawingArea, readingOrder, rectFromDrag, rectInDrawingArea, roundAngle, roundBox,
+  sameSize, snapAngle, toBox, toPx,
 } from "@/editor/geometry";
 
 const close = (a: number, b: number, eps = 1e-9) => expect(Math.abs(a - b)).toBeLessThanOrEqual(eps);
@@ -50,6 +52,113 @@ describe("boxFromQuad", () => {
   it("normalises the angle to (-180, 180]", () => {
     const quad: Quad = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }, { x: 0, y: 5 }];
     expect(boxFromQuad(quad, 270).angle).toBe(-90);
+  });
+});
+
+describe("angleFromQuad", () => {
+  const sameAngle = (a: number, b: number) => close(normalizeAngle(a - b), 0, 1e-6);
+
+  /**
+   * A value written at `angle` as the detector and the reader see it: a 74 × 27 box (the text grown by the
+   * detector's margin) whose only ink is a mark at the start of the text, at the top of the digits. The
+   * detector orders the corners (orderClockwise); cropQuad straightens the box; the reader reads the crop as
+   * it is when the mark lands top left, and upside down when it lands bottom right.
+   */
+  function seen(angle: number): { quad: Quad; turn: 0 | 90 | 180 | 270 } {
+    const raster = createRaster(300, 300);
+    const { u, v } = axes(angle);
+    for (let y = 0; y < 300; y++) {
+      for (let x = 0; x < 300; x++) {
+        const s = (x - 150) * u.x + (y - 150) * u.y;
+        const t = (x - 150) * v.x + (y - 150) * v.y;
+        if (s < -37 || s >= -22 || t < -13.5 || t >= -5.5) continue;
+        raster.data.fill(0, (y * 300 + x) * 4, (y * 300 + x) * 4 + 3);
+      }
+    }
+    const quad = orderClockwise(boxCorners({ cx: 150, cy: 150, w: 74, h: 27, angle }));
+    const crop = cropQuad(raster, quad);
+    let n = 0;
+    let mx = 0;
+    let my = 0;
+    for (let y = 0; y < crop.height; y++) {
+      for (let x = 0; x < crop.width; x++) {
+        if (crop.data[(y * crop.width + x) * 4] > 128) continue;
+        n++;
+        mx += x;
+        my += y;
+      }
+    }
+    expect(n).toBeGreaterThan(0);
+    const left = mx / n < crop.width / 2;
+    const top = my / n < crop.height / 2;
+    expect(left).toBe(top); // never sideways: the crop's long side runs along the text
+    return { quad, turn: ((cropTurnsQuarter(quad) ? 90 : 0) + (top ? 0 : 180)) as 0 | 90 | 180 | 270 };
+  }
+
+  it.each([0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90, 180])(
+    "gives back a value written at %i° from the detector's corners and the reader's turn",
+    (angle) => {
+      const { quad, turn } = seen(angle);
+      sameAngle(angleFromQuad(quad, turn, 0), angle);
+    },
+  );
+
+  it("reads along tl → tr for a crop read as it is, along tl → bl for a tall one, and adds 180° upside down", () => {
+    expect(seen(30).turn).toBe(0);
+    expect(seen(75).turn).toBe(90); // the crop is tall: turned a quarter, its text runs tl → bl
+    expect(seen(180).turn).toBe(180); // the same quad as at 0°, read upside down
+    expect(seen(-90).turn).toBe(270); // the same quad as at 90°, read upside down: bottom-up
+    const flat: Quad = [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 10 }, { x: 0, y: 10 }];
+    const tall: Quad = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 40 }, { x: 0, y: 40 }];
+    expect(angleFromQuad(flat, 0, 0)).toBe(0);
+    expect(angleFromQuad(flat, 180, 0)).toBe(180);
+    expect(angleFromQuad(tall, 90, 0)).toBe(90);
+    expect(angleFromQuad(tall, 270, 0)).toBe(-90);
+  });
+
+  it("adds the turn of the image that was read, exactly for a quad along its axes", () => {
+    const flat: Quad = [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 10 }, { x: 0, y: 10 }];
+    const tall: Quad = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 40 }, { x: 0, y: 40 }];
+    expect(angleFromQuad(flat, 0, -90)).toBe(-90); // the scan's clockwise pass
+    expect(angleFromQuad(flat, 180, -90)).toBe(90);
+    expect(angleFromQuad(tall, 270, -90)).toBe(180);
+    expect(angleFromQuad(flat, 0, 60)).toBe(60); // a click image turned 60° counter-clockwise
+    expect(angleFromQuad(flat, 180, 90)).toBe(-90);
+  });
+
+  it("gives the same angle from the quad in a turned image as from that quad mapped back to the page", () => {
+    // The scan's second pass reads the page turned a quarter clockwise: its pixel (x, y) is the page's (y, 299 - x).
+    const { quad, turn } = seen(20);
+    const onPage = quad.map((p) => ({ x: p.y, y: 299 - p.x })) as Quad;
+    sameAngle(angleFromQuad(quad, turn, -90), -70);
+    sameAngle(angleFromQuad(onPage, turn, 0), -70);
+  });
+});
+
+describe("snapAngle", () => {
+  it("gives exactly 0, 90, -90 or 180 within 4°, and the angle itself otherwise", () => {
+    expect(snapAngle(3.9)).toBe(0);
+    expect(snapAngle(4.1)).toBe(4.1);
+    expect(snapAngle(86)).toBe(90);
+    expect(snapAngle(-177)).toBe(180);
+    expect(snapAngle(-86.5)).toBe(-90);
+    expect(snapAngle(183)).toBe(180);
+    expect(snapAngle(30)).toBe(30);
+    expect(snapAngle(-45)).toBe(-45);
+    expect(Object.is(snapAngle(-0.5), 0)).toBe(true); // never -0
+  });
+
+  it("normalises an angle it does not snap, and takes another tolerance", () => {
+    expect(snapAngle(200)).toBe(-160);
+    expect(snapAngle(5, 6)).toBe(0);
+    expect(snapAngle(5, 4)).toBe(5);
+  });
+});
+
+describe("isAxisAngle", () => {
+  it("is true only for exactly 0, 90, -90 and 180", () => {
+    for (const a of [0, 90, -90, 180, -180, 270]) expect(isAxisAngle(a)).toBe(true);
+    for (const a of [0.01, 30, -45, 89.99, 179.5]) expect(isAxisAngle(a)).toBe(false);
   });
 });
 

@@ -1,5 +1,6 @@
+import { normalizeAngle } from "@/lib/ocr/geometry";
 import type { Raster } from "@/lib/ocr/raster";
-import { axes } from "./geometry";
+import { axes, isAxisAngle } from "./geometry";
 import type { PxBox } from "./types";
 
 /** How far beyond the box to look, as a share of its height (at least 2 px). */
@@ -199,4 +200,68 @@ export function analyseBox(raster: Raster, box: PxBox): BoxAnalysis | null {
     textColor: hex(textInk),
     bgColor: hex(paper),
   };
+}
+
+/** The search around a free angle: this many degrees either side of it, in steps of this size. */
+export const REFINE_SPAN = 12;
+export const REFINE_STEP = 0.5;
+/** Another angle is taken only when the digits measure at least this many pixels less tall there. */
+export const REFINE_MIN_GAIN = 1;
+/**
+ * The search stops going one way once the digits measure this many pixels taller than the least height
+ * found, two steps running: it has climbed out of the value's own valley, and a farther one is a
+ * neighbouring line. It also keeps a measurement (each one tightens the whole box) from running 49 times.
+ */
+export const REFINE_STOP_RISE = 2;
+/**
+ * A box at least this many times longer than tall has a direction of its own: a detector's quad, turned
+ * with its text to within a few degrees. A box closer to a square (a rectangle drawn around a slanted
+ * value) says little about the angle.
+ */
+export const TRUSTED_ASPECT = 2;
+
+/**
+ * The angle at which a value's digits measure least tall, near the box's own free angle: measured across
+ * slanted ink, digits come out too tall. `analyseBox` is measured at `angle + k·step` for |k·step| ≤ span,
+ * walking out from the given angle both ways until REFINE_STOP_RISE. Heights are whole pixels, so the least
+ * height holds over a run of steps; the middle of the run nearest the given angle is taken. The given
+ * angle is kept when:
+ * - it is 0, 90, -90 or 180: the box comes back unchanged;
+ * - no angle measures at least REFINE_MIN_GAIN px less tall;
+ * - the run reaches the end of the range while the box's own direction is trusted (TRUSTED_ASPECT): the
+ *   search is then drifting along a crowded line, not finding the text.
+ * Returns the box tightened to the digits at the chosen angle, or the box itself when it holds no text.
+ */
+export function refineAngle(raster: Raster, box: PxBox, span = REFINE_SPAN, step = REFINE_STEP): PxBox {
+  if (isAxisAngle(box.angle)) return box;
+  const start = analyseBox(raster, box)?.tight;
+  if (!start) return box;
+  const n = Math.floor(span / step + 1e-9);
+  const tight = new Map<number, PxBox>([[0, start]]);
+  let least = start.h;
+  for (const way of [1, -1]) {
+    let rising = 0;
+    for (let k = way; Math.abs(k) <= n && rising < 2; k += way) {
+      const found = analyseBox(raster, { ...box, angle: normalizeAngle(box.angle + k * step) })?.tight;
+      if (!found) continue;
+      tight.set(k, found);
+      least = Math.min(least, found.h);
+      rising = found.h >= least + REFINE_STOP_RISE ? rising + 1 : 0;
+    }
+  }
+  if (start.h - least < REFINE_MIN_GAIN) return start;
+
+  const runs: { from: number; to: number }[] = [];
+  for (let k = -n; k <= n; k++) {
+    if (tight.get(k)?.h !== least) continue;
+    const last = runs[runs.length - 1];
+    if (last && last.to === k - 1) last.to = k;
+    else runs.push({ from: k, to: k });
+  }
+  // No run holds k = 0 (the given angle measures taller), so its nearer end is its distance.
+  const distance = (r: { from: number; to: number }) => Math.min(Math.abs(r.from), Math.abs(r.to));
+  const run = runs.reduce((a, b) => (distance(b) < distance(a) ? b : a));
+  if ((run.from === -n || run.to === n) && box.w >= TRUSTED_ASPECT * box.h) return start;
+  const middle = (run.from + run.to) / 2;
+  return tight.get(middle > 0 ? Math.floor(middle) : Math.ceil(middle))!;
 }

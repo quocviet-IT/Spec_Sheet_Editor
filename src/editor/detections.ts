@@ -1,12 +1,13 @@
 import type { OcrClient } from "@/lib/ocr/client";
+import type { Quad, Rect } from "@/lib/ocr/geometry";
 import { OcrFailure } from "@/lib/ocr/protocol";
 import type { Raster } from "@/lib/ocr/raster";
 import type { ScanResult } from "@/lib/ocr/scan";
 import type { PageTextItem } from "@/lib/page/text";
 import type { ExportSource } from "./export-plan";
-import { boxFromQuad, centreInDrawingArea, drawingAreaPx, roundAngle, roundBox, toBox, toPx } from "./geometry";
+import { boxForDrawnRect, boxFromQuad, centreInDrawingArea, drawingAreaPx, roundAngle, roundBox, snapAngle, toBox, toPx } from "./geometry";
 import { pdfTextValues } from "./pdf-text";
-import { analyseBox } from "./pixels";
+import { analyseBox, refineAngle } from "./pixels";
 import type { Detection, Edit, PxBox } from "./types";
 
 /** The trimmed page as the editor holds it, with the PDF text items of the rendered page. */
@@ -35,11 +36,33 @@ export function fromPdfText(page: LoadedPage, newId: () => string): Detection[] 
     .map((v) => toDetection(raster, v.px, { readValue: v.value, confidence: null, source: "pdf-text" }, newId));
 }
 
+/**
+ * A scan's or a click's reading as a box on the page, at the text's own angle. The reading's angle (its
+ * quad's) becomes exactly 0, 90, -90 or 180 within SNAP_TOLERANCE; a free angle is then turned to where
+ * the digits measure least tall (`refineAngle`), made exact again if that lands near an axis, and the box
+ * is the quad's at that angle.
+ */
+export function readingBox(raster: Raster, reading: { quad: Quad; angle: number }): PxBox {
+  const px = boxFromQuad(reading.quad, snapAngle(reading.angle));
+  const angle = snapAngle(refineAngle(raster, px).angle);
+  return angle === px.angle ? px : boxFromQuad(reading.quad, angle);
+}
+
+/**
+ * UC-07: the box for a rectangle drawn around a value, at the angle the person chose. An axis choice stays
+ * exact; a free angle is turned to where the digits measure least tall (`refineAngle`).
+ */
+export function drawnBox(raster: Raster, rect: Rect, angle: number): PxBox {
+  const px = boxForDrawnRect(rect, angle);
+  const refined = refineAngle(raster, px).angle;
+  return refined === px.angle ? px : boxForDrawnRect(rect, refined);
+}
+
 /** UC-04 steps 3–5: OCR readings inside the drawing area (BR-02), tightened to the digits. */
 export function fromScan(scan: ScanResult, raster: Raster, newId: () => string): Detection[] {
   const out: Detection[] = [];
   for (const reading of scan.detections) {
-    const px = boxFromQuad(reading.quad, reading.angle);
+    const px = readingBox(raster, reading);
     if (!centreInDrawingArea(toBox(px, raster.width, raster.height))) continue;
     out.push(toDetection(raster, px, { readValue: reading.value, confidence: Math.round(reading.score * 100), source: "ocr" }, newId));
   }

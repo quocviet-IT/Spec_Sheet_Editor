@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { CLICK_ANGLES, readAtPoint } from "@/lib/ocr/click";
+import { orderClockwise, type Quad } from "@/lib/ocr/geometry";
 import type { OcrModels, RegionReader } from "@/lib/ocr/pipeline";
 import { createRaster } from "@/lib/ocr/raster";
 
 const models = {} as OcrModels;
 const page = createRaster(1135, 877);
+/** A w × h text box turned `degrees` (y down) around (cx, cy), in the detector's corner order. */
+const turnedBox = (cx: number, cy: number, w: number, h: number, degrees: number): Quad => {
+  const a = (degrees * Math.PI) / 180;
+  const at = (s: number, t: number) => ({ x: cx + s * Math.cos(a) - t * Math.sin(a), y: cy + s * Math.sin(a) + t * Math.cos(a) });
+  return orderClockwise([at(-w / 2, -h / 2), at(w / 2, -h / 2), at(w / 2, h / 2), at(-w / 2, h / 2)]);
+};
 
 describe("readAtPoint (UC-06)", () => {
   it("stops at the first angle that yields a dimension and maps the box to the page", async () => {
@@ -88,6 +95,17 @@ describe("readAtPoint (UC-06)", () => {
       const result = await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
       expect(result.reading?.angle).toBe(expected);
     }
+  });
+
+  it("keeps a slanted value's own angle: its quad's in the turned image, plus the image's turn", async () => {
+    let calls = 0;
+    const read: RegionReader = async (_m, image) => {
+      calls++;
+      if (CLICK_ANGLES[calls - 1] !== 60) return [];
+      return [{ text: "2.50", score: 0.9, turn: 0, quad: turnedBox(image.width / 2, image.height / 2, 64, 16, -10) }];
+    };
+    const result = await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
+    expect(result.reading?.angle).toBeCloseTo(50, 6);
   });
 
   it("tries upright, then vertical, then diagonal", () => {

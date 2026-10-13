@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { orderClockwise } from "@/lib/ocr/geometry";
 import { createRaster, rotate90cw, type Raster } from "@/lib/ocr/raster";
-import { axes } from "@/editor/geometry";
-import { analyseBox } from "@/editor/pixels";
+import { axes, boxCorners, boxFromQuad } from "@/editor/geometry";
+import { analyseBox, refineAngle } from "@/editor/pixels";
 
 function fill(r: Raster, x0: number, y0: number, x1: number, y1: number, rgb: [number, number, number]) {
   for (let y = y0; y <= y1; y++) {
@@ -213,5 +214,74 @@ describe("analyseBox: other angles", () => {
     near(tight.w, 61, 2);
     near(tight.h, 13, 2);
     expect(tight.angle).toBe(30);
+  });
+});
+
+describe("refineAngle", () => {
+  /**
+   * A value at 30° around (150, 100): four digit blocks 12 px along the text and 13 px across, 3 px apart,
+   * and a dimension line 2 px thick, 4 px below the digits, that runs on well beyond them.
+   */
+  function slanted(): Raster {
+    const r = createRaster(300, 200);
+    const { u, v } = axes(30);
+    for (let y = 0; y < r.height; y++) {
+      for (let x = 0; x < r.width; x++) {
+        const s = (x - 150) * u.x + (y - 100) * u.y;
+        const t = (x - 150) * v.x + (y - 100) * v.y;
+        const digit = Math.abs(s) < 30 && (s + 30) % 15 < 12 && Math.abs(t) < 6.5;
+        const line = Math.abs(s) < 140 && t >= 10.5 && t < 12.5;
+        if (digit || line) fill(r, x, y, x, y, INK);
+      }
+    }
+    return r;
+  }
+  /** The detector's quad around that value: the text grown by 7 px on every side. */
+  const quad = orderClockwise(boxCorners({ cx: 150, cy: 100, w: 74, h: 27, angle: 30 }));
+
+  it("turns a box given at 25° to the value's own 30°, tightened to the digits there", () => {
+    const result = refineAngle(slanted(), boxFromQuad(quad, 25));
+    near(result.angle, 30, 0.5);
+    near(result.h, 13, 1);
+  });
+
+  it("finds the same angle from the other side", () => {
+    near(refineAngle(slanted(), boxFromQuad(quad, 35)).angle, 30, 0.5);
+  });
+
+  it("leaves a box along the page's axes alone, even on a slanted value", () => {
+    const r = slanted();
+    for (const angle of [0, 90, -90, 180]) {
+      const box = { cx: 150, cy: 100, w: 74, h: 27, angle };
+      expect(refineAngle(r, box)).toBe(box);
+    }
+  });
+
+  it("does not turn when no angle measures at least 1 px less tall", () => {
+    const atValue = refineAngle(slanted(), boxFromQuad(quad, 30));
+    expect(atValue.angle).toBe(30);
+    near(atValue.h, 13, 1);
+    // A round mark has no direction: it measures as tall at every angle.
+    const dot = createRaster(300, 200);
+    for (let y = 85; y <= 115; y++) for (let x = 135; x <= 165; x++) if (Math.hypot(x - 150, y - 100) <= 10) fill(dot, x, y, x, y, INK);
+    expect(refineAngle(dot, { cx: 150, cy: 100, w: 40, h: 30, angle: 30 }).angle).toBe(30);
+  });
+
+  it("returns a box that holds no text unchanged", () => {
+    const box = { cx: 150, cy: 100, w: 74, h: 27, angle: 30 };
+    expect(refineAngle(createRaster(300, 200), box)).toBe(box);
+  });
+
+  it("keeps a long box's own angle when the least height lies at the end of the range", () => {
+    // Given 15° off, the digits measure less and less tall up to 27°, the end of the ±12° range. A detector's
+    // quad is never that far from its text, so the search would only be drifting.
+    const result = refineAngle(slanted(), { cx: 150, cy: 100, w: 74, h: 27, angle: 15 });
+    expect(result.angle).toBe(15);
+  });
+
+  it("follows the search to the end of the range for a box too square to have a direction of its own", () => {
+    const result = refineAngle(slanted(), { cx: 150, cy: 100, w: 74, h: 60, angle: 15 });
+    expect(result.angle).toBeGreaterThanOrEqual(26.5);
+    expect(result.angle).toBeLessThanOrEqual(27);
   });
 });

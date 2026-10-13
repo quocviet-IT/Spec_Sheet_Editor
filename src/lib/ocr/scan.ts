@@ -1,11 +1,12 @@
 import { toDimension } from "./dimension-text";
-import { bounds, normalizeAngle, rectCentre, type Point, type Quad, type Rect } from "./geometry";
+import { angleFromQuad, bounds, rectCentre, type Point, type Quad, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type Reading, type RegionReader } from "./pipeline";
 import { crop, resizeBicubic, rotate90cw, type Raster } from "./raster";
 
 /**
  * A value found on the sheet. `box` (page pixels, axis-aligned) is for hit-testing; `quad` is the text's own
- * box in page pixels; `angle` is the text's angle (design §6.3: -90 = vertical, read bottom-up).
+ * box in page pixels; `angle` is the text's angle, taken from its quad (design §6.3: -90 = vertical, read
+ * bottom-up; a slanted value keeps its slant).
  */
 export type Detection = { value: string; text: string; score: number; box: Rect; quad: Quad; angle: number };
 export type ScanResult = { detections: Detection[]; timing: { horizontalMs: number; verticalMs: number } };
@@ -63,7 +64,8 @@ export async function scanArea(
       value,
       text: reading.text,
       score: reading.score,
-      angle: normalizeAngle(imageTurn + reading.turn),
+      // From the quad as read, before it is mapped to the page, so a quad along the axes gives exactly 0, ±90 or 180.
+      angle: angleFromQuad(reading.quad, reading.turn, imageTurn),
       box: bounds(quad),
       quad,
     });
