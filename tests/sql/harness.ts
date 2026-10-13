@@ -140,8 +140,18 @@ export async function applyMigration(tx: Tx, file: string): Promise<void> {
 }
 
 /** A storage object as the storage service would record it, inserted as the table owner. */
-export async function insertObject(tx: Tx, name: string, uploader: TestUser): Promise<void> {
-  await tx`insert into storage.objects (bucket_id, name, owner, owner_id) values ('spec-sheets', ${name}, ${uploader.id}, ${uploader.id})`;
+export async function insertObject(tx: Tx, name: string, uploader: TestUser, bucket = "spec-sheets"): Promise<void> {
+  await tx`insert into storage.objects (bucket_id, name, owner, owner_id) values (${bucket}, ${name}, ${uploader.id}, ${uploader.id})`;
+}
+
+/** Inserts a report as the table owner (bypassing RLS): arranging data, not exercising the rules. */
+export async function insertReportAsOwner(tx: Tx, reporter: TestUser, opts: { status?: string; note?: string; triagedAt?: Date } = {}): Promise<string> {
+  const [row] = await tx<{ id: string }[]>`
+    insert into public.feedback_reports (kind, impact, description, page_url, page_route, page_label, reporter_id, status, triage_note, triaged_at)
+    values ('broken', 'slows_work', 'The list does not load', '/sheets', '/sheets', 'Sheets', ${reporter.id},
+            ${opts.status ?? "new"}, ${opts.note ?? null}, ${opts.triagedAt ?? null})
+    returning id`;
+  return row.id;
 }
 
 /** A fresh address on the default permitted domain. */
