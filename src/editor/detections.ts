@@ -24,9 +24,21 @@ export function ocrFailureReason(error: unknown): ReaderFailure {
   return error instanceof OcrFailure && error.code === "init_failed" ? "ocr_unsupported" : "ocr_load";
 }
 
-export function toDetection(raster: Raster, px: PxBox, rest: Pick<Detection, "readValue" | "confidence" | "source">, newId: () => string): Detection {
+/** The optional `prefix` field: present only when something is written in front of the value. */
+function prefixField(prefix: string | undefined): { prefix?: string } {
+  return prefix ? { prefix } : {};
+}
+
+/** A stored value at the box, tightened to its ink. A `prefix` of "" (the reader found none) is left out. */
+export function toDetection(
+  raster: Raster,
+  px: PxBox,
+  rest: Pick<Detection, "readValue" | "confidence" | "source" | "prefix">,
+  newId: () => string,
+): Detection {
   const tight = analyseBox(raster, px)?.tight ?? px;
-  return { id: newId(), box: roundBox(toBox(tight, raster.width, raster.height)), angle: roundAngle(tight.angle), ...rest };
+  const { prefix, ...fields } = rest;
+  return { id: newId(), box: roundBox(toBox(tight, raster.width, raster.height)), angle: roundAngle(tight.angle), ...fields, ...prefixField(prefix) };
 }
 
 /** UC-04 step 2: values from the PDF text layer. */
@@ -91,7 +103,7 @@ export async function fromScan(scan: ScanResult, raster: Raster, newId: () => st
     if (!centreInDrawingArea(toBox(start, raster.width, raster.height))) continue;
     if (!isAxisAngle(start.angle)) await nextTask();
     const px = refinedQuadBox(raster, reading.quad, start);
-    out.push(toDetection(raster, px, { readValue: reading.value, confidence: Math.round(reading.score * 100), source: "ocr" }, newId));
+    out.push(toDetection(raster, px, { readValue: reading.value, confidence: Math.round(reading.score * 100), source: "ocr", prefix: reading.prefix }, newId));
   }
   return out;
 }
@@ -124,7 +136,10 @@ export async function detectValues(
   }
 }
 
-/** UC-05 step 5: an edit of one value, measured on the original page (BR-03). */
+/**
+ * UC-05 step 5: an edit of one value, measured on the original page (BR-03). The value's prefix comes
+ * along, so it is drawn again in front of the new value.
+ */
 export function makeEdit(raster: Raster, detection: Detection, oldValue: string, newValue: string): Edit {
   const px = toPx(detection.box, detection.angle, raster.width, raster.height);
   const found = analyseBox(raster, px);
@@ -139,5 +154,6 @@ export function makeEdit(raster: Raster, detection: Detection, oldValue: string,
     fontPx: Math.round((tight.h / raster.width) * 1e5) / 1e5,
     textColor: found?.textColor ?? "#000000",
     bgColor: found?.bgColor ?? "#ffffff",
+    ...prefixField(detection.prefix),
   };
 }

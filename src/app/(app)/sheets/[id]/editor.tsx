@@ -554,7 +554,8 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         open(hit.id);
         return;
       }
-      const added = toDetection(loaded.page.raster, px, { readValue: r.value, confidence: Math.min(100, Math.max(0, Math.round(r.score * 100))), source: "click" }, () => crypto.randomUUID());
+      const confidence = Math.min(100, Math.max(0, Math.round(r.score * 100)));
+      const added = toDetection(loaded.page.raster, px, { readValue: r.value, confidence, source: "click", prefix: r.prefix }, () => crypto.randomUUID());
       latest.current = { ...latest.current, detections: [...latest.current.detections, added] };
       setDetections((list) => [...list, added]);
       open(added.id);

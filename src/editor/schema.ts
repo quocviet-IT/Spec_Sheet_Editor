@@ -7,6 +7,8 @@ const angle = z.number().gt(-180).lte(180);
 /** A normalised value (BR-05): digits, at most one point, no comma. */
 const value = z.string().regex(/^\d{1,3}(\.\d{1,3})?$/);
 const colour = z.string().regex(/^#[0-9a-f]{6}$/);
+/** What is written in front of a value ("Ø", "R", "2X Ø"): up to 8 characters from a small set. Optional, so sheets saved before it parse. */
+const prefix = z.string().regex(/^[ØRXx0-9 ()±⌀]{1,8}$/);
 
 export const MAX_VALUES = 300;
 
@@ -19,6 +21,7 @@ export const detectionSchema = z.strictObject({
   readValue: value.nullable(),
   confidence: z.number().min(0).max(100).nullable(),
   source: z.enum(["pdf-text", "ocr", "click", "manual"]),
+  prefix: prefix.optional(),
 }) satisfies z.ZodType<Detection>;
 
 export const editSchema = z.strictObject({
@@ -30,6 +33,7 @@ export const editSchema = z.strictObject({
   fontPx: size,
   textColor: colour,
   bgColor: colour,
+  prefix: prefix.optional(),
 }) satisfies z.ZodType<Edit>;
 
 /** The stored lists: unique ids, and every edit points at a listed value, once. */

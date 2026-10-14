@@ -1,5 +1,6 @@
 "use client";
 
+import { withPrefix } from "@/editor/compose";
 import { readingOrder } from "@/editor/geometry";
 import type { Detection, Edit } from "@/editor/types";
 import { useMessages } from "@/messages/client";
@@ -49,7 +50,13 @@ export function ValueList({ detections, edits, activeId, detect, showHint, onOpe
                 onClick={() => onOpen(d.id)}
                 className={"flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-sunk " + (active ? "bg-accent-soft" : "")}
               >
-                <span className="font-mono">{edit ? `${edit.oldValue} → ${edit.newValue}` : (d.readValue ?? "?")}</span>
+                <span className="font-mono">
+                  {edit
+                    ? `${withPrefix(edit.prefix, edit.oldValue)} → ${withPrefix(edit.prefix, edit.newValue)}`
+                    : d.readValue !== null
+                      ? withPrefix(d.prefix, d.readValue)
+                      : "?"}
+                </span>
                 <span className={"rounded px-1.5 py-0.5 text-xs " + (edit ? "bg-edit text-edit-ink" : active ? "bg-mark text-mark-ink" : "bg-sunk text-ink-2")}>
                   {edit ? `✓ ${v.edited}` : active ? v.editing : v.sources[d.source]}
                 </span>

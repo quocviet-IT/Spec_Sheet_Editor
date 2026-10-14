@@ -1,12 +1,14 @@
-import type { Rect } from "../geometry";
+import { drawingAreaPx } from "@/editor/geometry";
+import { trimPage } from "@/lib/page/render";
+import type { Point, Rect } from "../geometry";
+import type { Raster } from "../raster";
 
 /**
  * The 1135 × 877 sample sheet of the 2026-10-06 bake-off. The sheet itself stays outside the repository
  * (it carries order numbers); these are its 11 dimension values and their centres, read by eye
- * (research/ocr-bakeoff/prep.py).
+ * (research/ocr-bakeoff/prep.py), in the sample's own pixels.
  */
 export const SAMPLE_SIZE = { width: 1135, height: 877 };
-export const SAMPLE_FRAME: Rect = { x: 52, y: 116, w: 708, h: 538 };
 
 export type TruthValue = { key: string; value: string; x: number; y: number; orient: "horiz" | "vert" | "diag" };
 
@@ -23,6 +25,23 @@ export const SAMPLE_TRUTH: readonly TruthValue[] = [
   { key: "4.66", value: "4.66", x: 702, y: 575, orient: "vert" },
   { key: "2.50b", value: "2.50", x: 569, y: 627, orient: "horiz" },
 ];
+
+/**
+ * The sample as the editor holds it: trimmed to its page (`trimPage`), the frame the editor scans on that
+ * page (`drawingAreaPx`, as `detectValues` asks for it), and the truth moved onto the trimmed page. The click
+ * square and the merge window are fractions of the page width, so the bench reads the trimmed page too.
+ */
+export type BenchView = { page: Raster; offset: Point; frame: Rect; truth: TruthValue[] };
+
+export function editorView(sample: Raster, truth: readonly TruthValue[] = SAMPLE_TRUTH): BenchView {
+  const { raster: page, offsetX, offsetY } = trimPage({ raster: sample, pageCount: 1, text: [], pagePt: null });
+  return {
+    page,
+    offset: { x: offsetX, y: offsetY },
+    frame: drawingAreaPx(page.width, page.height),
+    truth: truth.map((t) => ({ ...t, x: t.x - offsetX, y: t.y - offsetY })),
+  };
+}
 
 /** The bake-off simulated an imprecise click 3 px right of and 2 px below each centre. */
 export const CLICK_OFFSET = { x: 3, y: 2 };

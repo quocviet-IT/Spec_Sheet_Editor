@@ -19,9 +19,18 @@ export type EditPlan = {
 };
 
 /**
+ * A value with what is written in front of it ("Ø" + "1.40"), as it is shown and drawn. A stored ⌀ is drawn
+ * as Ø, which the shipped Arimo has (NFR-05: never a system font).
+ */
+export function withPrefix(prefix: string | undefined, value: string): string {
+  return `${(prefix ?? "").replace(/⌀/g, "Ø")}${value}`;
+}
+
+/**
  * UC-05 step 5: mask the old digits with the paper colour, then draw the new value centred on the same
- * box at the same angle and digit height. `digitAscentEm` is Arimo's digit height per em, measured in the
- * browser, so the new digits are exactly as tall as the old ones.
+ * box at the same angle and digit height, with the value's prefix in front of it in the same font and
+ * height (the box, and so the mask, holds the old prefix too). `digitAscentEm` is Arimo's digit height per
+ * em, measured in the browser, so the new digits are exactly as tall as the old ones.
  */
 export function planEdit(edit: Edit, pageW: number, pageH: number, digitAscentEm: number): EditPlan {
   const w = edit.box.w * pageW;
@@ -36,7 +45,7 @@ export function planEdit(edit: Edit, pageW: number, pageH: number, digitAscentEm
     maskH: h + 2 * pad,
     fontSize: digitPx / digitAscentEm,
     baseline: digitPx / 2,
-    text: edit.newValue,
+    text: withPrefix(edit.prefix, edit.newValue),
     textColor: edit.textColor,
     bgColor: edit.bgColor,
   };

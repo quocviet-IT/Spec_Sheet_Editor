@@ -84,6 +84,11 @@ describe("exportSuggestions (UC-10 step 2)", () => {
     expect(exportSuggestions(detections, edits)).toEqual([{ oldValue: "2.50", newValue: "2.60", ids: ["c"] }]);
   });
 
+  it("compares values only: a value written with Ø is offered for an edit of the same value without it", () => {
+    const detections = [det("a", "1.30"), { ...det("b", "1.30"), prefix: "Ø" }];
+    expect(exportSuggestions(detections, [edit("a", "1.30", "1.40")])).toEqual([{ oldValue: "1.30", newValue: "1.40", ids: ["b"] }]);
+  });
+
   it("offers nothing when every match is edited", () => {
     expect(exportSuggestions([det("a", "2.50"), det("b", "2.50")], [edit("a", "2.50", "2.60"), edit("b", "2.50", "2.70")])).toEqual([]);
   });

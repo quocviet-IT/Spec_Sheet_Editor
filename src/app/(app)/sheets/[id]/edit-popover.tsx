@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { withPrefix } from "@/editor/compose";
 import { decimalsOf, normalizeNewValue, normalizeOldValue } from "@/editor/numbers";
 import type { Detection, Edit } from "@/editor/types";
 import { useMessages } from "@/messages/client";
@@ -111,7 +112,15 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
     onApply(confirmed.value, next.value);
   }
 
-  const field = "w-full rounded-md border border-line bg-surface px-3 py-2 font-mono text-ink";
+  const field = "w-full min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-2 font-mono text-ink";
+  // What is written in front of the value ("Ø") stays: it is shown before both values and drawn again.
+  const prefix = withPrefix(edit ? edit.prefix : detection.prefix, "").trim();
+  const prefixMark = prefix ? (
+    <span id={`${id}-prefix`} className="font-mono text-ink">
+      {prefix}
+    </span>
+  ) : null;
+  const describedBy = (...ids: (string | false)[]) => ids.filter(Boolean).join(" ") || undefined;
   return (
     <form
       ref={root}
@@ -127,39 +136,49 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
       </div>
       <div className="space-y-1">
         <label htmlFor={`${id}-old`} className="block text-sm font-medium">{p.old}</label>
-        <input
-          ref={oldInput}
-          id={`${id}-old`}
-          value={oldRaw}
-          onChange={(e) => {
-            setOldRaw(e.target.value);
-            setOldError(null);
-          }}
-          inputMode="decimal"
-          autoComplete="off"
-          aria-invalid={oldError !== null}
-          aria-describedby={oldError ? `${id}-old-hint ${id}-old-error` : `${id}-old-hint`}
-          className={field}
-        />
+        <div className="flex items-center gap-1.5">
+          {prefixMark}
+          <input
+            ref={oldInput}
+            id={`${id}-old`}
+            value={oldRaw}
+            onChange={(e) => {
+              setOldRaw(e.target.value);
+              setOldError(null);
+            }}
+            inputMode="decimal"
+            autoComplete="off"
+            aria-invalid={oldError !== null}
+            aria-describedby={describedBy(Boolean(prefix) && `${id}-prefix`, `${id}-old-hint`, oldError !== null && `${id}-old-error`)}
+            className={field}
+          />
+        </div>
         <p id={`${id}-old-hint`} className="text-xs text-ink-2">{p.oldHint}</p>
         {oldError ? <p id={`${id}-old-error`} role="alert" className="text-sm text-danger">{oldError}</p> : null}
       </div>
       <div className="space-y-1">
         <label htmlFor={`${id}-new`} className="block text-sm font-medium">{p.new}</label>
-        <input
-          ref={newInput}
-          id={`${id}-new`}
-          value={newRaw}
-          onChange={(e) => {
-            setNewRaw(e.target.value);
-            setNewError(null);
-          }}
-          inputMode="decimal"
-          autoComplete="off"
-          aria-invalid={newError !== null}
-          aria-describedby={newError ? `${id}-new-error` : undefined}
-          className={field}
-        />
+        <div className="flex items-center gap-1.5">
+          {prefix ? (
+            <span aria-hidden className="font-mono text-ink">
+              {prefix}
+            </span>
+          ) : null}
+          <input
+            ref={newInput}
+            id={`${id}-new`}
+            value={newRaw}
+            onChange={(e) => {
+              setNewRaw(e.target.value);
+              setNewError(null);
+            }}
+            inputMode="decimal"
+            autoComplete="off"
+            aria-invalid={newError !== null}
+            aria-describedby={describedBy(Boolean(prefix) && `${id}-prefix`, newError !== null && `${id}-new-error`)}
+            className={field}
+          />
+        </div>
         {newError ? <p id={`${id}-new-error`} role="alert" className="text-sm text-danger">{newError}</p> : null}
       </div>
       <div className="flex justify-end gap-2">

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildAlphabet } from "@/lib/ocr/alphabet";
+import { isPointedDimension } from "@/lib/ocr/dimension-text";
 import { fitWithinBounds, padVertically, readRegion, type OcrModels, type Tensor } from "@/lib/ocr/pipeline";
 import { createRaster } from "@/lib/ocr/raster";
 
-const chars = buildAlphabet("1\n6\n.\n3\n0\n");
+const chars = buildAlphabet("1\n6\n.\n3\n0\n9\n");
 
 /** A detector that sees one block in the middle of whatever it is given, and a recogniser that reads "16.30". */
 function fakeModels(
@@ -118,5 +119,19 @@ describe("readRegion", () => {
     const readings = await readRegion(rejected, createRaster(64, 32), { bothDirections: true, accept: (t) => t === "16.30" });
     expect(rejected.recCalls).toBe(2);
     expect(readings[0].text).toBe("16.30");
+  });
+
+  it("between the two directions, prefers a value with its point written, then the more confident reading", async () => {
+    const opts = { bothDirections: true, accept: isPointedDimension };
+    // Upright only digits ("069"), upside down the value with its point: the latter wins although less confident.
+    const turned = await readRegion(fakeModels([{ text: "069", score: 0.95 }, { text: "6.90", score: 0.7 }]), createRaster(64, 32), opts);
+    expect(turned[0]).toMatchObject({ text: "6.90", turn: 180 });
+    // Neither has its point written: the more confident reading stays.
+    const kept = await readRegion(fakeModels([{ text: "1630", score: 0.9 }, { text: "0391", score: 0.6 }]), createRaster(64, 32), opts);
+    expect(kept[0]).toMatchObject({ text: "1630", turn: 0 });
+    // A value with its point written upright is not read again.
+    const sure = fakeModels([{ text: "16.30", score: 0.6 }]);
+    expect((await readRegion(sure, createRaster(64, 32), opts))[0]).toMatchObject({ text: "16.30", turn: 0 });
+    expect(sure.recCalls).toBe(1);
   });
 });

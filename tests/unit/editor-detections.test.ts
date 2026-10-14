@@ -5,7 +5,7 @@ import { createRaster, type Raster } from "@/lib/ocr/raster";
 import type { ScanResult } from "@/lib/ocr/scan";
 import type { PageTextItem } from "@/lib/page/text";
 import {
-  detectValues, drawnBox, fromPdfText, fromScan, makeEdit, ocrFailureReason, readingBox, type LoadedPage, type OcrLike,
+  detectValues, drawnBox, fromPdfText, fromScan, makeEdit, ocrFailureReason, readingBox, toDetection, type LoadedPage, type OcrLike,
 } from "@/editor/detections";
 import { axes, boxCorners, boxForDrawnRect } from "@/editor/geometry";
 
@@ -33,9 +33,9 @@ const quad = (x0: number, y0: number, x1: number, y1: number): Quad => [
 function scan(): ScanResult {
   return {
     detections: [
-      { value: "2.50", text: "2.50", score: 0.87, angle: 0, quad: quad(190, 194, 250, 218), box: { x: 190, y: 194, w: 60, h: 24 } },
-      { value: "6.90", text: "6.90", score: 0.9, angle: -90, quad: quad(396, 292, 416, 348), box: { x: 396, y: 292, w: 20, h: 56 } },
-      { value: "5.75", text: "5.75", score: 0.99, angle: 0, quad: quad(880, 290, 920, 302), box: { x: 880, y: 290, w: 40, h: 12 } }, // right-hand table
+      { value: "2.50", prefix: "", text: "2.50", score: 0.87, angle: 0, quad: quad(190, 194, 250, 218), box: { x: 190, y: 194, w: 60, h: 24 } },
+      { value: "6.90", prefix: "", text: "6.90", score: 0.9, angle: -90, quad: quad(396, 292, 416, 348), box: { x: 396, y: 292, w: 20, h: 56 } },
+      { value: "5.75", prefix: "", text: "5.75", score: 0.99, angle: 0, quad: quad(880, 290, 920, 302), box: { x: 880, y: 290, w: 40, h: 12 } }, // right-hand table
     ],
     timing: { horizontalMs: 1, verticalMs: 1 },
   };
@@ -103,7 +103,7 @@ describe("readingBox (scan and click)", () => {
 
   it("stores the slanted value's angle and digit height through fromScan", async () => {
     const scan: ScanResult = {
-      detections: [{ value: "1.20", text: "1.20", score: 0.9, angle: 26, quad: slantedQuad, box: { x: 0, y: 0, w: 0, h: 0 } }],
+      detections: [{ value: "1.20", prefix: "", text: "1.20", score: 0.9, angle: 26, quad: slantedQuad, box: { x: 0, y: 0, w: 0, h: 0 } }],
       timing: { horizontalMs: 1, verticalMs: 1 },
     };
     const [d] = await fromScan(scan, slantedPage(), ids());
@@ -112,7 +112,7 @@ describe("readingBox (scan and click)", () => {
   });
 
   it("lets a waiting task run before fromScan searches a slanted value's angle, and not for upright ones or values outside the drawing", async () => {
-    const reading = (quad: Quad) => ({ value: "1.20", text: "1.20", score: 0.9, angle: 26, quad, box: { x: 0, y: 0, w: 0, h: 0 } });
+    const reading = (quad: Quad) => ({ value: "1.20", prefix: "", text: "1.20", score: 0.9, angle: 26, quad, box: { x: 0, y: 0, w: 0, h: 0 } });
     const timing = { horizontalMs: 1, verticalMs: 1 };
     let ran = false;
     setTimeout(() => (ran = true), 0);
@@ -262,5 +262,31 @@ describe("makeEdit", () => {
     const e = makeEdit(createRaster(W, H), d, "2.50", "2.60");
     expect(e.box).toEqual(d.box);
     expect(e).toMatchObject({ textColor: "#000000", bgColor: "#ffffff" });
+  });
+});
+
+describe("what is written in front of a value (Ø, R, 2X)", () => {
+  const withPrefixes = (): ScanResult => {
+    const s = scan();
+    s.detections[0] = { ...s.detections[0], text: "Ø2.50", prefix: "Ø" };
+    return s;
+  };
+
+  it("is kept from the scan, and left out of a value that has none", async () => {
+    const [h, v] = await fromScan(withPrefixes(), page(), ids());
+    expect(h).toMatchObject({ readValue: "2.50", prefix: "Ø" });
+    expect("prefix" in v).toBe(false);
+  });
+
+  it("is carried to the edit, so it is drawn again in front of the new value", async () => {
+    const [h, v] = await fromScan(withPrefixes(), page(), ids());
+    expect(makeEdit(page(), h, "2.50", "2.60")).toMatchObject({ oldValue: "2.50", newValue: "2.60", prefix: "Ø" });
+    expect("prefix" in makeEdit(page(), v, "6.90", "6.80")).toBe(false);
+  });
+
+  it("is kept for a value read by a click", () => {
+    const px = { cx: 220, cy: 206, w: 60, h: 24, angle: 0 };
+    expect(toDetection(page(), px, { readValue: "2.50", confidence: 90, source: "click", prefix: "2X Ø" }, ids())).toMatchObject({ prefix: "2X Ø" });
+    expect("prefix" in toDetection(page(), px, { readValue: "2.50", confidence: 90, source: "click", prefix: "" }, ids())).toBe(false);
   });
 });

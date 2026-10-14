@@ -124,14 +124,43 @@ describe("readAtPoint (UC-06)", () => {
     expect(result.reading).toBeNull();
   });
 
-  it("asks the reader to re-read upside down only non-dimensions", async () => {
+  it("asks the reader to re-read upside down everything but a value with its decimal separator written", async () => {
     let accept: ((text: string) => boolean) | undefined;
     const read: RegionReader = async (_m, _image, opts) => {
       accept = opts?.accept;
       return [];
     };
     await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
-    expect(accept?.("1630")).toBe(true);
+    expect(accept?.("16.30")).toBe(true);
+    expect(accept?.("16,30")).toBe(true);
+    expect(accept?.("Ø1.30")).toBe(true);
+    // Only repaired from digits: the upside-down reading may be the value with its point ("069" is "6.90").
+    expect(accept?.("1630")).toBe(false);
+    expect(accept?.("069")).toBe(false);
     expect(accept?.("1.5p")).toBe(false);
+  });
+
+  it("rejects a value only repaired from digits where a value with its point written covers the same place", async () => {
+    const read: RegionReader = async () => [
+      { text: "069", score: 0.97, turn: 0, quad: [{ x: 112, y: 120 }, { x: 144, y: 120 }, { x: 144, y: 136 }, { x: 112, y: 136 }] },
+      { text: "6.90", score: 0.8, turn: 0, quad: [{ x: 110, y: 119 }, { x: 146, y: 119 }, { x: 146, y: 137 }, { x: 110, y: 137 }] },
+    ];
+    const result = await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
+    expect(result.reading?.value).toBe("6.90");
+  });
+
+  it("still repairs a value whose point was lost when nothing with a point covers it", async () => {
+    const read: RegionReader = async () => [
+      { text: "170", score: 0.9, turn: 0, quad: [{ x: 112, y: 120 }, { x: 144, y: 120 }, { x: 144, y: 136 }, { x: 112, y: 136 }] },
+    ];
+    expect((await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read)).reading?.value).toBe("1.70");
+  });
+
+  it("keeps what is written in front of the value", async () => {
+    const read: RegionReader = async () => [
+      { text: "2X 01.10", score: 0.9, turn: 0, quad: [{ x: 96, y: 112 }, { x: 160, y: 112 }, { x: 160, y: 144 }, { x: 96, y: 144 }] },
+    ];
+    const { reading } = await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read);
+    expect(reading).toMatchObject({ value: "1.10", prefix: "2X Ø", text: "2X 01.10" });
   });
 });

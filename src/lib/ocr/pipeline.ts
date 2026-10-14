@@ -19,7 +19,9 @@ export type OcrModels = {
 export type Reading = { text: string; score: number; quad: Quad; turn: 0 | 90 | 180 | 270 };
 /**
  * bothDirections: also read each crop upside down. With accept, only crops whose upright reading is not
- * accepted are re-read, and the upside-down reading wins when it is accepted or more confident.
+ * accepted are re-read, and the upside-down reading wins when it is accepted or more confident: the scan
+ * and the click accept only a value with its point written (`isPointedDimension`), so between the two
+ * directions that value is preferred, then the more confident reading.
  */
 export type RegionReader = (
   models: OcrModels,
@@ -75,7 +77,8 @@ export async function recognizeCrops(models: OcrModels, crops: readonly Raster[]
 /**
  * Detects and reads every text line in the image: RapidOCR's pipeline without the 180° classifier
  * (callers turn the image themselves). Quads are in input pixels; readings under MIN_TEXT_SCORE are
- * dropped. With bothDirections each crop is also read upside down (only those not accepted, when accept is given) and the better reading kept.
+ * dropped. With bothDirections each crop is also read upside down (only those not accepted, when accept is
+ * given) and the better reading kept: the accepted one, else the more confident.
  */
 export const readRegion: RegionReader = async (models, image, opts = {}) => {
   const fitted = fitWithinBounds(image);

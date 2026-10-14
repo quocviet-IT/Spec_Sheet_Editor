@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   bounds,
   convexHull,
+  convexIntersectionArea,
   expandRect,
   minAreaRect,
   miniBox,
   normalizeAngle,
   orderClockwise,
+  overlapShare,
   polygonArea,
   polygonPerimeter,
   pyRound,
@@ -98,5 +100,49 @@ describe("normalizeAngle", () => {
     expect(normalizeAngle(180)).toBe(180);
     expect(normalizeAngle(-180)).toBe(180);
     expect(normalizeAngle(0)).toBe(0);
+  });
+});
+
+describe("convexIntersectionArea and overlapShare", () => {
+  const rect = (x: number, y: number, w: number, h: number): Quad => [pt(x, y), pt(x + w, y), pt(x + w, y + h), pt(x, y + h)];
+  /** A w x h rectangle turned `degrees` around (cx, cy), corners in the detector's order. */
+  const turned = (cx: number, cy: number, w: number, h: number, degrees: number): Quad => {
+    const a = (degrees * Math.PI) / 180;
+    const at = (s: number, t: number) => pt(cx + s * Math.cos(a) - t * Math.sin(a), cy + s * Math.sin(a) + t * Math.cos(a));
+    return orderClockwise([at(-w / 2, -h / 2), at(w / 2, -h / 2), at(w / 2, h / 2), at(-w / 2, h / 2)]);
+  };
+
+  it("measures the common area of two rectangles along the axes", () => {
+    expect(convexIntersectionArea(rect(0, 0, 10, 4), rect(5, 0, 10, 4))).toBeCloseTo(20, 9);
+    expect(convexIntersectionArea(rect(0, 0, 10, 4), rect(2, 1, 3, 2))).toBeCloseTo(6, 9);
+    expect(convexIntersectionArea(rect(0, 0, 10, 4), rect(20, 0, 10, 4))).toBe(0);
+    expect(convexIntersectionArea(rect(0, 0, 10, 4), rect(10, 0, 10, 4))).toBeCloseTo(0, 9); // touching edges
+  });
+
+  it("measures turned rectangles: a square and itself turned 45° share a regular octagon", () => {
+    const square = rect(0, 0, 1, 1);
+    const diamond = turned(0.5, 0.5, 1, 1, 45);
+    expect(convexIntersectionArea(square, diamond)).toBeCloseTo(2 * (Math.SQRT2 - 1), 9);
+    expect(convexIntersectionArea(diamond, square)).toBeCloseTo(2 * (Math.SQRT2 - 1), 9);
+  });
+
+  it("does not depend on the corners' order or direction", () => {
+    const a = turned(50, 40, 40, 12, 30);
+    const b = rect(40, 30, 30, 20);
+    const reversed = [...b].reverse() as Quad;
+    expect(convexIntersectionArea(a, reversed)).toBeCloseTo(convexIntersectionArea(a, b), 9);
+    expect(convexIntersectionArea([...a].reverse(), b)).toBeCloseTo(convexIntersectionArea(a, b), 9);
+  });
+
+  it("gives the share of the smaller quad that the other covers", () => {
+    expect(overlapShare(rect(0, 0, 10, 4), rect(5, 0, 10, 4))).toBeCloseTo(0.5, 9);
+    expect(overlapShare(rect(0, 0, 10, 4), rect(2, 1, 3, 2))).toBeCloseTo(1, 9); // the small one lies inside
+    expect(overlapShare(rect(2, 1, 3, 2), rect(0, 0, 10, 4))).toBeCloseTo(1, 9);
+    expect(overlapShare(rect(0, 0, 10, 4), rect(30, 0, 10, 4))).toBe(0);
+    expect(overlapShare(rect(0, 0, 10, 4), turned(5, 2, 10, 4, 90))).toBeCloseTo(16 / 40, 9);
+  });
+
+  it("is 0 for a quad without area", () => {
+    expect(overlapShare(rect(0, 0, 10, 4), rect(2, 2, 5, 0))).toBe(0);
   });
 });

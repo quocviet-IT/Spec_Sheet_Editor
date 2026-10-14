@@ -122,6 +122,60 @@ export function polygonArea(points: readonly Point[]): number {
   return Math.abs(sum) / 2;
 }
 
+function signedArea(points: readonly Point[]): number {
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return sum / 2;
+}
+
+/**
+ * The area two convex polygons have in common (Sutherland–Hodgman: `a` clipped by each edge of `b`).
+ * Either may run either way round; a polygon without area shares none.
+ */
+export function convexIntersectionArea(a: readonly Point[], b: readonly Point[]): number {
+  const turn = Math.sign(signedArea(b));
+  if (turn === 0 || signedArea(a) === 0) return 0;
+  let poly: Point[] = [...a];
+  for (let i = 0; i < b.length && poly.length > 0; i++) {
+    const p = b[i];
+    const q = b[(i + 1) % b.length];
+    // Positive inside the edge p → q, for b's own direction.
+    const side = (r: Point) => turn * ((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+    const cut = (r: Point, s: Point, sr: number, ss: number): Point => {
+      const t = sr / (sr - ss);
+      return { x: r.x + t * (s.x - r.x), y: r.y + t * (s.y - r.y) };
+    };
+    const next: Point[] = [];
+    for (let j = 0; j < poly.length; j++) {
+      const prev = poly[(j + poly.length - 1) % poly.length];
+      const cur = poly[j];
+      const sp = side(prev);
+      const sc = side(cur);
+      if (sc >= 0) {
+        if (sp < 0) next.push(cut(prev, cur, sp, sc));
+        next.push(cur);
+      } else if (sp >= 0) {
+        next.push(cut(prev, cur, sp, sc));
+      }
+    }
+    poly = next;
+  }
+  return poly.length < 3 ? 0 : polygonArea(poly);
+}
+
+/** How much of the smaller of two convex quads the other covers: 0 (apart) to 1 (one lies inside the other). */
+export function overlapShare(a: readonly Point[], b: readonly Point[]): number {
+  const smaller = Math.min(polygonArea(a), polygonArea(b));
+  return smaller > 0 ? convexIntersectionArea(a, b) / smaller : 0;
+}
+
+/** Two readings whose quads share at least this much of the smaller one sit at the same place (UC-04 step 4). */
+export const SAME_PLACE_OVERLAP = 0.5;
+
 export function polygonPerimeter(points: readonly Point[]): number {
   let sum = 0;
   for (let i = 0; i < points.length; i++) sum += distance(points[i], points[(i + 1) % points.length]);

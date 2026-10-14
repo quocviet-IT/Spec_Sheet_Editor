@@ -18,6 +18,11 @@ export type Detection = {
   /** 0–100, informational only. */
   confidence: number | null;
   source: DetectionSource;
+  /**
+   * What the machine read in front of the value ("Ø", "R", "2X Ø"), inside the value's box; absent when
+   * there is none. Not part of the value: matching compares values only.
+   */
+  prefix?: string;
 };
 
 export type Edit = {
@@ -32,6 +37,8 @@ export type Edit = {
   fontPx: number;
   textColor: string;
   bgColor: string;
+  /** The value's prefix, drawn again in front of the new value (the mask covers the old one); absent when none. */
+  prefix?: string;
 };
 
 /** A box in pixels of the trimmed page, with its angle (same meaning as above). */

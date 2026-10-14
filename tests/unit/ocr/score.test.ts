@@ -6,6 +6,7 @@ import type { Detection } from "@/lib/ocr/scan";
 
 const at = (x: number, y: number, value: string): Detection => ({
   value,
+  prefix: "",
   text: value,
   score: 0.9,
   angle: 0,
@@ -34,6 +35,7 @@ describe("scoreClicks", () => {
         i < 2
           ? {
               value: t.value,
+              prefix: "",
               text: t.value,
               score: 0.9,
               angle: 0,
