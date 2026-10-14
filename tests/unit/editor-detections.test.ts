@@ -66,10 +66,10 @@ describe("fromScan", () => {
   });
 });
 
-/** A value at 30° around (300, 300): four blocks 12 px along and 13 px across, and a dimension line 4 px below them. */
-function slantedPage(): Raster {
+/** A value at 30° (or `angle`) around (300, 300): four blocks 12 px along and 13 px across, and a dimension line 4 px below them. */
+function slantedPage(angle = 30): Raster {
   const r = createRaster(W, H);
-  const { u, v } = axes(30);
+  const { u, v } = axes(angle);
   for (let y = 150; y <= 450; y++) {
     for (let x = 150; x <= 450; x++) {
       const s = (x - 300) * u.x + (y - 300) * u.y;
@@ -83,6 +83,22 @@ function slantedPage(): Raster {
 }
 /** The detector's quad around it: the text grown by 7 px on every side. */
 const slantedQuad = orderClockwise(boxCorners({ cx: 300, cy: 300, w: 74, h: 27, angle: 30 }));
+
+/**
+ * Two short values written along the page's axes, too short for the angle search to see a clear valley a few
+ * degrees away: on its own it keeps a quad's wrong angle. The vertical one: three glyphs 9 px across and 4 px
+ * along, 1 px apart, at x 500–508, y 300–313. The horizontal one: four glyphs 8 px across and 4 px along,
+ * 2 px apart, at x 300–321, y 500–507.
+ */
+function axisValuesPage(): Raster {
+  const r = createRaster(W, H);
+  for (let i = 0; i < 3; i++) ink(r, 500, 300 + i * 5, 508, 303 + i * 5);
+  for (let i = 0; i < 4; i++) ink(r, 300 + i * 6, 500, 303 + i * 6, 507);
+  return r;
+}
+/** The detector's quads around them, turned to `angle`: the text grown by 4 px on every side. */
+const verticalQuad = (angle: number) => orderClockwise(boxCorners({ cx: 504, cy: 306.5, w: 22, h: 17, angle }));
+const horizontalQuad = (angle: number) => orderClockwise(boxCorners({ cx: 310.5, cy: 503.5, w: 30, h: 16, angle }));
 
 describe("readingBox (scan and click)", () => {
   it("makes a reading within 4° of an axis exactly that axis", () => {
@@ -111,6 +127,54 @@ describe("readingBox (scan and click)", () => {
     const [d] = await fromScan(scan, slantedPage(), ids());
     near(d.angle, 30, 0.5);
     near(d.box.h * W, 13, 1);
+  });
+
+  it.each([
+    [-98, -90],
+    [-82, -90],
+    [98, 90],
+    [82, 90],
+    [-101, -90],
+  ])("draws a vertical value whose quad is at %i° at exactly %i°, with its 9-px digits", (quadAngle, axis) => {
+    const r = axisValuesPage();
+    const px = readingBox(r, { quad: verticalQuad(quadAngle), angle: quadAngle });
+    expect(px.angle).toBe(axis);
+    const d = toDetection(r, px, { readValue: "1.5", confidence: 90, source: "click" }, ids());
+    expect(d.angle).toBe(axis);
+    near(d.box.h * W, 9, 0.01);
+  });
+
+  it.each([6, -6])("draws a horizontal value whose quad is at %i° at exactly 0°, with its 8-px digits", (quadAngle) => {
+    const r = axisValuesPage();
+    const px = readingBox(r, { quad: horizontalQuad(quadAngle), angle: quadAngle });
+    expect(px.angle).toBe(0);
+    near(toDetection(r, px, { readValue: "1.50", confidence: 90, source: "click" }, ids()).box.h * W, 8, 0.01);
+  });
+
+  it("draws an upside-down horizontal value whose quad is 6° off at exactly 180°", () => {
+    for (const quadAngle of [174, -174]) expect(readingBox(axisValuesPage(), { quad: horizontalQuad(quadAngle), angle: quadAngle }).angle).toBe(180);
+  });
+
+  it("stores a vertical value whose quad is 8° off on the axis through fromScan", async () => {
+    const scan: ScanResult = {
+      detections: [{ value: "1.5", prefix: "", text: "1.5", score: 0.9, angle: -98, quad: verticalQuad(-98), box: { x: 0, y: 0, w: 0, h: 0 } }],
+      timing: { horizontalMs: 1, verticalMs: 1 },
+    };
+    const [d] = await fromScan(scan, axisValuesPage(), ids());
+    expect(d.angle).toBe(-90);
+    near(d.box.h * W, 9, 0.01);
+  });
+
+  it.each([
+    [15, 12],
+    [-15, -12],
+    [30, 26],
+  ])("keeps a value written at %i° (its quad at %i°) at its own angle, with its 13-px digits", (angle, quadAngle) => {
+    const r = slantedPage(angle);
+    const quad = orderClockwise(boxCorners({ cx: 300, cy: 300, w: 74, h: 27, angle: quadAngle }));
+    const px = readingBox(r, { quad, angle: quadAngle });
+    near(px.angle, angle, 0.5);
+    near(Math.round(toDetection(r, px, { readValue: "1.20", confidence: 90, source: "click" }, ids()).box.h * W), 13, 1);
   });
 
   it("lets a waiting task run before fromScan searches a slanted value's angle, and not for upright ones or values outside the drawing", async () => {
@@ -144,6 +208,20 @@ describe("drawnBox (UC-07)", () => {
 
   it("leaves an empty rectangle at the chosen angle", () => {
     expect(drawnBox(createRaster(W, H), rect, 27)).toEqual(boxForDrawnRect(rect, 27));
+  });
+
+  it("turns a free angle typed within 15° of an axis to that axis when the digits measure no less tall there", () => {
+    const r = axisValuesPage();
+    const vertical = { x: 494, y: 294, w: 21, h: 26 }; // around the vertical value, 6 px each side
+    const horizontal = { x: 294, y: 494, w: 34, h: 20 };
+    for (const [typed, axis] of [[-98, -90], [-82, -90], [98, 90], [-100, -90]]) expect(drawnBox(r, vertical, typed)).toEqual(boxForDrawnRect(vertical, axis));
+    for (const [typed, axis] of [[6, 0], [-3, 0], [172, 180]]) expect(drawnBox(r, horizontal, typed)).toEqual(boxForDrawnRect(horizontal, axis));
+  });
+
+  it("keeps a free angle typed within 15° of an axis when the value is written at a slant", () => {
+    const px = drawnBox(slantedPage(15), rect, 13);
+    near(px.angle, 15, 0.5);
+    expect(px).toEqual(boxForDrawnRect(rect, px.angle));
   });
 });
 

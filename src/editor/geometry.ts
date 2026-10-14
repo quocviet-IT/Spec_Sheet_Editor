@@ -40,10 +40,15 @@ export { angleFromQuad } from "@/lib/ocr/geometry";
  */
 export const SNAP_TOLERANCE = 4;
 
+/** The axis nearest the angle: exactly 0, 90, -90 or 180. */
+export function nearestAxis(angle: number): number {
+  return normalizeAngle(Math.round(normalizeAngle(angle) / 90) * 90);
+}
+
 /** 0, 90, -90 or 180 when the angle lies within `tolerance` degrees of it; otherwise the angle, normalised. */
 export function snapAngle(angle: number, tolerance = SNAP_TOLERANCE): number {
   const a = normalizeAngle(angle);
-  const axis = normalizeAngle(Math.round(a / 90) * 90);
+  const axis = nearestAxis(a);
   if (Math.abs(normalizeAngle(a - axis)) <= tolerance) return axis;
   return angle > -180 && angle <= 180 ? angle : a; // normalising an angle already in range only adds rounding noise
 }

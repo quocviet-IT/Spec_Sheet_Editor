@@ -4,7 +4,7 @@ import { normalizeAngle, orderClockwise, type Quad } from "@/lib/ocr/geometry";
 import { createRaster, cropQuad, cropTurnsQuarter } from "@/lib/ocr/raster";
 import {
   angleFromQuad, axes, boxCorners, boxForDrawnRect, boxFromQuad, centreInDrawingArea, detectionAt, drawingAreaPx,
-  isAxisAngle, panelOf, pointInDrawingArea, readingOrder, rectFromDrag, rectInDrawingArea, roundAngle, roundBox,
+  isAxisAngle, nearestAxis, panelOf, pointInDrawingArea, readingOrder, rectFromDrag, rectInDrawingArea, roundAngle, roundBox,
   sameSize, snapAngle, toBox, toPx,
 } from "@/editor/geometry";
 
@@ -152,6 +152,19 @@ describe("snapAngle", () => {
     expect(snapAngle(200)).toBe(-160);
     expect(snapAngle(5, 6)).toBe(0);
     expect(snapAngle(5, 4)).toBe(5);
+  });
+});
+
+describe("nearestAxis", () => {
+  it("gives exactly 0, 90, -90 or 180, never -0 or -180", () => {
+    expect(nearestAxis(6)).toBe(0);
+    expect(Object.is(nearestAxis(-6), 0)).toBe(true);
+    expect(nearestAxis(-98)).toBe(-90);
+    expect(nearestAxis(-77.3)).toBe(-90);
+    expect(nearestAxis(98)).toBe(90);
+    expect(nearestAxis(174)).toBe(180);
+    expect(nearestAxis(-174)).toBe(180);
+    expect(nearestAxis(366)).toBe(0);
   });
 });
 

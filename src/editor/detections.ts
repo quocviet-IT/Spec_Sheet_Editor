@@ -1,11 +1,11 @@
 import type { OcrClient } from "@/lib/ocr/client";
-import type { Quad, Rect } from "@/lib/ocr/geometry";
+import { normalizeAngle, type Quad, type Rect } from "@/lib/ocr/geometry";
 import { OcrFailure } from "@/lib/ocr/protocol";
 import type { Raster } from "@/lib/ocr/raster";
 import type { ScanResult } from "@/lib/ocr/scan";
 import type { PageTextItem } from "@/lib/page/text";
 import type { ExportSource } from "./export-plan";
-import { boxForDrawnRect, boxFromQuad, centreInDrawingArea, drawingAreaPx, isAxisAngle, roundAngle, roundBox, snapAngle, toBox, toPx } from "./geometry";
+import { boxForDrawnRect, boxFromQuad, centreInDrawingArea, drawingAreaPx, isAxisAngle, nearestAxis, roundAngle, roundBox, snapAngle, toBox, toPx } from "./geometry";
 import { pdfTextValues } from "./pdf-text";
 import { analyseBox, refineAngle } from "./pixels";
 import type { Detection, Edit, PxBox } from "./types";
@@ -51,6 +51,38 @@ export function fromPdfText(page: LoadedPage, newId: () => string): Detection[] 
 type Reading = { quad: Quad; angle: number };
 
 /**
+ * A free angle within this many degrees of 0, 90, -90 or 180 is weighed against that axis
+ * (`axisUnlessSlanted`): the detector's quad of a value written along an axis can lie this far off it.
+ */
+export const AXIS_SPAN = 15;
+/**
+ * Near an axis, the slanted angle is kept only when the digits measure at least this many pixels less tall
+ * there than at the axis, and at least this share less tall.
+ */
+export const SLANT_MIN_GAIN_PX = 1;
+export const SLANT_MIN_GAIN_SHARE = 0.08;
+
+/**
+ * The angle of a box whose free angle lies near an axis: the axis, unless the digits measure clearly less
+ * tall at the slanted angle the search found (`found`, with `slanted` the search's tight box there) than at
+ * the axis (SLANT_MIN_GAIN_PX and SLANT_MIN_GAIN_SHARE). Measured across slanted ink, digits come out too
+ * tall, so a value written along the axis measures no less tall there; on a short value, or one a line
+ * touches, the angle search sees no clear valley and keeps the quad's few degrees of noise. `boxAt` is the
+ * box at another angle. A free angle farther than AXIS_SPAN from every axis, or a found angle that is an
+ * axis, is kept as it is.
+ */
+function axisUnlessSlanted(raster: Raster, given: PxBox, slanted: PxBox, found: number, boxAt: (angle: number) => PxBox): number {
+  const axis = nearestAxis(given.angle);
+  if (isAxisAngle(found) || Math.abs(normalizeAngle(given.angle - axis)) > AXIS_SPAN) return found;
+  const atAxis = analyseBox(raster, boxAt(axis))?.tight;
+  // `refineAngle` gives the box itself back when it holds no text.
+  const atSlant = slanted === given ? null : slanted;
+  if (!atAxis || !atSlant) return atSlant ? found : axis;
+  const clearlyLessTall = atSlant.h <= atAxis.h - SLANT_MIN_GAIN_PX && atSlant.h <= atAxis.h * (1 - SLANT_MIN_GAIN_SHARE);
+  return clearlyLessTall ? found : axis;
+}
+
+/**
  * A reading's quad as a box at the reading's angle, made exactly 0, 90, -90 or 180 within SNAP_TOLERANCE.
  * A reading that close to an axis stays on it and its angle is not searched (by design): most values run
  * along the page's axes, and a quad a few degrees off one is the detector's noise, not a slant.
@@ -59,9 +91,14 @@ function quadBox(reading: Reading): PxBox {
   return boxFromQuad(reading.quad, snapAngle(reading.angle));
 }
 
-/** The quad's box turned to where the digits measure least tall, made exact again if that lands near an axis. */
+/**
+ * The quad's box turned to where the digits measure least tall, made exact again if that lands near an
+ * axis; near an axis, the axis unless the value measures clearly less tall slanted (`axisUnlessSlanted`).
+ */
 function refinedQuadBox(raster: Raster, quad: Quad, px: PxBox): PxBox {
-  const angle = snapAngle(refineAngle(raster, px).angle);
+  if (isAxisAngle(px.angle)) return px;
+  const refined = refineAngle(raster, px);
+  const angle = axisUnlessSlanted(raster, px, refined, snapAngle(refined.angle), (a) => boxFromQuad(quad, a));
   return angle === px.angle ? px : boxFromQuad(quad, angle);
 }
 
@@ -69,7 +106,8 @@ function refinedQuadBox(raster: Raster, quad: Quad, px: PxBox): PxBox {
  * A scan's or a click's reading as a box on the page, at the text's own angle. The reading's angle (its
  * quad's) becomes exactly 0, 90, -90 or 180 within SNAP_TOLERANCE (`quadBox`); a free angle is then turned
  * to where the digits measure least tall (`refineAngle`), made exact again if that lands near an axis, and
- * the box is the quad's at that angle.
+ * the box is the quad's at that angle. A quad within AXIS_SPAN of an axis gives the axis, unless the digits
+ * measure clearly less tall at the slanted angle (`axisUnlessSlanted`).
  */
 export function readingBox(raster: Raster, reading: Reading): PxBox {
   return refinedQuadBox(raster, reading.quad, quadBox(reading));
@@ -77,14 +115,17 @@ export function readingBox(raster: Raster, reading: Reading): PxBox {
 
 /**
  * UC-07: the box for a rectangle drawn around a value, at the angle the person chose. An axis choice stays
- * exact; a free angle is turned to where the digits measure least tall (`refineAngle`). Unlike
- * `readingBox`, the result is not snapped to an axis: a free angle the person typed near one (say 2°)
- * stays a free angle near it.
+ * exact; a free angle is turned to where the digits measure least tall (`refineAngle`). A free angle typed
+ * within AXIS_SPAN of an axis becomes that axis, unless the digits measure clearly less tall at the slanted
+ * angle (`axisUnlessSlanted`). Unlike `readingBox`, a slanted result is not snapped to an axis: a free angle
+ * the person typed near one (say 2°) around a value written at it stays a free angle near it.
  */
 export function drawnBox(raster: Raster, rect: Rect, angle: number): PxBox {
   const px = boxForDrawnRect(rect, angle);
-  const refined = refineAngle(raster, px).angle;
-  return refined === px.angle ? px : boxForDrawnRect(rect, refined);
+  if (isAxisAngle(px.angle)) return px;
+  const refined = refineAngle(raster, px);
+  const chosen = axisUnlessSlanted(raster, px, refined, refined.angle, (a) => boxForDrawnRect(rect, a));
+  return chosen === px.angle ? px : boxForDrawnRect(rect, chosen);
 }
 
 /** A new task, so the page can paint and answer input between two long measurements. */
