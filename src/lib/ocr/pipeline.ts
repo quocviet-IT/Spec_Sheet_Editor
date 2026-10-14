@@ -22,13 +22,11 @@ export type Reading = { text: string; score: number; quad: Quad; turn: 0 | 90 | 
  * accepted are re-read, and the upside-down reading replaces the upright one only when it is accepted
  * (`upsideDownWins`). The scan and the click accept only a value with its point written
  * (`isPointedDimension`): a more confident "069" read upside down never replaces an upright "690".
- * isValue (any value, a repaired one included) lets an upside-down value replace an upright reading
- * that is no value at all.
  */
 export type RegionReader = (
   models: OcrModels,
   image: Raster,
-  opts?: { bothDirections?: boolean; accept?: (text: string) => boolean; isValue?: (text: string) => boolean },
+  opts?: { bothDirections?: boolean; accept?: (text: string) => boolean },
 ) => Promise<Reading[]>;
 
 /** RapidOCR Global.text_score. */
@@ -79,20 +77,13 @@ export async function recognizeCrops(models: OcrModels, crops: readonly Raster[]
 /**
  * Whether the upside-down reading replaces the upright one. With `accept`, only an accepted reading can: it
  * replaces an upright reading that is not accepted, and between two accepted readings the more confident
- * wins. With `isValue` as well, an upside-down value without its point replaces an upright reading that is
- * no value at all ("0L1" upright, "170" upside down); an upright value is never replaced that way ("690"
- * stays, "069" does not win). In every other case the upright reading stays, however confident the other
- * is. Without `accept`, the more confident reading wins.
+ * wins. In every other case the upright reading stays, however confident the other is. Without `accept`,
+ * the more confident reading wins.
  */
-export function upsideDownWins(
-  upright: RecResult,
-  upsideDown: RecResult,
-  accept?: (text: string) => boolean,
-  isValue?: (text: string) => boolean,
-): boolean {
+export function upsideDownWins(upright: RecResult, upsideDown: RecResult, accept?: (text: string) => boolean): boolean {
   if (!accept) return upsideDown.score > upright.score;
-  if (accept(upsideDown.text)) return !accept(upright.text) || upsideDown.score > upright.score;
-  return !!isValue && !isValue(upright.text) && isValue(upsideDown.text);
+  if (!accept(upsideDown.text)) return false;
+  return !accept(upright.text) || upsideDown.score > upright.score;
 }
 
 /**
@@ -114,12 +105,12 @@ export const readRegion: RegionReader = async (models, image, opts = {}) => {
   const texts = await recognizeCrops(models, crops);
   const upsideDown = texts.map(() => false);
   if (opts.bothDirections) {
-    const { accept, isValue } = opts;
+    const { accept } = opts;
     const retry = texts.flatMap((t, i) => (accept?.(t.text) ? [] : [i]));
     if (retry.length > 0) {
       const flipped = await recognizeCrops(models, retry.map((i) => rotate180(crops[i])));
       retry.forEach((i, k) => {
-        if (upsideDownWins(texts[i], flipped[k], accept, isValue)) {
+        if (upsideDownWins(texts[i], flipped[k], accept)) {
           texts[i] = flipped[k];
           upsideDown[i] = true;
         }

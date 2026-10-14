@@ -1,4 +1,4 @@
-import { isDimension, isPointedDimension, valueReadings } from "./dimension-text";
+import { isPointedDimension, valueReadings } from "./dimension-text";
 import { angleFromQuad, bounds, rectCentre, type Point, type Quad, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type RegionReader } from "./pipeline";
 import { crop, resizeBicubic, rotateExpand, unrotatePoint, type Raster } from "./raster";
@@ -47,7 +47,7 @@ export async function readAtPoint(
     anglesTried++;
     const angleStarted = performance.now();
     const image = angle === 0 ? square : rotateExpand(square, angle);
-    const readings = await read(models, image, { bothDirections: true, accept: isPointedDimension, isValue: isDimension });
+    const readings = await read(models, image, { bothDirections: true, accept: isPointedDimension });
     longestAngleMs = Math.max(longestAngleMs, performance.now() - angleStarted);
 
     let best: ClickReading | null = null;

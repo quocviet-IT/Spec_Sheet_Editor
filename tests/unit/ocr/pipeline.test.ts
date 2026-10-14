@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildAlphabet } from "@/lib/ocr/alphabet";
-import { isPointedDimension, toDimension } from "@/lib/ocr/dimension-text";
+import { isPointedDimension } from "@/lib/ocr/dimension-text";
 import { fitWithinBounds, padVertically, readRegion, upsideDownWins, type OcrModels, type Tensor } from "@/lib/ocr/pipeline";
 import { createRaster } from "@/lib/ocr/raster";
 
@@ -150,16 +150,6 @@ describe("upsideDownWins", () => {
     expect(upsideDownWins(r("080", 0.8), r("080", 0.8), accept)).toBe(false);
     expect(upsideDownWins(r("170", 0.8), r("0L1", 0.85), accept)).toBe(false);
     expect(upsideDownWins(r("1.30", 0.6), r("SO", 0.99), accept)).toBe(false);
-  });
-
-  it("with isValue, lets an upside-down value without its point replace an upright reading that is no value", () => {
-    const accept = isPointedDimension;
-    const isValue = (t: string) => toDimension(t) !== null;
-    expect(upsideDownWins(r("0L1", 0.85), r("170", 0.8), accept, isValue)).toBe(true); // the value is read, not lost
-    expect(upsideDownWins(r("690", 0.9), r("069", 0.95), accept, isValue)).toBe(false); // an upright value stays
-    expect(upsideDownWins(r("180", 0.88), r("081", 0.9), accept, isValue)).toBe(false);
-    expect(upsideDownWins(r("080", 0.8), r("080", 0.8), accept, isValue)).toBe(false);
-    expect(upsideDownWins(r("SO", 0.99), r("Q1", 0.9), accept, isValue)).toBe(false); // nothing to gain
   });
 
   it("between two accepted readings, keeps the more confident", () => {
