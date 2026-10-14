@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drawingAreaPx } from "@/editor/geometry";
+import { drawingAreaPx, edgeMarginPx } from "@/editor/geometry";
 import { editorView, SAMPLE_SIZE, SAMPLE_TRUTH } from "@/lib/ocr/bench/sample";
 import { createRaster, type Raster } from "@/lib/ocr/raster";
 
@@ -19,11 +19,13 @@ function sampleWithFrame(x: number, y: number, w: number, h: number): Raster {
 }
 
 describe("editorView (the bench measures what the editor scans)", () => {
-  it("scans the drawing area of the page the editor holds, not a frame set by hand", () => {
+  it("scans the drawing area of the page the editor holds, and the margin around it, not a frame set by hand", () => {
     const view = editorView(createRaster(SAMPLE_SIZE.width, SAMPLE_SIZE.height));
     expect([view.page.width, view.page.height]).toEqual([SAMPLE_SIZE.width, SAMPLE_SIZE.height]);
     expect(view.frame).toEqual(drawingAreaPx(SAMPLE_SIZE.width, SAMPLE_SIZE.height));
     expect(view.frame).toEqual({ x: 52, y: 117, w: 708, h: 537 });
+    expect(view.margin).toBe(edgeMarginPx(SAMPLE_SIZE.width));
+    expect(view.margin).toBe(23);
     expect(view.truth).toEqual(SAMPLE_TRUTH);
   });
 

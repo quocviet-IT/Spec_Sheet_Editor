@@ -146,19 +146,50 @@ export function rectFromDrag(a: Point, b: Point): Rect {
 /** A drag shorter than this on either side (page pixels) is a click, not a box. */
 export const MIN_DRAWN_PX = 4;
 
-/** UC-07 exception 1a: every corner of the drawn rectangle lies inside the four panels. */
+/**
+ * UC-07 exception 1a: a drawn rectangle counts when its centre lies inside the four panels, as a value does
+ * (BR-02); it may run over their edge around a value written at the edge.
+ */
 export function rectInDrawingArea(rect: Rect, pageW: number, pageH: number): boolean {
+  return pointInDrawingArea({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, pageW, pageH);
+}
+
+/** Whether the point lies inside the four panels: the test of BR-02 for a value's centre, in page pixels. */
+export function pointInDrawingArea(p: Point, pageW: number, pageH: number): boolean {
+  return centreInDrawingArea({ cx: p.x / pageW, cy: p.y / pageH, w: 0, h: 0 });
+}
+
+/**
+ * The margin around the drawing area, as a share of the page width on each side, that the scan reads and a
+ * click may fall in: a value whose centre lies inside the area (BR-02) can run over its edge.
+ */
+export const EDGE_MARGIN = 0.02;
+
+/** EDGE_MARGIN in whole pixels of a page this wide. */
+export function edgeMarginPx(pageW: number): number {
+  return Math.round(EDGE_MARGIN * pageW);
+}
+
+/** UC-06 step 1: a click counts inside the drawing area or within its margin (`edgeMarginPx`). */
+export function clickInReach(p: Point, pageW: number, pageH: number): boolean {
+  const m = edgeMarginPx(pageW);
   return (
-    rect.x >= DRAWING_AREA.x0 * pageW &&
-    rect.y >= DRAWING_AREA.y0 * pageH &&
-    rect.x + rect.w <= DRAWING_AREA.x1 * pageW &&
-    rect.y + rect.h <= DRAWING_AREA.y1 * pageH
+    p.x >= DRAWING_AREA.x0 * pageW - m &&
+    p.x <= DRAWING_AREA.x1 * pageW + m &&
+    p.y >= DRAWING_AREA.y0 * pageH - m &&
+    p.y <= DRAWING_AREA.y1 * pageH + m
   );
 }
 
-/** UC-05 exception 1b / UC-06 step 1: a click counts only inside the drawing. */
-export function pointInDrawingArea(p: Point, pageW: number, pageH: number): boolean {
-  return centreInDrawingArea({ cx: p.x / pageW, cy: p.y / pageH, w: 0, h: 0 });
+/**
+ * UC-06: what a click in reach gives, from the centre of the value read there (null when nothing was read).
+ * The value counts when its centre lies inside the drawing (BR-02), wherever the click fell. Otherwise a click
+ * inside the drawing says no value could be read, and a click in the margin beside it has no effect, as a
+ * click outside the drawing (UC-05 exception 1b).
+ */
+export function clickOutcome(click: Point, found: Point | null, pageW: number, pageH: number): "value" | "no-value" | "ignored" {
+  if (found && pointInDrawingArea(found, pageW, pageH)) return "value";
+  return pointInDrawingArea(click, pageW, pageH) ? "no-value" : "ignored";
 }
 
 /**

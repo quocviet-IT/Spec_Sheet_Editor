@@ -86,10 +86,10 @@ test("the matching prompt closes when another value is edited", async ({ page })
   expect(edits.map((e) => [e.oldValue, e.newValue]).sort()).toEqual([["2.50", "2.60"], ["6.90", "7.10"]]);
 });
 
-test("TC-34 a box running into the right-hand table is refused", async ({ page }) => {
+test("TC-34 a box centred in the right-hand table is refused", async ({ page }) => {
   await openValuesSheet(page, "tc34");
   await drawButton(page).click();
-  await dragBox(page, 0.6, 0.3, 0.75, 0.33);
+  await dragBox(page, 0.7, 0.3, 0.8, 0.33);
   await expect(page.getByRole("alert").filter({ hasText: /bốn ô hình vẽ|four drawing panels/ })).toBeVisible();
   await expect(page.getByRole("dialog", { name: /Chiều của số|Direction of the value/ })).toHaveCount(0);
   await expect(popover(page)).toHaveCount(0);
@@ -154,11 +154,11 @@ test("the same refusal twice is a new alert each time", async ({ page }) => {
   await openValuesSheet(page, "twice");
   await drawButton(page).click();
   const refusal = page.getByRole("alert").filter({ hasText: /bốn ô hình vẽ|four drawing panels/ });
-  await dragBox(page, 0.6, 0.3, 0.75, 0.33);
+  await dragBox(page, 0.7, 0.3, 0.8, 0.33);
   await expect(refusal).toBeVisible();
   const first = await refusal.elementHandle();
   const firstId = await refusal.getAttribute("data-notice-id");
-  await dragBox(page, 0.6, 0.3, 0.75, 0.33);
+  await dragBox(page, 0.7, 0.3, 0.8, 0.33);
   await expect.poll(() => refusal.getAttribute("data-notice-id")).not.toBe(firstId);
   expect(await first!.evaluate((el) => el.isConnected)).toBe(false); // the old alert element was replaced
   await expect(refusal).toHaveCount(1);

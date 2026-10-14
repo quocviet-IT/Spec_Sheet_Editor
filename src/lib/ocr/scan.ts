@@ -14,8 +14,8 @@ export type ScanResult = { detections: Detection[]; timing: { horizontalMs: numb
 
 /**
  * UC-04 step 3: the drawing area is enlarged by the whole number that brings it closest to this width
- * (at least 1). A whole-number factor keeps every source pixel on the grid: on the sample sheet,
- * 708 px × 3 finds 1.50 where 708 → 2100 px does not.
+ * (at least 1); a margin read around it is enlarged with it. A whole-number factor keeps every source pixel
+ * on the grid: on the sample sheet, 708 px × 3 finds 1.50 where 708 → 2100 px does not.
  */
 export const SCAN_TARGET_WIDTH = 2100;
 /** Two readings of the same value closer than this (fraction of the page width) are one: 20 px on the 1135-px sample. */
@@ -64,12 +64,26 @@ export function mergeOverlapping(candidates: readonly Detection[], distance: num
   return kept;
 }
 
+/** The area grown by `margin` on each side; the growth stops at the page's edges. */
+export function grownFrame(area: Rect, margin: number, pageW: number, pageH: number): Rect {
+  if (!(margin > 0)) return area;
+  const x = Math.min(area.x, Math.max(0, area.x - margin));
+  const y = Math.min(area.y, Math.max(0, area.y - margin));
+  const right = Math.max(area.x + area.w, Math.min(pageW, area.x + area.w + margin));
+  const bottom = Math.max(area.y + area.h, Math.min(pageH, area.y + area.h + margin));
+  return { x, y, w: right - x, h: bottom - y };
+}
+
 /**
  * UC-04 steps 3–4: scan the drawing area at 0° and 90° clockwise (and ±45° with `diagonals`) and keep the
  * readings that are values. Every crop that is not a value with its point written is also read upside down,
  * and that reading replaces the upright one only when it is a value with its point written
  * (`upsideDownWins`); the kept reading's quad and turn give the angle. A value only repaired from 3–4 digits
  * is dropped where a value with its point written was read at the same place (`valueReadings`).
+ *
+ * `margin` (page pixels) grows the frame that is read on each side, within the page, so a value whose digits
+ * run over the area's edge is read whole; the frame is enlarged by the area's own factor (SCAN_TARGET_WIDTH).
+ * Readings beside the area are returned too: which values belong to the drawing is the caller's to decide.
  */
 export async function scanArea(
   models: OcrModels,
@@ -78,13 +92,15 @@ export async function scanArea(
   targetWidth: number = SCAN_TARGET_WIDTH,
   read: RegionReader = readRegion,
   diagonals: boolean = SCAN_DIAGONALS,
+  margin: number = 0,
 ): Promise<ScanResult> {
-  const frame = crop(page, area);
-  const factor = Math.max(1, Math.round(targetWidth / frame.width));
+  const at = grownFrame(area, margin, page.width, page.height);
+  const frame = crop(page, at);
+  const factor = Math.max(1, Math.round(targetWidth / Math.max(1, Math.round(area.w))));
   const width = frame.width * factor;
   const height = frame.height * factor;
   const big = resizeBicubic(frame, width, height);
-  const toPage = (p: Point): Point => ({ x: area.x + (p.x * frame.width) / width, y: area.y + (p.y * frame.height) / height });
+  const toPage = (p: Point): Point => ({ x: at.x + (p.x * frame.width) / width, y: at.y + (p.y * frame.height) / height });
   const opts = { bothDirections: true, accept: isPointedDimension };
 
   /** Readings of one pass in page pixels, with the page angle of that pass's left-to-right. */

@@ -78,6 +78,24 @@ describe("scanArea", () => {
     expect(widths).toEqual([300, 50]); // never shrinks: × 1
   });
 
+  it("reads a margin around the area, within the page, enlarged by the area's own factor", async () => {
+    const sizes: number[][] = [];
+    const read: RegionReader = async (_models, image) => {
+      sizes.push([image.width, image.height]);
+      return image.width > image.height ? [{ text: "1.30", score: 0.9, turn: 0, quad: square(4, 6, 10) }] : [];
+    };
+    // 200 px wide at a target of 400: × 2. Grown by 10 px on each side: 220 × 120, read at 440 × 240.
+    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read, false, 10);
+    expect(sizes).toEqual([[440, 240], [240, 440]]);
+    // (4, 6) in the enlarged frame is (2, 3) in the frame, which starts at (90, 40): a value just beside the area.
+    expect(detections[0].box).toEqual({ x: 92, y: 43, w: 5, h: 5 });
+
+    // Grown only as far as the page goes: the area starts 5 px from the left and the top edge.
+    sizes.length = 0;
+    await scanArea(models, createRaster(400, 300), { x: 5, y: 5, w: 200, h: 100 }, 400, read, false, 10);
+    expect(sizes[0]).toEqual([2 * 215, 2 * 115]);
+  });
+
   it("keeps what is written in front of a value", async () => {
     const read: RegionReader = async (_models, image) =>
       image.width === 400

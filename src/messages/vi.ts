@@ -148,7 +148,7 @@ export const vi = {
     ocrLoad: "Không tải được bộ đọc số. Kiểm tra kết nối rồi tải lại trang; vẫn có thể dùng Vẽ khung.",
     drawBox: "Vẽ khung",
     drawHint: "Kéo chuột quanh số cần sửa. Nhấn Esc để huỷ.",
-    drawOutside: "Khung phải nằm trong bốn ô hình vẽ.",
+    drawOutside: "Tâm của khung phải nằm trong bốn ô hình vẽ.",
     drawEmpty: "Trong khung không có chữ. Hãy vẽ sát quanh số.",
     angle: {
       title: "Chiều của số",
@@ -545,7 +545,7 @@ export const vi = {
       editRevert: "Với số đã sửa, **Trả về số gốc** đưa số ban đầu trở lại.",
       editMatch: "Khi số cũ còn xuất hiện ở chỗ khác chưa sửa, một lời nhắc đề nghị **Sửa luôn**. Chọn để đổi tất cả, hoặc **Không** để chỉ giữ thay đổi này.",
       editClickRead: "Số chưa có dấu: bấm vào số đó trên bản vẽ. Trình sửa đọc số ở chỗ bạn bấm. Nếu không đọc được, hãy dùng **Vẽ khung**.",
-      editDraw: "Nhấn `K` hoặc **Vẽ khung**, rồi kéo một khung sát quanh số. `Esc` để huỷ. Khung phải nằm trong bốn ô hình vẽ.",
+      editDraw: "Nhấn `K` hoặc **Vẽ khung**, rồi kéo một khung sát quanh số. `Esc` để huỷ. Tâm của khung phải nằm trong bốn ô hình vẽ.",
       editAngle: "Sau khi vẽ khung, chọn **Chiều của số**: nằm ngang, dọc đọc từ dưới lên, dọc đọc từ trên xuống hoặc xoay tự do.",
       editFree: "Với **Xoay tự do**, nhập **Góc (độ)** từ -179 đến 180.",
       editContinue: "Nhấn **Tiếp tục**. Hộp sửa số mở ra cho số mới.",

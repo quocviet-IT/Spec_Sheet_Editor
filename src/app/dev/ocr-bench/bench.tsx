@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { pointInDrawingArea } from "@/editor/geometry";
 import { CLICK_OFFSET, editorView, SAMPLE_SIZE, SAMPLE_TRUTH, TARGETS, type BenchView } from "@/lib/ocr/bench/sample";
 import { scoreClicks, scoreScan, type ClickRow } from "@/lib/ocr/bench/score";
 import { DEFAULT_MODELS, OcrClient } from "@/lib/ocr/client";
@@ -118,8 +119,11 @@ export function Bench() {
     run("Scanning the drawing area", async () => {
       const { ocr, view } = ready();
       const started = performance.now();
-      const result = await ocr.scan(view.frame);
-      setScan({ result, totalMs: performance.now() - started });
+      const result = await ocr.scan(view.frame, { margin: view.margin });
+      const totalMs = performance.now() - started;
+      // As the editor keeps them (BR-02): values whose centre lies inside the drawing area, not in the margin.
+      const inside = result.detections.filter((d) => pointInDrawingArea({ x: d.box.x + d.box.w / 2, y: d.box.y + d.box.h / 2 }, view.page.width, view.page.height));
+      setScan({ result: { ...result, detections: inside }, totalMs });
     });
 
   const runClicks = () =>

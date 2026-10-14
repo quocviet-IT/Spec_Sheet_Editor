@@ -7,7 +7,7 @@ import { encodePdf, encodePng, downloadBlob, releaseCanvas, renderResult } from 
 import { exportFileName, exportSuggestions, type ExportSource, type Suggestion } from "@/editor/export-plan";
 import { matchingValues } from "@/editor/matching";
 import { detectValues, drawnBox, makeEdit, ocrFailureReason, readingBox, toDetection, type LoadedPage } from "@/editor/detections";
-import { detectionAt, MIN_DRAWN_PX, panelOf, pointInDrawingArea, readingOrder, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
+import { clickInReach, clickOutcome, detectionAt, MIN_DRAWN_PX, panelOf, readingOrder, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
 import { analyseBox } from "@/editor/pixels";
 import type { Detection, Edit } from "@/editor/types";
 import { zoomIn, zoomOut, type Zoom } from "@/editor/zoom";
@@ -516,7 +516,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   }
 
   async function readAt(p: Point) {
-    if (drawing || !loaded || readingNow.current || !pointInDrawingArea(p, W, H)) return;
+    if (drawing || !loaded || readingNow.current || !clickInReach(p, W, H)) return;
     if (detect === "running") {
       notify({ kind: "status", text: (m) => m.editor.waitDetect, wait: true });
       return;
@@ -543,8 +543,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       if (crashed) reader.reset(); // the Worker is gone; the next click starts a new one
       const r = result?.reading ?? null;
       const px = r ? readingBox(loaded.page.raster, r) : null;
-      if (!r || !px || !pointInDrawingArea({ x: px.cx, y: px.cy }, W, H)) {
-        notify({ kind: "alert", text: (m) => m.editor.clickNoRead });
+      const outcome = clickOutcome(p, px && { x: px.cx, y: px.cy }, W, H);
+      if (!r || !px || outcome !== "value") {
+        // A click in the margin beside the drawing that found none of its values has no effect.
+        if (outcome === "no-value") notify({ kind: "alert", text: (m) => m.editor.clickNoRead });
+        else setNotice(null);
         return;
       }
       setNotice(null);

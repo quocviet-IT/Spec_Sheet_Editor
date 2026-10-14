@@ -3,7 +3,7 @@ import { DRAWING_AREA } from "@/lib/form/template";
 import { normalizeAngle, orderClockwise, type Quad } from "@/lib/ocr/geometry";
 import { createRaster, cropQuad, cropTurnsQuarter } from "@/lib/ocr/raster";
 import {
-  angleFromQuad, axes, boxCorners, boxForDrawnRect, boxFromQuad, centreInDrawingArea, detectionAt, drawingAreaPx,
+  angleFromQuad, axes, boxCorners, boxForDrawnRect, boxFromQuad, centreInDrawingArea, clickInReach, clickOutcome, detectionAt, drawingAreaPx, edgeMarginPx,
   isAxisAngle, nearestAxis, panelOf, pointInDrawingArea, readingOrder, rectFromDrag, rectInDrawingArea, roundAngle, roundBox,
   sameSize, snapAngle, toBox, toPx,
 } from "@/editor/geometry";
@@ -235,25 +235,57 @@ describe("drawn boxes (UC-07)", () => {
     expect(rectFromDrag({ x: 300, y: 200 }, { x: 260, y: 230 })).toEqual({ x: 260, y: 200, w: 40, h: 30 });
   });
 
-  it("accepts a rectangle only when every corner is inside the four panels", () => {
+  it("accepts a rectangle whose centre lies inside the four panels, even when it runs over their edge (UC-07 exception 1a)", () => {
+    // On a 3300 × 2550 page the area runs from x 151.8 to 2211 and from y 339.15 to 1902.3.
     expect(rectInDrawingArea({ x: 400, y: 600, w: 80, h: 30 }, 3300, 2550)).toBe(true);
-    expect(rectInDrawingArea({ x: 2180, y: 600, w: 80, h: 30 }, 3300, 2550)).toBe(false); // runs into the right-hand table
-    expect(rectInDrawingArea({ x: 400, y: 320, w: 80, h: 30 }, 3300, 2550)).toBe(false); // starts in the header band
+    expect(rectInDrawingArea({ x: 2160, y: 600, w: 80, h: 30 }, 3300, 2550)).toBe(true); // runs into the right-hand table, centre at 2200
+    expect(rectInDrawingArea({ x: 400, y: 330, w: 80, h: 30 }, 3300, 2550)).toBe(true); // starts in the header band, centre at 345
+    expect(rectInDrawingArea({ x: 2180, y: 600, w: 80, h: 30 }, 3300, 2550)).toBe(false); // centred in the right-hand table
+    expect(rectInDrawingArea({ x: 400, y: 320, w: 80, h: 30 }, 3300, 2550)).toBe(false); // centred in the header band
   });
 
-  it("accepts a rectangle exactly on the four edges of the drawing area", () => {
+  it("decides a rectangle on an edge of the drawing area by its centre", () => {
     const W = 3300;
     const H = 2550;
     const { x0, x1, y0, y1 } = DRAWING_AREA;
-    // starts picked so that the sum x + w lands exactly on the right and bottom edges
-    expect(rectInDrawingArea({ x: x0 * W, y: 600, w: 80, h: 30 }, W, H)).toBe(true);
-    expect(rectInDrawingArea({ x: x0 * W - 0.01, y: 600, w: 80, h: 30 }, W, H)).toBe(false);
-    expect(rectInDrawingArea({ x: 400, y: y0 * H, w: 80, h: 30 }, W, H)).toBe(true);
-    expect(rectInDrawingArea({ x: 400, y: y0 * H - 0.01, w: 80, h: 30 }, W, H)).toBe(false);
-    expect(rectInDrawingArea({ x: 1500, y: 600, w: x1 * W - 1500, h: 30 }, W, H)).toBe(true);
-    expect(rectInDrawingArea({ x: 1500, y: 600, w: x1 * W - 1500 + 0.01, h: 30 }, W, H)).toBe(false);
-    expect(rectInDrawingArea({ x: 400, y: 1200, w: 80, h: y1 * H - 1200 }, W, H)).toBe(true);
-    expect(rectInDrawingArea({ x: 400, y: 1200, w: 80, h: y1 * H - 1200 + 0.01 }, W, H)).toBe(false);
+    const centredAt = (cx: number, cy: number) => rectInDrawingArea({ x: cx - 40, y: cy - 15, w: 80, h: 30 }, W, H);
+    expect(centredAt(x0 * W + 0.01, 600)).toBe(true);
+    expect(centredAt(x0 * W - 0.01, 600)).toBe(false);
+    expect(centredAt(400, y0 * H + 0.01)).toBe(true);
+    expect(centredAt(400, y0 * H - 0.01)).toBe(false);
+    expect(centredAt(x1 * W - 0.01, 600)).toBe(true);
+    expect(centredAt(x1 * W + 0.01, 600)).toBe(false);
+    expect(centredAt(400, y1 * H - 0.01)).toBe(true);
+    expect(centredAt(400, y1 * H + 0.01)).toBe(false);
+  });
+
+  it("has a margin around the drawing area of 2 % of the page width, in whole pixels", () => {
+    expect(edgeMarginPx(1135)).toBe(23);
+    expect(edgeMarginPx(3300)).toBe(66);
+    expect(edgeMarginPx(6184)).toBe(124);
+  });
+
+  it("takes a click inside the drawing or within the margin beside it (UC-06 step 1)", () => {
+    expect(clickInReach({ x: 400, y: 600 }, 3300, 2550)).toBe(true);
+    expect(clickInReach({ x: 2211 + 65, y: 600 }, 3300, 2550)).toBe(true);
+    expect(clickInReach({ x: 2211 + 67, y: 600 }, 3300, 2550)).toBe(false);
+    expect(clickInReach({ x: 151.8 - 65, y: 1902.3 + 65 }, 3300, 2550)).toBe(true);
+    expect(clickInReach({ x: 400, y: 339.15 - 67 }, 3300, 2550)).toBe(false);
+    expect(clickInReach({ x: 2700, y: 600 }, 3300, 2550)).toBe(false);
+  });
+
+  it("keeps a value a click found only when its centre lies inside the drawing (BR-02)", () => {
+    const inside = { x: 400, y: 600 };
+    const beside = { x: 2240, y: 600 }; // 29 px into the right-hand table
+    const atEdge = { x: 2200, y: 600 }; // a value running over the edge, its centre inside
+    const inTable = { x: 2250, y: 600 };
+    expect(clickOutcome(inside, inside, 3300, 2550)).toBe("value");
+    expect(clickOutcome(beside, atEdge, 3300, 2550)).toBe("value");
+    expect(clickOutcome(inside, inTable, 3300, 2550)).toBe("no-value");
+    expect(clickOutcome(inside, null, 3300, 2550)).toBe("no-value");
+    // A click beside the drawing that finds none of its values has no effect (UC-05 exception 1b).
+    expect(clickOutcome(beside, inTable, 3300, 2550)).toBe("ignored");
+    expect(clickOutcome(beside, null, 3300, 2550)).toBe("ignored");
   });
 
   it("counts a value centred exactly on an edge of the drawing area as inside (BR-02)", () => {

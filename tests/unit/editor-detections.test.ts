@@ -51,6 +51,21 @@ function ids() {
 const near = (a: number, b: number, eps = 0.6) => expect(Math.abs(a - b)).toBeLessThanOrEqual(eps);
 
 describe("fromScan", () => {
+  it("keeps a reading that runs over the drawing area's edge when its centre lies inside, and only then (BR-02)", async () => {
+    // The area starts at x 50.6 on this page.
+    const r = createRaster(W, H);
+    ink(r, 40, 400, 70, 412); // centre x 55
+    ink(r, 10, 450, 44, 462); // centre x 27
+    const reading = (value: string, q: Quad) => ({ value, prefix: "", text: value, score: 0.9, angle: 0, quad: q, box: { x: 0, y: 0, w: 0, h: 0 } });
+    const found = await fromScan(
+      { detections: [reading("1.10", quad(36, 396, 74, 416)), reading("2.20", quad(6, 446, 48, 466))], timing: { horizontalMs: 1, verticalMs: 1 } },
+      r,
+      ids(),
+    );
+    expect(found.map((d) => d.readValue)).toEqual(["1.10"]);
+    near(found[0].box.cx * W, 55);
+  });
+
   it("keeps readings inside the drawing area, tightened to the digits", async () => {
     const found = await fromScan(scan(), page(), ids());
     expect(found.map((d) => d.readValue)).toEqual(["2.50", "6.90"]);
@@ -272,12 +287,12 @@ describe("detectValues", () => {
     expect(getReader).not.toHaveBeenCalled();
   });
 
-  it("scans the drawing area with the ready reader otherwise", async () => {
+  it("scans the drawing area and a margin of 2 % of the page width around it with the ready reader otherwise", async () => {
     const reader = ready();
     const result = await detectValues(loaded(), async () => reader, ids());
     expect(result).toMatchObject({ ok: true, source: "ocr" });
-    expect(result.ok && result.detections).toHaveLength(2);
-    expect(reader.scan).toHaveBeenCalledWith({ x: 51, y: 113, w: 686, h: 521 });
+    expect(result.ok && result.detections).toHaveLength(2); // the right-hand table's value is left out (BR-02)
+    expect(reader.scan).toHaveBeenCalledWith({ x: 51, y: 113, w: 686, h: 521 }, { margin: 22 });
   });
 
   it("reports an empty list when the scan returns no values", async () => {

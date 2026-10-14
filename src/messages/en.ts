@@ -150,7 +150,7 @@ export const en: Messages = {
     ocrLoad: "The value reader could not be loaded. Check your connection, then reload the page; Draw box still works.",
     drawBox: "Draw box",
     drawHint: "Drag a box around the value. Press Esc to cancel.",
-    drawOutside: "The box must be inside the four drawing panels.",
+    drawOutside: "The middle of the box must be inside the four drawing panels.",
     drawEmpty: "There is no text in this box. Draw it tightly around the value.",
     angle: {
       title: "Direction of the value",
@@ -547,7 +547,7 @@ export const en: Messages = {
       editRevert: "On an edited value, **Revert to original** puts the first value back.",
       editMatch: "When the old value appears elsewhere unedited, a prompt offers **Apply there too**. Choose it to change them all, or **No** to keep this change alone.",
       editClickRead: "A value with no marker: click it on the drawing. The editor reads the number where you clicked. If nothing can be read, use **Draw box** instead.",
-      editDraw: "Press `K` or **Draw box**, then drag a box tightly around the value. `Esc` cancels. The box must be inside the four drawing panels.",
+      editDraw: "Press `K` or **Draw box**, then drag a box tightly around the value. `Esc` cancels. The middle of the box must be inside the four drawing panels.",
       editAngle: "After the box, choose the **Direction of the value**: horizontal, vertical up, vertical down or free rotation.",
       editFree: "For **Free rotation**, type the **Angle (degrees)** from -179 to 180.",
       editContinue: "Press **Continue**. The edit popover opens for the new value.",

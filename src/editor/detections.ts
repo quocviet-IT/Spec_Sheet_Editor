@@ -5,7 +5,9 @@ import type { Raster } from "@/lib/ocr/raster";
 import type { ScanResult } from "@/lib/ocr/scan";
 import type { PageTextItem } from "@/lib/page/text";
 import type { ExportSource } from "./export-plan";
-import { boxForDrawnRect, boxFromQuad, centreInDrawingArea, drawingAreaPx, isAxisAngle, nearestAxis, roundAngle, roundBox, snapAngle, toBox, toPx } from "./geometry";
+import {
+  boxForDrawnRect, boxFromQuad, centreInDrawingArea, drawingAreaPx, edgeMarginPx, isAxisAngle, nearestAxis, roundAngle, roundBox, snapAngle, toBox, toPx,
+} from "./geometry";
 import { pdfTextValues } from "./pdf-text";
 import { analyseBox, refineAngle } from "./pixels";
 import type { Detection, Edit, PxBox } from "./types";
@@ -132,7 +134,8 @@ export function drawnBox(raster: Raster, rect: Rect, angle: number): PxBox {
 const nextTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 /**
- * UC-04 steps 3–5: OCR readings inside the drawing area (BR-02), tightened to the digits. The area is
+ * UC-04 steps 3–5: OCR readings whose centre lies inside the drawing area (BR-02), tightened to the digits;
+ * the scan also reads a margin beside the area, so a value at its edge is read whole. The area is
  * checked on the quad's box before the angle search, which costs several measurements per slanted value:
  * the box's centre is the quad's own at any angle (to within a pixel for whole-pixel corners). Before each
  * slanted value it waits for a new task, so a sheet full of them does not hold the page for seconds.
@@ -150,9 +153,9 @@ export async function fromScan(scan: ScanResult, raster: Raster, newId: () => st
 }
 
 /**
- * UC-04: the text layer when it has values in the drawing area, otherwise a scan of the drawing area by
- * the page's reader (models loaded, page set). `isCancelled` stops before the scan when the page closed
- * while the reader was starting.
+ * UC-04: the text layer when it has values in the drawing area, otherwise a scan of the drawing area and
+ * its margin (`edgeMarginPx`) by the page's reader (models loaded, page set). `isCancelled` stops before the
+ * scan when the page closed while the reader was starting.
  */
 export async function detectValues(
   page: LoadedPage,
@@ -170,7 +173,8 @@ export async function detectValues(
   }
   if (isCancelled()) return { ok: false, reason: "cancelled" };
   try {
-    const scan = await reader.scan(drawingAreaPx(page.raster.width, page.raster.height));
+    const { width, height } = page.raster;
+    const scan = await reader.scan(drawingAreaPx(width, height), { margin: edgeMarginPx(width) });
     return { ok: true, source: "ocr", detections: await fromScan(scan, page.raster, newId) };
   } catch {
     return { ok: false, reason: "ocr_scan" };

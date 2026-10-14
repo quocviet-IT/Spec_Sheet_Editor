@@ -423,7 +423,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 1. The system crops the drawing area using the template coordinates.
 2. If the PDF has a text layer in that area: take number-shaped strings with position and angle from the `transform` matrix (Mozilla, n.d.); skip steps 3–4. Strings are taken exactly as written (no decimal point is inserted). A dimension split over several text runs is not found from the text layer; the sheet falls back to OCR (step 3) only when no value at all is found there.
-3. Otherwise: scale the area to about 2100 px wide and run PaddleOCR in a Web Worker in two orientations, 0° and 90° clockwise.
+3. Otherwise: scale the area to about 2100 px wide and run PaddleOCR in a Web Worker in two orientations, 0° and 90° clockwise. A margin of 2% of the page width is read around the area, so a value whose digits run over its edge is read whole; a value is kept only when its centre lies inside the area (BR-02).
 4. Keep number-shaped results; for strings of only 3–4 digits, insert a point before the last two; where two results overlap, keep the more confident one.
 5. Tighten each box to the digits: keep only pixels darker than halfway between background and text colour, so the box does not cut into the dimension line.
 6. Store the list and mark the values on the sheet.
@@ -460,7 +460,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Main flow:**
 
-1. The user clicks a spot in the drawing area where no value is marked. The reader starts on first need and warms up shortly after the page is ready, so a click usually reads at once. On a sheet whose values all come from the PDF text layer the reader is not warmed up in advance (such a sheet loads no OCR files at all); the first click there starts it, and the 5-second budget applies to reading once the reader is ready.
+1. The user clicks a spot in the drawing area where no value is marked, or beside the area within 2% of the page width (the part of a value that runs over its edge). A reading counts only when the value's centre lies inside the area (BR-02); a click beside the area that reads none has no effect. The reader starts on first need and warms up shortly after the page is ready, so a click usually reads at once. On a sheet whose values all come from the PDF text layer the reader is not warmed up in advance (such a sheet loads no OCR files at all); the first click there starts it, and the 5-second budget applies to reading once the reader is ready.
 2. The system crops a square around the click, 5.6% of the page width on each side, and scales it to 256 × 256 px.
 3. The system detects text boxes at 0°, then reads the box in both directions.
 4. The system tightens the box to the digits, samples text and background colours, then continues UC-05 from step 2.
@@ -483,7 +483,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Notes:** Draw box needs a pointer: values the machine marked are reachable by keyboard, and a value it missed is marked with the mouse.
 
-**Exceptions:** 1a. The box extends outside the drawing area: "The box must be inside the four drawing panels."<br>3a. No text inside the box: "There is no text in this box. Draw it tightly around the value."
+**Exceptions:** 1a. The middle of the box lies outside the drawing area (a box may run over the area's edge around a value written there): "The middle of the box must be inside the four drawing panels."<br>3a. No text inside the box: "There is no text in this box. Draw it tightly around the value."
 
 #### UC-08 · Save a sheet
 
@@ -1290,7 +1290,7 @@ Priority: High blocks go-live; Med medium; Low.
 | TC-31 | UC-05 | Revert to original | Edit 6.90, then revert | That area matches the original pixel for pixel | Visual | Med |
 | TC-32 | UC-05 | Matching value suggestion | Edit one of the two 2.50s, choose "Apply there too" | Both become 2.60 | E2E | Med |
 | TC-33 | UC-05 | Locked zones | Click the Stone Chart, bottom boxes, header | No effect | E2E | High |
-| TC-34 | UC-07 | Box outside the zone | Drag into the right-hand table | Rejected with a message | E2E | Med |
+| TC-34 | UC-07 | Box outside the zone | Drag a box centred in the right-hand table | Rejected with a message | E2E | Med |
 | TC-35 | UC-07 | Empty box | Drag over blank space | "There is no text in this box…" | E2E | Low |
 | TC-36 | UC-07 | Diagonal value | Box around 1.20, free rotation 58° | New value drawn at exactly 58° | Visual | Med |
 | **Saving** |  |  |  |  |  |  |

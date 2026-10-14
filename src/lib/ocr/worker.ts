@@ -31,7 +31,9 @@ async function handle(request: OcrRequest): Promise<unknown> {
       const { x, y, w, h } = request.area;
       const inside = [x, y, w, h].every(Number.isFinite) && w >= 1 && h >= 1 && x < sheet.width && y < sheet.height && x + w > 0 && y + h > 0;
       if (!inside) throw new OcrFailure("bad_request", "The scan area is empty or outside the page.");
-      return scanArea(loaded, sheet, request.area, request.targetWidth);
+      const margin = request.margin ?? 0;
+      if (!(Number.isFinite(margin) && margin >= 0)) throw new OcrFailure("bad_request", "The scan margin is not a size.");
+      return scanArea(loaded, sheet, request.area, request.targetWidth, undefined, undefined, margin);
     }
     case "read": {
       const loaded = need(models, "models");

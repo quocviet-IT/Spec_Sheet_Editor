@@ -1,4 +1,4 @@
-import { drawingAreaPx } from "@/editor/geometry";
+import { drawingAreaPx, edgeMarginPx } from "@/editor/geometry";
 import { trimPage } from "@/lib/page/render";
 import type { Point, Rect } from "../geometry";
 import type { Raster } from "../raster";
@@ -28,10 +28,11 @@ export const SAMPLE_TRUTH: readonly TruthValue[] = [
 
 /**
  * The sample as the editor holds it: trimmed to its page (`trimPage`), the frame the editor scans on that
- * page (`drawingAreaPx`, as `detectValues` asks for it), and the truth moved onto the trimmed page. The click
- * square and the merge window are fractions of the page width, so the bench reads the trimmed page too.
+ * page and the margin read around it (`drawingAreaPx` and `edgeMarginPx`, as `detectValues` asks for them),
+ * and the truth moved onto the trimmed page. The click square and the merge window are fractions of the page
+ * width, so the bench reads the trimmed page too.
  */
-export type BenchView = { page: Raster; offset: Point; frame: Rect; truth: TruthValue[] };
+export type BenchView = { page: Raster; offset: Point; frame: Rect; margin: number; truth: TruthValue[] };
 
 export function editorView(sample: Raster, truth: readonly TruthValue[] = SAMPLE_TRUTH): BenchView {
   const { raster: page, offsetX, offsetY } = trimPage({ raster: sample, pageCount: 1, text: [], pagePt: null });
@@ -39,6 +40,7 @@ export function editorView(sample: Raster, truth: readonly TruthValue[] = SAMPLE
     page,
     offset: { x: offsetX, y: offsetY },
     frame: drawingAreaPx(page.width, page.height),
+    margin: edgeMarginPx(page.width),
     truth: truth.map((t) => ({ ...t, x: t.x - offsetX, y: t.y - offsetY })),
   };
 }

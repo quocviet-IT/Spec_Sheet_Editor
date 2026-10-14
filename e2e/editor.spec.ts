@@ -272,7 +272,7 @@ test("closing the edit popover returns focus to the list row that opened it", as
 test("a notice that is showing changes language with the page", async ({ page }) => {
   await openValuesSheet(page, "noticelang");
   await page.getByRole("button", { name: /^(Vẽ khung|Draw box)/ }).click();
-  await dragBox(page, 0.6, 0.3, 0.75, 0.33);
+  await dragBox(page, 0.7, 0.3, 0.8, 0.33);
   const alert = page.getByRole("alert").first();
   await expect(alert).toBeVisible();
   const before = (await alert.textContent())!;
