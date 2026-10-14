@@ -1,4 +1,4 @@
-import { isPointedDimension, valueReadings } from "./dimension-text";
+import { isDimension, isPointedDimension, valueReadings } from "./dimension-text";
 import { angleFromQuad, bounds, coveredShare, overlapShare, rectCentre, SAME_PLACE_OVERLAP, type Point, type Quad, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type Reading, type RegionReader } from "./pipeline";
 import { crop, resizeBicubic, rotate90cw, rotateExpand, unrotatePoint, type Raster } from "./raster";
@@ -85,7 +85,7 @@ export async function scanArea(
   const height = frame.height * factor;
   const big = resizeBicubic(frame, width, height);
   const toPage = (p: Point): Point => ({ x: area.x + (p.x * frame.width) / width, y: area.y + (p.y * frame.height) / height });
-  const opts = { bothDirections: true, accept: isPointedDimension };
+  const opts = { bothDirections: true, accept: isPointedDimension, isValue: isDimension };
 
   /** Readings of one pass in page pixels, with the page angle of that pass's left-to-right. */
   type Pass = { readings: Reading[]; imageTurn: number; toBig: (p: Point) => Point };

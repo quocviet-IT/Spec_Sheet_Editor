@@ -98,6 +98,11 @@ export function isPointedDimension(text: string): boolean {
   return readDimension(text)?.pointWritten === true;
 }
 
+/** Any value, a repaired one included. */
+export function isDimension(text: string): boolean {
+  return readDimension(text) !== null;
+}
+
 /**
  * UC-04 step 4 and UC-06: the readings that are values. A value only repaired from 3–4 digits is dropped
  * where a reading with its point written covers the same place (their quads share at least half of the
