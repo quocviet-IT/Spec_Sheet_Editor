@@ -203,6 +203,7 @@ export const en: Messages = {
       old: "Old value (machine reading)",
       oldHint: "The machine may misread. Correct it to match the value printed on the sheet.",
       new: "New value",
+      keepSign: "Keep the sign {prefix}",
       apply: "Apply",
       revert: "Revert to original",
       close: "Close",

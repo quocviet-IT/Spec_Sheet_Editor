@@ -137,10 +137,22 @@ export async function detectValues(
 }
 
 /**
- * UC-05 step 5: an edit of one value, measured on the original page (BR-03). The value's prefix comes
- * along, so it is drawn again in front of the new value.
+ * UC-05: the sign the machine read in front of a value, which the person may keep or drop when editing it
+ * (a stray 0 or O read as Ø would turn a length into a diameter). `kept` is true unless an existing edit
+ * dropped it. Null when there is no sign.
  */
-export function makeEdit(raster: Raster, detection: Detection, oldValue: string, newValue: string): Edit {
+export function signChoice(detection: Detection, edit: Edit | null): { sign: string; kept: boolean } | null {
+  const sign = detection.prefix || edit?.prefix;
+  if (!sign) return null;
+  return { sign, kept: edit ? Boolean(edit.prefix) : true };
+}
+
+/**
+ * UC-05 step 5: an edit of one value, measured on the original page (BR-03). The value's prefix comes
+ * along, so it is drawn again in front of the new value, unless `keepPrefix` is false: then the edit has no
+ * prefix, only the value is drawn, and the mask still erases the old sign.
+ */
+export function makeEdit(raster: Raster, detection: Detection, oldValue: string, newValue: string, keepPrefix = true): Edit {
   const px = toPx(detection.box, detection.angle, raster.width, raster.height);
   const found = analyseBox(raster, px);
   const tight = found?.tight ?? px;
@@ -154,6 +166,6 @@ export function makeEdit(raster: Raster, detection: Detection, oldValue: string,
     fontPx: Math.round((tight.h / raster.width) * 1e5) / 1e5,
     textColor: found?.textColor ?? "#000000",
     bgColor: found?.bgColor ?? "#ffffff",
-    ...prefixField(detection.prefix),
+    ...(keepPrefix ? prefixField(detection.prefix) : {}),
   };
 }

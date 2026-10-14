@@ -201,6 +201,7 @@ export const vi = {
       old: "Số cũ (máy đọc)",
       oldHint: "Máy có thể đọc sai. Hãy sửa cho đúng số in trên phiếu.",
       new: "Số mới",
+      keepSign: "Giữ ký hiệu {prefix}",
       apply: "Áp dụng",
       revert: "Trả về số gốc",
       close: "Đóng",

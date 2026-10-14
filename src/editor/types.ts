@@ -37,7 +37,11 @@ export type Edit = {
   fontPx: number;
   textColor: string;
   bgColor: string;
-  /** The value's prefix, drawn again in front of the new value (the mask covers the old one); absent when none. */
+  /**
+   * The value's prefix, drawn again in front of the new value (the mask covers the old one). Absent when
+   * there is none, or when the person chose not to keep the sign the machine read: then only the value is
+   * drawn, and the mask still erases the old sign.
+   */
   prefix?: string;
 };
 

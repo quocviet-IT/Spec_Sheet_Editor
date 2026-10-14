@@ -22,10 +22,9 @@ export type ReadResult = { reading: ClickReading | null; ms: number; anglesTried
 /**
  * UC-06: read the value around a click; stop at the first angle that yields a dimension, or at the
  * deadline. When several values are read, the one nearest the click wins; confidence breaks ties. Only a
- * value with its decimal separator written skips the upside-down reading; between the two directions the
- * reader keeps a value with its point written, then the more confident reading (`readRegion`). A value only
- * repaired from 3–4 digits is dropped where a value with its point written covers the same place
- * (`valueReadings`).
+ * value with its decimal separator written skips the upside-down reading, and that reading replaces the
+ * upright one only when it is a value with its point written (`upsideDownWins`). A value only repaired from
+ * 3–4 digits is dropped where a value with its point written covers the same place (`valueReadings`).
  */
 export async function readAtPoint(
   models: OcrModels,

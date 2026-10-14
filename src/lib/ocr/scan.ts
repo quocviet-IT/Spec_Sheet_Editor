@@ -1,5 +1,5 @@
 import { isPointedDimension, valueReadings } from "./dimension-text";
-import { angleFromQuad, bounds, overlapShare, rectCentre, SAME_PLACE_OVERLAP, type Point, type Quad, type Rect } from "./geometry";
+import { angleFromQuad, bounds, coveredShare, overlapShare, rectCentre, SAME_PLACE_OVERLAP, type Point, type Quad, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type Reading, type RegionReader } from "./pipeline";
 import { crop, resizeBicubic, rotate90cw, rotateExpand, unrotatePoint, type Raster } from "./raster";
 
@@ -28,22 +28,38 @@ export const DIAGONAL_TURNS = [45, -45] as const;
 export const SCAN_DIAGONALS = false;
 
 /**
+ * A dropped reading's prefix goes to the kept reading of the same value when the kept quad holds at least
+ * this much of the dropped one: the sign then lies inside the kept box, whose mask erases it on an edit, so
+ * it must be drawn again. A sign outside the kept box stays on the page as it is.
+ */
+export const PREFIX_COVERED = 0.9;
+
+/**
  * UC-04 step 4: where two readings are one value, keep the more confident one. They are one value when
  * they read the same value within `distance` of each other (page pixels, centre to centre on each axis),
  * or when their quads overlap by at least half of the smaller one. Different values close together are
- * both kept.
+ * both kept. When the dropped reading of the same value carried a prefix ("Ø1.30") and the kept one did
+ * not ("1.30"), the kept one takes it if its quad holds the dropped one (`PREFIX_COVERED`).
  */
 export function mergeOverlapping(candidates: readonly Detection[], distance: number): Detection[] {
   const kept: Detection[] = [];
   for (const candidate of [...candidates].sort((a, b) => b.score - a.score)) {
     const c = rectCentre(candidate.box);
-    const clash = kept.some((k) => {
+    const clashes = (k: Detection) => {
       if (overlapShare(k.quad, candidate.quad) >= SAME_PLACE_OVERLAP) return true;
       if (k.value !== candidate.value) return false;
       const kc = rectCentre(k.box);
       return Math.abs(kc.x - c.x) <= distance && Math.abs(kc.y - c.y) <= distance;
-    });
-    if (!clash) kept.push(candidate);
+    };
+    if (!kept.some(clashes)) {
+      kept.push(candidate);
+      continue;
+    }
+    if (candidate.prefix === "") continue;
+    const into = kept.findIndex(
+      (k) => clashes(k) && k.value === candidate.value && k.prefix === "" && coveredShare(candidate.quad, k.quad) >= PREFIX_COVERED,
+    );
+    if (into >= 0) kept[into] = { ...kept[into], prefix: candidate.prefix };
   }
   return kept;
 }
@@ -51,9 +67,9 @@ export function mergeOverlapping(candidates: readonly Detection[], distance: num
 /**
  * UC-04 steps 3–4: scan the drawing area at 0° and 90° clockwise (and ±45° with `diagonals`) and keep the
  * readings that are values. Every crop that is not a value with its point written is also read upside down,
- * and the reader keeps a value with its point written over one without, then the more confident reading
- * (`readRegion`); the kept reading's quad and turn give the angle. A value only repaired from 3–4 digits is
- * dropped where a value with its point written was read at the same place (`valueReadings`).
+ * and that reading replaces the upright one only when it is a value with its point written
+ * (`upsideDownWins`); the kept reading's quad and turn give the angle. A value only repaired from 3–4 digits
+ * is dropped where a value with its point written was read at the same place (`valueReadings`).
  */
 export async function scanArea(
   models: OcrModels,

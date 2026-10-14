@@ -3,6 +3,7 @@ import { CLICK_ANGLES, readAtPoint } from "@/lib/ocr/click";
 import { orderClockwise, type Quad } from "@/lib/ocr/geometry";
 import type { OcrModels, RegionReader } from "@/lib/ocr/pipeline";
 import { createRaster } from "@/lib/ocr/raster";
+import { fakeModels } from "./fake-models";
 
 const models = {} as OcrModels;
 const page = createRaster(1135, 877);
@@ -154,6 +155,25 @@ describe("readAtPoint (UC-06)", () => {
       { text: "170", score: 0.9, turn: 0, quad: [{ x: 112, y: 120 }, { x: 144, y: 120 }, { x: 144, y: 136 }, { x: 112, y: 136 }] },
     ];
     expect((await readAtPoint(models, page, { x: 300, y: 600 }, 5000, read)).reading?.value).toBe("1.70");
+  });
+
+  describe("through the real reader: the upside-down reading wins only with its point written", () => {
+    const click = async (upright: { text: string; score: number }, upsideDown: { text: string; score: number }) =>
+      (await readAtPoint(fakeModels([upright, upsideDown]), page, { x: 300, y: 600 })).reading;
+
+    it("keeps the upright reading when neither has its point written, however confident the other", async () => {
+      expect(await click({ text: "690", score: 0.9 }, { text: "069", score: 0.95 })).toMatchObject({ value: "6.90", angle: 0 });
+      expect(await click({ text: "180", score: 0.88 }, { text: "081", score: 0.9 })).toMatchObject({ value: "1.80", angle: 0 });
+      expect(await click({ text: "080", score: 0.8 }, { text: "080", score: 0.8 })).toMatchObject({ value: "0.80", angle: 0 });
+    });
+
+    it("keeps an upright value when the upside-down reading is not one", async () => {
+      expect(await click({ text: "170", score: 0.8 }, { text: "0L1", score: 0.85 })).toMatchObject({ value: "1.70", angle: 0 });
+    });
+
+    it("takes the upside-down value with its point written over upright digits", async () => {
+      expect(await click({ text: "069", score: 0.95 }, { text: "6.90", score: 0.7 })).toMatchObject({ value: "6.90", angle: 180 });
+    });
   });
 
   it("keeps what is written in front of the value", async () => {

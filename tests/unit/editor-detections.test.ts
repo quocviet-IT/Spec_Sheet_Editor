@@ -4,10 +4,12 @@ import { orderClockwise, type Quad } from "@/lib/ocr/geometry";
 import { createRaster, type Raster } from "@/lib/ocr/raster";
 import type { ScanResult } from "@/lib/ocr/scan";
 import type { PageTextItem } from "@/lib/page/text";
+import { planEdit } from "@/editor/compose";
 import {
-  detectValues, drawnBox, fromPdfText, fromScan, makeEdit, ocrFailureReason, readingBox, toDetection, type LoadedPage, type OcrLike,
+  detectValues, drawnBox, fromPdfText, fromScan, makeEdit, ocrFailureReason, readingBox, signChoice, toDetection, type LoadedPage, type OcrLike,
 } from "@/editor/detections";
 import { axes, boxCorners, boxForDrawnRect } from "@/editor/geometry";
+import { editSchema } from "@/editor/schema";
 
 const W = 1100; // a small page with the template's ratio keeps the tests fast
 const H = 850;
@@ -288,5 +290,28 @@ describe("what is written in front of a value (Ø, R, 2X)", () => {
     const px = { cx: 220, cy: 206, w: 60, h: 24, angle: 0 };
     expect(toDetection(page(), px, { readValue: "2.50", confidence: 90, source: "click", prefix: "2X Ø" }, ids())).toMatchObject({ prefix: "2X Ø" });
     expect("prefix" in toDetection(page(), px, { readValue: "2.50", confidence: 90, source: "click", prefix: "" }, ids())).toBe(false);
+  });
+
+  it("can be dropped when editing: the edit then has no prefix, and its box still covers the old sign", async () => {
+    const [h] = await fromScan(withPrefixes(), page(), ids());
+    const kept = makeEdit(page(), h, "2.50", "2.60");
+    const dropped = makeEdit(page(), h, "2.50", "2.60", false);
+    expect("prefix" in dropped).toBe(false);
+    expect(dropped).toMatchObject({ oldValue: "2.50", newValue: "2.60" });
+    // Only the drawn text changes: the mask is the same box as when the sign is kept.
+    expect(dropped.box).toEqual(kept.box);
+    expect(planEdit(dropped, W, H, 0.716).text).toBe("2.60");
+    expect(planEdit(kept, W, H, 0.716).text).toBe("Ø2.60");
+    expect(editSchema.safeParse(dropped).success).toBe(true);
+  });
+
+  it("is offered to keep or drop in the popover only when the machine read one", async () => {
+    const [h, v] = await fromScan(withPrefixes(), page(), ids());
+    expect(signChoice(h, null)).toEqual({ sign: "Ø", kept: true });
+    expect(signChoice(h, makeEdit(page(), h, "2.50", "2.60"))).toEqual({ sign: "Ø", kept: true });
+    // Reopened after the sign was dropped: still offered, now unchecked.
+    expect(signChoice(h, makeEdit(page(), h, "2.50", "2.60", false))).toEqual({ sign: "Ø", kept: false });
+    expect(signChoice(v, null)).toBeNull();
+    expect(signChoice(v, makeEdit(page(), v, "6.90", "6.80"))).toBeNull();
   });
 });

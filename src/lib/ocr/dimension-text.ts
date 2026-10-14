@@ -2,8 +2,13 @@ import { overlapShare, SAME_PLACE_OVERLAP, type Quad } from "./geometry";
 
 /** One or two digits before the point (no leading zero except "0.xx"), exactly two after. */
 const DIMENSION = /^(0|[1-9]\d?)\.\d{2}$/;
-/** A value written with its separator, 1.00–99.99: what a diameter sign read as a look-alike stands before. */
-const POINTED_AFTER_SIGN = /^[1-9]\d?[.,]\d{2}$/;
+/** A value written with its separator, 0.01–99.99: what a diameter sign read as a look-alike letter stands before. */
+const POINTED_VALUE = /^(0|[1-9]\d?)[.,]\d{2}$/;
+/**
+ * A 0 read for Ø directly before a value written with its separator: "01.30", "010.50", and "00.80" (not a
+ * number on its own). "0130" (no separator) and "000.80" are not.
+ */
+const ZERO_BEFORE_VALUE = /^0(?:0|[1-9]\d?)[.,]\d{2}$/;
 /** What the reader gives for Ø, which its alphabet lacks, when it stands directly before a value with its point. */
 const DIAMETER_LOOKALIKES = new Set(["O", "o", "Φ", "φ", "ø", "⌀"]);
 /** A count in front of a value: "2X", "2x", "4×", "(4X)". */
@@ -11,14 +16,22 @@ const COUNT = /^(?:\(([1-9]\d?)\s*([Xx×])\)|([1-9]\d?)\s*([Xx×]))\s*/;
 
 /**
  * A machine reading as a value. `prefix` is what is written in front of it, normalised ("Ø", "R", "2X Ø",
- * "(4X) Ø", "4X "), "" when there is none; it is drawn again in front of a new value. `pointWritten` is false
- * when the value's decimal point was put back by the 3–4-digit repair.
+ * "(4X) Ø", "4X ", "4× "), "" when there is none; it is drawn again in front of a new value. `pointWritten`
+ * is false when the value's decimal point was put back by the 3–4-digit repair.
  */
 export type DimensionText = { value: string; prefix: string; pointWritten: boolean };
 
-/** Full-width digits and points as plain ones (NFKC); the CJK and middle points as "."; the full-width comma as ",". */
+/**
+ * Whatever follows the last digit is dropped first, so a superscript there ("1.30²") is not made a digit by
+ * NFKC. Then full-width digits and points as plain ones (NFKC); the CJK and middle points as "."; the
+ * full-width comma as ",".
+ */
 function normalise(text: string): string {
-  return text.normalize("NFKC").replace(/[．。·]/g, ".").replace(/，/g, ",");
+  return text
+    .replace(/[^0-9０-９]+$/u, "")
+    .normalize("NFKC")
+    .replace(/[．。·]/g, ".")
+    .replace(/，/g, ",");
 }
 
 /** `run` as a value: a comma reads as the point, and only 3–4 digits get a point put back ("1630" → "16.30"). */
@@ -31,31 +44,38 @@ function valueOf(run: string, repair: boolean): { value: string; pointWritten: b
 
 /**
  * A machine reading as a value, or null (UC-04 step 4, TC-22). The reading is normalised first (full-width
- * digits, CJK points). Symbols after the value are trimmed ("16.30mm"). In front of it, a count ("2X") and a
- * diameter (Ø, or a 0, O, o, Φ, φ, ø or ⌀ directly before a value written with its point, as the reader gives
- * Ø) or a radius (R) become the prefix; other symbols are trimmed as before, without a prefix. Anything else
- * inside, or digits in front that are not a count, mean the reading is not number-shaped, so it is dropped
- * rather than turned into a plausible wrong value. Readings of only 3–4 digits lost their decimal point:
- * "1630" becomes "16.30" (not after a count). The user still confirms every old value (BR-04).
+ * digits, CJK points). Symbols after the value are trimmed ("16.30mm", "1.30²"), and so are points or commas
+ * directly before it (".1.30"). In front of it, a count ("2X") and a diameter or a radius become the prefix:
+ * Ø and R themselves; a look-alike letter (O, o, Φ, φ, ø, ⌀) directly before a value written with its point,
+ * as the reader gives Ø; and a 0 directly before such a value ("01.30", "00.80"). Other symbols in front are
+ * trimmed as before, without a prefix. Anything else inside, or digits in front that are not a count, mean
+ * the reading is not number-shaped, so it is dropped rather than turned into a plausible wrong value.
+ * Readings of only 3–4 digits lost their decimal point: "1630" becomes "16.30" (not after a count). The user
+ * still confirms every old value (BR-04).
  */
 export function readDimension(text: string): DimensionText | null {
   const t = normalise(text).replace(/[^0-9]+$/, "");
   const split = /^(.*?)([\d.,]*\d)$/s.exec(t);
   if (!split) return null;
-  let run = split[2];
+  // Points or commas directly before the value are stray marks, not part of it. What stands in front of
+  // them is then not directly before the value, so a look-alike or a 0 there is not read as Ø.
+  const stray = /^[.,]*/.exec(split[2])![0];
+  let run = split[2].slice(stray.length);
   let rest = split[1].trimStart();
   let count = "";
   const counted = COUNT.exec(rest);
   if (counted) {
     const [, inBrackets, bracketMark, bare, bareMark] = counted;
-    const mark = (bracketMark ?? bareMark) === "×" ? "X" : (bracketMark ?? bareMark);
+    // A lowercase x is written as X; × stays (the shipped Arimo has it).
+    const mark = (bracketMark ?? bareMark) === "x" ? "X" : (bracketMark ?? bareMark);
     count = inBrackets !== undefined ? `(${inBrackets}${mark}) ` : `${bare}${mark} `;
     rest = rest.slice(counted[0].length);
   }
+  const direct = stray === "";
   let sign = "";
   if (rest.trim() === "Ø" || rest.trim() === "R") sign = rest.trim();
-  else if (DIAMETER_LOOKALIKES.has(rest) && POINTED_AFTER_SIGN.test(run)) sign = "Ø";
-  else if (rest === "" && /^0[1-9]\d?[.,]\d{2}$/.test(run)) {
+  else if (direct && DIAMETER_LOOKALIKES.has(rest) && POINTED_VALUE.test(run)) sign = "Ø";
+  else if (direct && rest === "" && ZERO_BEFORE_VALUE.test(run)) {
     sign = "Ø";
     run = run.slice(1);
   } else if (rest.trim() !== "") {

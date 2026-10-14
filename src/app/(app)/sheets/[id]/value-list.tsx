@@ -52,7 +52,7 @@ export function ValueList({ detections, edits, activeId, detect, showHint, onOpe
               >
                 <span className="font-mono">
                   {edit
-                    ? `${withPrefix(edit.prefix, edit.oldValue)} → ${withPrefix(edit.prefix, edit.newValue)}`
+                    ? `${withPrefix(d.prefix, edit.oldValue)} → ${withPrefix(edit.prefix, edit.newValue)}`
                     : d.readValue !== null
                       ? withPrefix(d.prefix, d.readValue)
                       : "?"}

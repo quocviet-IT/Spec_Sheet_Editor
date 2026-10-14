@@ -3,6 +3,7 @@ import {
   bounds,
   convexHull,
   convexIntersectionArea,
+  coveredShare,
   expandRect,
   minAreaRect,
   miniBox,
@@ -144,5 +145,13 @@ describe("convexIntersectionArea and overlapShare", () => {
 
   it("is 0 for a quad without area", () => {
     expect(overlapShare(rect(0, 0, 10, 4), rect(2, 2, 5, 0))).toBe(0);
+  });
+
+  it("coveredShare gives how much of the first quad lies inside the second", () => {
+    expect(coveredShare(rect(2, 1, 3, 2), rect(0, 0, 10, 4))).toBeCloseTo(1, 9);
+    expect(coveredShare(rect(0, 0, 10, 4), rect(2, 1, 3, 2))).toBeCloseTo(6 / 40, 9);
+    expect(coveredShare(rect(0, 0, 10, 4), rect(2, 0, 10, 4))).toBeCloseTo(0.8, 9);
+    expect(coveredShare(rect(0, 0, 10, 4), rect(30, 0, 10, 4))).toBe(0);
+    expect(coveredShare(rect(2, 2, 5, 0), rect(0, 0, 10, 4))).toBe(0);
   });
 });

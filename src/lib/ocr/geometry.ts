@@ -173,6 +173,12 @@ export function overlapShare(a: readonly Point[], b: readonly Point[]): number {
   return smaller > 0 ? convexIntersectionArea(a, b) / smaller : 0;
 }
 
+/** How much of the convex quad `inner` lies inside `outer`: 0 (apart) to 1 (inside it). */
+export function coveredShare(inner: readonly Point[], outer: readonly Point[]): number {
+  const area = polygonArea(inner);
+  return area > 0 ? convexIntersectionArea(inner, outer) / area : 0;
+}
+
 /** Two readings whose quads share at least this much of the smaller one sit at the same place (UC-04 step 4). */
 export const SAME_PLACE_OVERLAP = 0.5;
 

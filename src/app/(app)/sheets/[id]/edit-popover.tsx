@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { withPrefix } from "@/editor/compose";
+import { signChoice } from "@/editor/detections";
 import { decimalsOf, normalizeNewValue, normalizeOldValue } from "@/editor/numbers";
 import type { Detection, Edit } from "@/editor/types";
 import { useMessages } from "@/messages/client";
@@ -11,7 +12,8 @@ type Props = {
   detection: Detection;
   edit: Edit | null;
   style: CSSProperties;
-  onApply: (oldValue: string, newValue: string) => void;
+  /** `keepSign` is false when the person unchecked the sign the machine read: only the value is drawn. */
+  onApply: (oldValue: string, newValue: string, keepSign: boolean) => void;
   onRevert: () => void;
   /** `refocus` is false when the person pressed somewhere else: focus then stays where they pressed. */
   onClose: (refocus: boolean) => void;
@@ -51,6 +53,8 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
   const [newRaw, setNewRaw] = useState(edit?.newValue ?? "");
   const [oldError, setOldError] = useState<string | null>(null);
   const [newError, setNewError] = useState<string | null>(null);
+  const choice = signChoice(detection, edit);
+  const [keepSign, setKeepSign] = useState(choice?.kept ?? true);
 
   useEffect(() => {
     close.current = onClose;
@@ -109,12 +113,14 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
       newInput.current?.focus();
       return;
     }
-    onApply(confirmed.value, next.value);
+    onApply(confirmed.value, next.value, keepSign);
   }
 
   const field = "w-full min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-2 font-mono text-ink";
-  // What is written in front of the value ("Ø") stays: it is shown before both values and drawn again.
-  const prefix = withPrefix(edit ? edit.prefix : detection.prefix, "").trim();
+  // What is written in front of the value ("Ø") is shown before the old value, and before the new one while
+  // it is kept: it is then drawn again. A wrong sign (a stray 0 read as Ø) can be dropped.
+  const prefix = choice ? withPrefix(choice.sign, "").trim() : "";
+  const newPrefix = keepSign ? prefix : "";
   const prefixMark = prefix ? (
     <span id={`${id}-prefix`} className="font-mono text-ink">
       {prefix}
@@ -159,9 +165,9 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
       <div className="space-y-1">
         <label htmlFor={`${id}-new`} className="block text-sm font-medium">{p.new}</label>
         <div className="flex items-center gap-1.5">
-          {prefix ? (
+          {newPrefix ? (
             <span aria-hidden className="font-mono text-ink">
-              {prefix}
+              {newPrefix}
             </span>
           ) : null}
           <input
@@ -175,11 +181,17 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
             inputMode="decimal"
             autoComplete="off"
             aria-invalid={newError !== null}
-            aria-describedby={describedBy(Boolean(prefix) && `${id}-prefix`, newError !== null && `${id}-new-error`)}
+            aria-describedby={describedBy(Boolean(newPrefix) && `${id}-prefix`, newError !== null && `${id}-new-error`)}
             className={field}
           />
         </div>
         {newError ? <p id={`${id}-new-error`} role="alert" className="text-sm text-danger">{newError}</p> : null}
+        {prefix ? (
+          <label className="flex min-h-6 items-center gap-2 text-sm">
+            <input type="checkbox" checked={keepSign} onChange={(e) => setKeepSign(e.target.checked)} />
+            {fill(p.keepSign, { prefix })}
+          </label>
+        ) : null}
       </div>
       <div className="flex justify-end gap-2">
         {edit ? (

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { paintSheet, type FontMetrics } from "@/editor/canvas";
+import { withPrefix } from "@/editor/compose";
 import { panelOf, readingOrder, rectFromDrag, toPx } from "@/editor/geometry";
 import type { Detection, Edit } from "@/editor/types";
 import { DRAWING_AREA } from "@/lib/form/template";
@@ -101,9 +102,10 @@ export function SheetCanvas({ base, pageW, pageH, metrics, name, detections, edi
           const pad = MARK_PAD * px.h;
           const w = Math.max(MIN_TARGET, (px.w + 2 * pad) * scale);
           const h = Math.max(MIN_TARGET, (px.h + 2 * pad) * scale);
-          const state = edit ? fill(t.editor.states.edited, { value: edit.newValue }) : active ? t.editor.states.editing : t.editor.states.detected;
+          const state = edit ? fill(t.editor.states.edited, { value: withPrefix(edit.prefix, edit.newValue) }) : active ? t.editor.states.editing : t.editor.states.detected;
+          const oldValue = edit?.oldValue ?? d.readValue;
           const label = fill(t.editor.marker, {
-            value: edit?.oldValue ?? d.readValue ?? t.editor.unread,
+            value: oldValue ? withPrefix(d.prefix, oldValue) : t.editor.unread,
             panel: t.editor.panels[panelOf(d.box)],
             state,
           });

@@ -3,7 +3,8 @@ import { orderClockwise, type Quad } from "@/lib/ocr/geometry";
 import type { OcrModels, Reading, RegionReader } from "@/lib/ocr/pipeline";
 import { isPointedDimension } from "@/lib/ocr/dimension-text";
 import { createRaster, rotateExpand } from "@/lib/ocr/raster";
-import { DIAGONAL_TURNS, MERGE_DISTANCE, mergeOverlapping, SCAN_DIAGONALS, scanArea, type Detection } from "@/lib/ocr/scan";
+import { DIAGONAL_TURNS, MERGE_DISTANCE, mergeOverlapping, PREFIX_COVERED, SCAN_DIAGONALS, scanArea, type Detection } from "@/lib/ocr/scan";
+import { fakeModels, type FakeBlock } from "./fake-models";
 
 const models = {} as OcrModels;
 const square = (x: number, y: number, s: number): Quad => [
@@ -114,6 +115,35 @@ describe("scanArea", () => {
     expect(detections.map((d) => [d.value, d.angle])).toEqual([["6.90", 180]]);
   });
 
+  describe("through the real reader: the upside-down reading wins only with its point written", () => {
+    const page = createRaster(400, 300);
+    const area = { x: 100, y: 50, w: 200, h: 100 }; // × 2: the upright pass is 400 × 200, the turned one 200 × 400
+    /** The detector sees the value only in the upright pass; the recogniser reads it upright, then upside down. */
+    const scan = async (reads: { text: string; score: number }[], block?: FakeBlock) =>
+      (await scanArea(fakeModels(reads, { block, sees: (w, h) => w > h }), page, area, 400)).detections.map((d) => [d.value, d.angle]);
+
+    it("keeps the upright reading when neither has its point written, however confident the other", async () => {
+      expect(await scan([{ text: "690", score: 0.9 }, { text: "069", score: 0.95 }])).toEqual([["6.90", 0]]);
+      expect(await scan([{ text: "180", score: 0.88 }, { text: "081", score: 0.9 }])).toEqual([["1.80", 0]]);
+      expect(await scan([{ text: "080", score: 0.8 }, { text: "080", score: 0.8 }])).toEqual([["0.80", 0]]);
+    });
+
+    it("keeps an upright value when the upside-down reading is not one", async () => {
+      expect(await scan([{ text: "170", score: 0.8 }, { text: "0L1", score: 0.85 }])).toEqual([["1.70", 0]]);
+    });
+
+    it("takes the upside-down value with its point written over upright digits, at the upside-down angle", async () => {
+      expect(await scan([{ text: "069", score: 0.95 }, { text: "6.90", score: 0.7 }])).toEqual([["6.90", 180]]);
+    });
+
+    it("gives a slanted value read upside down its own angle", async () => {
+      // The block runs at -30° in the image; read upside down, the text runs the other way: 150°.
+      const [[value, angle]] = await scan([{ text: "069", score: 0.95 }, { text: "6.90", score: 0.7 }], { cx: 0.5, cy: 0.5, w: 0.5, h: 0.1, degrees: -30 });
+      expect(value).toBe("6.90");
+      expect(Math.abs((angle as number) - 150)).toBeLessThan(2);
+    });
+  });
+
   it("rejects a value only repaired from digits where a value with its point written was read at the same place", async () => {
     // The upright pass reads the vertical value's tall crop upside down as "069" (the more confident reading);
     // the turned pass reads "6.90" at the same place: upright (60..70, 20..60) is turned (140..180, 60..70).
@@ -203,5 +233,41 @@ describe("mergeOverlapping", () => {
   it("merges different values whose quads overlap by half of the smaller one or more", () => {
     expect(mergeOverlapping([det("6.90", 0.9, 100, 100, 40, 14), det("6.98", 0.8, 120, 100, 40, 14)], WINDOW).map((d) => d.value)).toEqual(["6.90"]);
     expect(mergeOverlapping([det("6.90", 0.9, 100, 100, 40, 14), det("6.98", 0.8, 121, 100, 40, 14)], WINDOW)).toHaveLength(2);
+  });
+
+  describe("a prefix read only by the dropped reading of the same value", () => {
+    const withSign = (d: Detection, prefix: string): Detection => ({ ...d, prefix, text: `${prefix}${d.value}` });
+
+    it("goes to the kept reading when the kept quad holds the prefixed one", () => {
+      // Kept "1.30" covers 100..150; the less confident "Ø1.30" lies inside it.
+      const kept = det("1.30", 0.9, 100, 100, 50, 14);
+      const dropped = withSign(det("1.30", 0.7, 102, 101, 46, 12), "Ø");
+      const merged = mergeOverlapping([kept, dropped], WINDOW);
+      expect(merged).toHaveLength(1);
+      expect(merged[0]).toMatchObject({ value: "1.30", prefix: "Ø", score: 0.9, box: kept.box });
+      expect(kept.prefix).toBe(""); // the input is not changed
+    });
+
+    it("stays away when the sign lies outside the kept quad (it is then left on the page as it is)", () => {
+      // Kept "1.30" covers 110..150 only; "Ø1.30" reaches out to 100: 80 % of it is inside.
+      const merged = mergeOverlapping([det("1.30", 0.9, 110, 100, 40, 14), withSign(det("1.30", 0.7, 100, 100, 50, 14), "Ø")], WINDOW);
+      expect(PREFIX_COVERED).toBeGreaterThan(0.8);
+      expect(merged).toHaveLength(1);
+      expect(merged[0].prefix).toBe("");
+    });
+
+    it("is not carried to a different value, nor over a prefix the kept reading has", () => {
+      const other = mergeOverlapping([det("1.38", 0.9, 100, 100, 50, 14), withSign(det("1.30", 0.7, 102, 101, 46, 12), "Ø")], WINDOW);
+      expect(other.map((d) => [d.value, d.prefix])).toEqual([["1.38", ""]]);
+      const own = mergeOverlapping([withSign(det("1.30", 0.9, 100, 100, 50, 14), "R"), withSign(det("1.30", 0.7, 102, 101, 46, 12), "Ø")], WINDOW);
+      expect(own.map((d) => d.prefix)).toEqual(["R"]);
+    });
+
+    it("is not carried from the same value read at another place nearby", () => {
+      // Same value within the window, but the quads do not touch.
+      const merged = mergeOverlapping([det("1.30", 0.9, 100, 100, 36, 14), withSign(det("1.30", 0.7, 140, 110, 36, 14), "Ø")], WINDOW);
+      expect(merged).toHaveLength(1);
+      expect(merged[0].prefix).toBe("");
+    });
   });
 });

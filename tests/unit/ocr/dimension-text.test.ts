@@ -40,7 +40,24 @@ describe("toDimension (TC-22)", () => {
     expect(toDimension("050")).toBe("0.50");
     expect(toDimension("000")).toBeNull();
     expect(toDimension("0.00")).toBeNull();
-    expect(toDimension("00.50")).toBeNull();
+    expect(toDimension("00.50")).toBe("0.50");
+    expect(toDimension("000.50")).toBeNull();
+  });
+
+  it("ignores a point or comma directly before the value, as before", () => {
+    for (const text of [".1.30", ",1.30", "·1.30", "。1.30", "，1.30", "..1.30"]) expect(toDimension(text), text).toBe("1.30");
+    expect(toDimension(".130")).toBe("1.30");
+    expect(toDimension(".50")).toBeNull();
+    expect(toDimension("0.1.30")).toBeNull();
+  });
+
+  it("drops a superscript after the value instead of reading it as a digit", () => {
+    expect(toDimension("1.30²")).toBe("1.30");
+    expect(toDimension("1.30³")).toBe("1.30");
+    expect(toDimension("1.30¹")).toBe("1.30");
+    expect(toDimension("1.30²mm")).toBe("1.30");
+    expect(toDimension("1.3⁰")).toBeNull();
+    expect(toDimension("１.５０")).toBe("1.50");
   });
 });
 
@@ -58,21 +75,55 @@ describe("readDimension: the value and what is written in front of it", () => {
     }
   });
 
+  it("reads Ø before a value under 1: a look-alike letter, or a 0 before 0.xx", () => {
+    for (const sign of ["O", "o", "Φ", "φ", "ø", "⌀"]) {
+      expect(readDimension(`${sign}0.80`), sign).toEqual({ value: "0.80", prefix: "Ø", pointWritten: true });
+    }
+    expect(readDimension("O0,80")).toEqual({ value: "0.80", prefix: "Ø", pointWritten: true });
+    expect(readDimension("00.80")).toEqual({ value: "0.80", prefix: "Ø", pointWritten: true });
+    expect(readDimension("00,50")).toEqual({ value: "0.50", prefix: "Ø", pointWritten: true });
+    expect(readDimension("2X 00.80")).toEqual({ value: "0.80", prefix: "2X Ø", pointWritten: true });
+    expect(readDimension("Ø0.80")).toEqual({ value: "0.80", prefix: "Ø", pointWritten: true });
+  });
+
   it("does not make a diameter out of a look-alike that is not directly before a value with its point", () => {
     expect(readDimension("O 1.30")).toEqual({ value: "1.30", prefix: "", pointWritten: true });
     expect(readDimension("O130")).toEqual({ value: "1.30", prefix: "", pointWritten: false });
-    expect(readDimension("O0.50")).toEqual({ value: "0.50", prefix: "", pointWritten: true });
+    expect(readDimension("O 0.80")).toEqual({ value: "0.80", prefix: "", pointWritten: true });
     expect(readDimension("SO1.30")).toEqual({ value: "1.30", prefix: "", pointWritten: true });
+    // A stray point between them: the letter is not directly before the value.
+    expect(readDimension("O.1.30")).toEqual({ value: "1.30", prefix: "", pointWritten: true });
+  });
+
+  it("still rejects a 0 that is not directly before a value with its point", () => {
+    expect(readDimension("0 1.30")).toBeNull();
+    expect(readDimension("0130")).toBeNull();
+    expect(readDimension("000.80")).toBeNull();
+    expect(readDimension("0 0.80")).toBeNull();
+    expect(readDimension(".01.30")).toBeNull();
+    expect(readDimension("0080")).toBeNull();
+  });
+
+  it("keeps a real sign in front of a stray point", () => {
+    expect(readDimension("Ø.1.30")).toEqual({ value: "1.30", prefix: "Ø", pointWritten: true });
+    expect(readDimension("R,1.30")).toEqual({ value: "1.30", prefix: "R", pointWritten: true });
+    expect(readDimension("2X.1.10")).toEqual({ value: "1.10", prefix: "2X ", pointWritten: true });
+    expect(readDimension(".1.30")).toEqual({ value: "1.30", prefix: "", pointWritten: true });
   });
 
   it("takes the value after a count", () => {
     expect(readDimension("2X Ø1.10")).toEqual({ value: "1.10", prefix: "2X Ø", pointWritten: true });
     expect(readDimension("2X01.10")).toEqual({ value: "1.10", prefix: "2X Ø", pointWritten: true });
-    expect(readDimension("2x Ø1.10")).toEqual({ value: "1.10", prefix: "2x Ø", pointWritten: true });
     expect(readDimension("(4X) Ø1.10")).toEqual({ value: "1.10", prefix: "(4X) Ø", pointWritten: true });
     expect(readDimension("4X 2.50")).toEqual({ value: "2.50", prefix: "4X ", pointWritten: true });
     expect(readDimension("4XR0.50")).toEqual({ value: "0.50", prefix: "4X R", pointWritten: true });
-    expect(readDimension("2×1.10")).toEqual({ value: "1.10", prefix: "2X ", pointWritten: true });
+  });
+
+  it("writes a lowercase x in a count as X, and keeps ×", () => {
+    expect(readDimension("2x Ø1.10")).toEqual({ value: "1.10", prefix: "2X Ø", pointWritten: true });
+    expect(readDimension("(4x)1.10")).toEqual({ value: "1.10", prefix: "(4X) ", pointWritten: true });
+    expect(readDimension("2×1.10")).toEqual({ value: "1.10", prefix: "2× ", pointWritten: true });
+    expect(readDimension("(4×) Ø1.10")).toEqual({ value: "1.10", prefix: "(4×) Ø", pointWritten: true });
   });
 
   it("does not take a count before a value whose point was not written, nor other digits in front", () => {

@@ -397,10 +397,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     focusOpener(id);
   }
 
-  function apply(detection: Detection, oldValue: string, newValue: string) {
+  function apply(detection: Detection, oldValue: string, newValue: string, keepSign: boolean) {
     if (!loaded) return;
     setMatch(null);
-    const edit = makeEdit(loaded.page.raster, detection, oldValue, newValue);
+    const edit = makeEdit(loaded.page.raster, detection, oldValue, newValue, keepSign);
     const next = [...latest.current.edits.filter((e) => e.detectionId !== detection.id), edit];
     const others = matchingValues(latest.current.detections, next, oldValue, detection.id);
     setEdits(next);
@@ -567,7 +567,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const exportItems = exporting
     ? readingOrder(detections).flatMap((d) => {
         const edit = edits.find((e) => e.detectionId === d.id);
-        return edit ? [{ id: d.id, oldValue: edit.oldValue, newValue: edit.newValue, panel: t.editor.panels[panelOf(d.box)] }] : [];
+        return edit
+          ? [{ id: d.id, oldValue: edit.oldValue, newValue: edit.newValue, oldPrefix: d.prefix, newPrefix: edit.prefix, panel: t.editor.panels[panelOf(d.box)] }]
+          : [];
       })
     : [];
   const exportSuggestionList = exporting ? exportSuggestions(detections, edits) : [];
@@ -580,7 +582,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       detection={active}
       edit={edits.find((e) => e.detectionId === active.id) ?? null}
       style={besideStyle(popoverPx.cx, popoverPx.cy, (Math.hypot(popoverPx.w, popoverPx.h) / 2) * scale + 12, W, H, scale, 320, 340)}
-      onApply={(oldValue, newValue) => apply(active, oldValue, newValue)}
+      onApply={(oldValue, newValue, keepSign) => apply(active, oldValue, newValue, keepSign)}
       onRevert={() => revert(active.id)}
       onClose={(refocus) => (refocus ? closePopover(active.id) : setActiveId(null))}
     />

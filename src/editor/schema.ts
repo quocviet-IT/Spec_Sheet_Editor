@@ -7,8 +7,8 @@ const angle = z.number().gt(-180).lte(180);
 /** A normalised value (BR-05): digits, at most one point, no comma. */
 const value = z.string().regex(/^\d{1,3}(\.\d{1,3})?$/);
 const colour = z.string().regex(/^#[0-9a-f]{6}$/);
-/** What is written in front of a value ("Ø", "R", "2X Ø"): up to 8 characters from a small set. Optional, so sheets saved before it parse. */
-const prefix = z.string().regex(/^[ØRXx0-9 ()±⌀]{1,8}$/);
+/** What is written in front of a value ("Ø", "R", "2X Ø", "4× "): up to 8 characters from a small set. Optional, so sheets saved before it parse. */
+const prefix = z.string().regex(/^[ØRXx×0-9 ()±⌀]{1,8}$/);
 
 export const MAX_VALUES = 300;
 

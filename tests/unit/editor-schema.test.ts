@@ -97,7 +97,7 @@ describe("sheetDataSchema", () => {
   });
 
   it("holds a prefix to at most 8 characters from a small set", () => {
-    for (const prefix of ["Ø", "R", "2X Ø", "2x Ø", "(4X) Ø", "4X ", "±", "⌀", "12X R", "(10X) Ø"]) {
+    for (const prefix of ["Ø", "R", "2X Ø", "2x Ø", "(4X) Ø", "4X ", "4× ", "(4×) Ø", "±", "⌀", "12X R", "(10X) Ø"]) {
       expect(ok({ detections: [det("a", { prefix })], edits: [edit("a", { prefix })] }), prefix).toBe(true);
     }
     for (const prefix of ["", "(10X) ØØ±", "SO", "mm", "r", "<b>", "Ø\n", "ø", "Φ", 2, null]) {
@@ -107,7 +107,7 @@ describe("sheetDataSchema", () => {
   });
 
   it("accepts every prefix the reader gives", () => {
-    for (const text of ["01.30", "Ø1.30", "O1.30", "2X Ø1.10", "2x01.10", "(4X) Ø1.10", "(99X) Ø1.10", "4XR0.50", "2×1.10", "4X 2.50", "R0.50"]) {
+    for (const text of ["01.30", "Ø1.30", "O1.30", "00.80", "O0.80", "2X Ø1.10", "2x01.10", "(4X) Ø1.10", "(99X) Ø1.10", "4XR0.50", "2×1.10", "(4×) Ø1.10", "4X 2.50", "R0.50"]) {
       const prefix = readDimension(text)?.prefix;
       expect(prefix, text).toBeTruthy();
       expect(ok({ detections: [det("a", { prefix })], edits: [edit("a", { prefix })] }), text).toBe(true);
