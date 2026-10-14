@@ -64,6 +64,9 @@ export function mergeOverlapping(candidates: readonly Detection[], distance: num
   return kept;
 }
 
+/** A text line read in the margin counts as inside the area within this many page pixels of its edge (whole-pixel edges). */
+export const EDGE_SLACK_PX = 1;
+
 /** The area grown by `margin` on each side; the growth stops at the page's edges. */
 export function grownFrame(area: Rect, margin: number, pageW: number, pageH: number): Rect {
   if (!(margin > 0)) return area;
@@ -83,7 +86,8 @@ export function grownFrame(area: Rect, margin: number, pageW: number, pageH: num
  *
  * `margin` (page pixels) grows the frame that is read on each side, within the page, so a value whose digits
  * run over the area's edge is read whole; the frame is enlarged by the area's own factor (SCAN_TARGET_WIDTH).
- * Readings beside the area are returned too: which values belong to the drawing is the caller's to decide.
+ * Only text lines whose centre lies inside the area (give or take a pixel) are then read: the margin holds
+ * the text of the table and the boxes around the drawing, which no value of the drawing is (BR-02).
  */
 export async function scanArea(
   models: OcrModels,
@@ -101,16 +105,26 @@ export async function scanArea(
   const height = frame.height * factor;
   const big = resizeBicubic(frame, width, height);
   const toPage = (p: Point): Point => ({ x: at.x + (p.x * frame.width) / width, y: at.y + (p.y * frame.height) / height });
-  const opts = { bothDirections: true, accept: isPointedDimension };
+  /** The reader's options for a pass whose image maps to the enlarged frame by `toBig`. */
+  const optsFor = (toBig: (p: Point) => Point) => {
+    if (at === area) return { bothDirections: true, accept: isPointedDimension };
+    const keep = (quad: Quad) => {
+      const c = toPage(toBig({ x: (quad[0].x + quad[1].x + quad[2].x + quad[3].x) / 4, y: (quad[0].y + quad[1].y + quad[2].y + quad[3].y) / 4 }));
+      return c.x >= area.x - EDGE_SLACK_PX && c.x <= area.x + area.w + EDGE_SLACK_PX && c.y >= area.y - EDGE_SLACK_PX && c.y <= area.y + area.h + EDGE_SLACK_PX;
+    };
+    return { bothDirections: true, accept: isPointedDimension, keep };
+  };
 
   /** Readings of one pass in page pixels, with the page angle of that pass's left-to-right. */
   type Pass = { readings: Reading[]; imageTurn: number; toBig: (p: Point) => Point };
   const passes: Pass[] = [];
+  const upright = (p: Point) => p;
   const t0 = performance.now();
-  passes.push({ readings: await read(models, big, opts), imageTurn: 0, toBig: (p) => p });
+  passes.push({ readings: await read(models, big, optsFor(upright)), imageTurn: 0, toBig: upright });
   const t1 = performance.now();
   // A point (x, y) of the clockwise-turned image came from (y, height - 1 - x) of the upright one.
-  passes.push({ readings: await read(models, rotate90cw(big), opts), imageTurn: -90, toBig: (p) => ({ x: p.y, y: height - 1 - p.x }) });
+  const turned = (p: Point): Point => ({ x: p.y, y: height - 1 - p.x });
+  passes.push({ readings: await read(models, rotate90cw(big), optsFor(turned)), imageTurn: -90, toBig: turned });
   const t2 = performance.now();
   if (diagonals) {
     for (const turn of DIAGONAL_TURNS) {
@@ -120,7 +134,7 @@ export async function scanArea(
         const c = unrotatePoint({ x: p.x + 0.5, y: p.y + 0.5 }, width, height, image.width, image.height, turn);
         return { x: c.x - 0.5, y: c.y - 0.5 };
       };
-      passes.push({ readings: await read(models, image, opts), imageTurn: turn, toBig });
+      passes.push({ readings: await read(models, image, optsFor(toBig)), imageTurn: turn, toBig });
     }
   }
   const t3 = performance.now();

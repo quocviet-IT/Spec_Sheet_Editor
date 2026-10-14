@@ -96,6 +96,26 @@ describe("scanArea", () => {
     expect(sizes[0]).toEqual([2 * 215, 2 * 115]);
   });
 
+  it("with a margin, reads only the text lines whose centre lies inside the area", async () => {
+    const asked: { pass: number; keep: boolean | null }[] = [];
+    let pass = 0;
+    const read: RegionReader = async (_models, image, opts) => {
+      pass++;
+      // In the enlarged frame (× 2, starting at page (90, 40)): a line centred at page (92.5, 42.5), beside the area,
+      // and one centred at page (110, 60), inside it. In the turned pass (240 × 440): the same two lines.
+      const lines = image.width > image.height ? [square(0, 0, 10), square(30, 30, 20)] : [square(230, 0, 10), square(190, 30, 20)];
+      for (const q of lines) asked.push({ pass, keep: opts?.keep ? opts.keep(q) : null });
+      return [];
+    };
+    await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read, false, 10);
+    expect(asked.map((a) => a.keep)).toEqual([false, true, false, true]);
+    // Without a margin every line the frame holds is read, as before.
+    asked.length = 0;
+    pass = 0;
+    await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
+    expect(asked.map((a) => a.keep)).toEqual([null, null, null, null]);
+  });
+
   it("keeps what is written in front of a value", async () => {
     const read: RegionReader = async (_models, image) =>
       image.width === 400

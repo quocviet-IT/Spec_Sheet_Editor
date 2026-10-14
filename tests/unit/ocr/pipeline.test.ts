@@ -75,6 +75,22 @@ describe("readRegion", () => {
     }
   });
 
+  it("reads only the text lines the caller keeps, by their quad in input pixels", async () => {
+    const models = fakeModels();
+    const quads: number[][] = [];
+    const none = await readRegion(models, createRaster(64, 32), {
+      keep: (quad) => {
+        quads.push(quad.flatMap((p) => [p.x, p.y]));
+        return false;
+      },
+    });
+    expect(none).toEqual([]);
+    expect(models.recCalls).toBe(0);
+    // The block the fake detector sees lies in the middle of the 64 × 32 input.
+    for (const [i, v] of quads[0].entries()) expect(v).toBeLessThanOrEqual(i % 2 === 0 ? 64 : 32);
+    expect(await readRegion(models, createRaster(64, 32), { keep: () => true })).toHaveLength(1);
+  });
+
   it("reads each crop twice when asked to try both directions", async () => {
     const models = fakeModels();
     await readRegion(models, createRaster(64, 32), { bothDirections: true });

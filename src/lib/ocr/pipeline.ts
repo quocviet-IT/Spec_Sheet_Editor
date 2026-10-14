@@ -22,11 +22,12 @@ export type Reading = { text: string; score: number; quad: Quad; turn: 0 | 90 | 
  * accepted are re-read, and the upside-down reading replaces the upright one only when it is accepted
  * (`upsideDownWins`). The scan and the click accept only a value with its point written
  * (`isPointedDimension`): a more confident "069" read upside down never replaces an upright "690".
+ * keep: the detected text lines to read, by their quad in input pixels; the others are not read at all.
  */
 export type RegionReader = (
   models: OcrModels,
   image: Raster,
-  opts?: { bothDirections?: boolean; accept?: (text: string) => boolean },
+  opts?: { bothDirections?: boolean; accept?: (text: string) => boolean; keep?: (quad: Quad) => boolean },
 ) => Promise<Reading[]>;
 
 /** RapidOCR Global.text_score. */
@@ -98,7 +99,10 @@ export const readRegion: RegionReader = async (models, image, opts = {}) => {
   const size = detInputSize(padded.raster.width, padded.raster.height);
   const detImage = resizeBilinear(padded.raster, size.width, size.height);
   const prob = await models.detect({ data: toBgrCHW(detImage), dims: [1, 3, size.height, size.width] });
-  const boxes = dbPostprocess(prob.data, prob.dims[3], prob.dims[2], padded.raster.width, padded.raster.height);
+  const toInput = (quad: Quad) => quad.map((p) => ({ x: p.x * fitted.scaleX, y: (p.y - padded.top) * fitted.scaleY })) as Quad;
+  const { keep } = opts;
+  const found = dbPostprocess(prob.data, prob.dims[3], prob.dims[2], padded.raster.width, padded.raster.height);
+  const boxes = keep ? found.filter((box) => keep(toInput(box.quad))) : found;
   if (boxes.length === 0) return [];
 
   const crops = boxes.map((box) => cropQuad(padded.raster, box.quad));
@@ -122,7 +126,7 @@ export const readRegion: RegionReader = async (models, image, opts = {}) => {
     .map((box, i) => ({
       ...texts[i],
       turn: ((cropTurnsQuarter(box.quad) ? 90 : 0) + (upsideDown[i] ? 180 : 0)) as Reading["turn"],
-      quad: box.quad.map((p) => ({ x: p.x * fitted.scaleX, y: (p.y - padded.top) * fitted.scaleY })) as Quad,
+      quad: toInput(box.quad),
     }))
     .filter((reading) => reading.score >= MIN_TEXT_SCORE);
 };
