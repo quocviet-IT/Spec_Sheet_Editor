@@ -50,11 +50,11 @@ Sources:
 | TC-31 | Revert to original | Visual | `e2e/pixels.spec.ts` TC-31; `e2e/editor.spec.ts` TC-31 | Pass (2026-10-10, e2e:prod) |
 | TC-32 | Matching value suggestion | E2E | `e2e/tools.spec.ts` TC-32 | Pass (2026-10-10, e2e:prod) |
 | TC-33 | Locked zones | E2E | `e2e/editor.spec.ts` TC-33 | Pass (2026-10-10, e2e:prod) |
-| TC-34 | Box outside the zone | E2E | `e2e/tools.spec.ts` TC-34 | Pass (2026-10-10, e2e:prod) |
+| TC-34 | Box outside the zone | E2E | `e2e/tools.spec.ts` TC-34 | Pass (2026-10-15, e2e:prod) |
 | TC-35 | Empty box | E2E | `e2e/tools.spec.ts` TC-35 | Pass (2026-10-10, e2e:prod) |
-| TC-36 | Diagonal value | Visual | `e2e/pixels.spec.ts` TC-36 | Pass (2026-10-10, e2e:prod) |
+| TC-36 | Diagonal value | Visual | `e2e/pixels.spec.ts` TC-36 | Pass (2026-10-15, e2e:prod) |
 | TC-37 | Normal save | E2E | `e2e/editor.spec.ts` TC-37 | Pass (2026-10-10, e2e:prod) |
-| TC-38 | The owner and an Admin save | E2E | `e2e/editor.spec.ts` TC-38 | Rewritten for sheet ownership on 2026-10-12; written, not yet run (passed in its earlier form on 2026-10-10) |
+| TC-38 | The owner and an Admin save | E2E | `e2e/editor.spec.ts` TC-38 | Pass (2026-10-15, e2e:prod) |
 | TC-39 | Leave unsaved | E2E | `e2e/editor.spec.ts` TC-39 | Pass (2026-10-10, e2e:prod) |
 | TC-40 | Offline save | E2E | `e2e/editor.spec.ts` TC-40 | Pass (2026-10-10, e2e:prod) |
 | TC-41 | Sheet trashed while open | E2E | `e2e/editor.spec.ts` TC-41 | Pass (2026-10-10, e2e:prod) |
@@ -94,17 +94,17 @@ Sources:
 | TC-75 | File deletion fails midway | Unit | `tests/unit/admin-purge.test.ts`, `tests/unit/admin-orphans.test.ts` | Pass (unit) |
 | TC-76 | Orphan clean-up | E2E | `e2e/admin.spec.ts` TC-76; `tests/unit/admin-orphans.test.ts` | Pass (2026-10-10, e2e:prod) |
 | TC-77 | Service-role key not exposed | Unit | `tests/unit/bundle-scan.test.ts`; the `postbuild` check `scripts/check-bundle.mts` | Pass (unit) |
-| TC-78 | Staff see only their own sheets | E2E | `e2e/ownership.spec.ts` TC-78 | Written, not yet run |
-| TC-79 | An Admin sees every sheet and filters by creator | E2E | `e2e/ownership.spec.ts` TC-79 | Written, not yet run |
-| TC-80 | Ownership in the database | SQL | `tests/sql/ownership.test.ts` | Written, not yet run (needs migration 0004 and the office network) |
-| TC-81 | A report is filed with a screenshot from the editor | E2E | `e2e/feedback.spec.ts` TC-81 | Written, not yet run |
-| TC-82 | An Admin triages; declining needs a reason; the reporter sees the note and the count | E2E | `e2e/feedback.spec.ts` TC-82 | Written, not yet run |
-| TC-83 | Another staff member cannot see the report | E2E | `e2e/feedback.spec.ts` TC-83 | Written, not yet run |
-| TC-84 | Feedback in the database | SQL | `tests/sql/feedback.test.ts` | Written, not yet run (needs migration 0005 and the office network) |
-| TC-85 | Rename an account | E2E | `e2e/admin.spec.ts` (the Admin renames Staff B) | Written, not yet run |
+| TC-78 | Staff see only their own sheets | E2E | `e2e/ownership.spec.ts` TC-78 | Pass (2026-10-15, e2e:prod) |
+| TC-79 | An Admin sees every sheet and filters by creator | E2E | `e2e/ownership.spec.ts` TC-79 | Pass (2026-10-15, e2e:prod) |
+| TC-80 | Ownership in the database | SQL | `tests/sql/ownership.test.ts` | Pass (2026-10-13, SQL, before and after migration 0004) |
+| TC-81 | A report is filed with a screenshot from the editor | E2E | `e2e/feedback.spec.ts` TC-81 | Pass (2026-10-15, e2e:prod) |
+| TC-82 | An Admin triages; declining needs a reason; the reporter sees the note and the count | E2E | `e2e/feedback.spec.ts` TC-82 | Pass (2026-10-15, e2e:prod) |
+| TC-83 | Another staff member cannot see the report | E2E | `e2e/feedback.spec.ts` TC-83 | Pass (2026-10-15, e2e:prod) |
+| TC-84 | Feedback in the database | SQL | `tests/sql/feedback.test.ts` | Pass (2026-10-13, SQL, before and after migration 0005) |
+| TC-85 | Rename an account | E2E | `e2e/admin.spec.ts` (the Admin renames Staff B) | Pass (2026-10-15, e2e:prod) |
 | TC-86 | Rename in the database | SQL | `tests/sql/rename.test.ts` | Pass (2026-10-15, SQL, migration 0006 applied inside the test transaction) |
 
-Counts: 3 x Waived until Google sign-in is switched on (owner to confirm); 15 x Written; SQL not run on this network; 47 x Pass (2026-10-10, e2e:prod); 9 x Pass (unit); 1 x Bench (M2 result); 1 x Needs a macOS machine (owner); 1 x Release step (M7b). Not counted above: 3 x Written, not yet run (TC-78 to TC-80, sheet ownership), TC-81 to TC-84 (feedback), TC-85 and TC-86 (rename; TC-86 passes in SQL), and TC-38, rewritten and not yet run.
+Counts: 3 x Waived until Google sign-in is switched on (owner to confirm); 15 x Written; SQL not run on this network; 47 x Pass (2026-10-10, e2e:prod); 9 x Pass (unit); 1 x Bench (M2 result); 1 x Needs a macOS machine (owner); 1 x Release step (M7b). Not counted above: TC-78, TC-79, TC-81 to TC-83, TC-85 and TC-38 pass in the run of 2026-10-15 (below); TC-80 and TC-84 passed in SQL on 2026-10-13; TC-86 passes in SQL.
 
 Not covered by a test: TC-17 has no full upload path (the test-file generator cannot encrypt a PDF; the
 error mapping is unit-tested).
@@ -120,9 +120,9 @@ error mapping is unit-tested).
 | NFR-05 Consistency | Arimo ships with the app; `e2e/pixels.spec.ts` and `e2e/export.spec.ts` TC-44 compare pixels on this machine. The Windows to macOS comparison is TC-47. | Needs a macOS machine (owner) |
 | NFR-06 Compatibility | `e2e/session.spec.ts` TC-53 (editor desktop notice at 390 px, list at 360 px); the Admin area notice below 1024 px. Chrome only in the test run. | Pass (2026-10-10, e2e:prod) |
 | NFR-07 Usability | `e2e/a11y.spec.ts`: axe scans for WCAG 2.2 AA in light and dark, Vietnamese and English, on the login page, the sheet list, the upload dialog, the editor and its layers, the trash, the password page, the guide, the Admin screens and the purge dialog (9 tests, all passing). `e2e/keyboard.spec.ts`: open, edit, save and export with the keyboard alone. | Pass (2026-10-10, e2e:prod) |
-| NFR-07 Usability, account menu | `e2e/keyboard.spec.ts`: the header's account menu is opened, moved through and closed with the keyboard alone. | Written, not yet run |
+| NFR-07 Usability, account menu | `e2e/keyboard.spec.ts`: the header's account menu is opened, moved through and closed with the keyboard alone. | Pass (2026-10-15, e2e:prod) |
 | NFR-08 Test data | `samples/` is in `.gitignore`; all tests use generated sheets. | Pass (by inspection) |
-| NFR-07 Usability, theme | `e2e/theme.spec.ts`: Dark is chosen and kept after a reload, System follows the device and Light does not; `e2e/keyboard.spec.ts`: the theme menu is opened, moved through and closed with the keyboard alone. | Written, not yet run |
+| NFR-07 Usability, theme | `e2e/theme.spec.ts`: Dark is chosen and kept after a reload, System follows the device and Light does not; `e2e/keyboard.spec.ts`: the theme menu is opened, moved through and closed with the keyboard alone. | Pass (2026-10-15, e2e:prod) |
 | NFR-09 Traceability | `e2e/admin.spec.ts` TC-68 / TC-72 (one audit entry per action; the CSV matches the log); SQL TC-69 to TC-71 not run on this network. | Pass for the end-to-end part; SQL written, not run on this network |
 | NFR-10 Least privilege | `tests/unit/bundle-scan.test.ts` and the `postbuild` check `scripts/check-bundle.mts` (the production bundle holds no secret-key shape); `createSupabaseAdmin` gained no new use in M7a. | Pass (unit, build check) |
 
@@ -146,3 +146,24 @@ of a sheet that the test had already deleted; no test failed because of it.
 After the run the shared development project was checked with a read-only script: settings 20 / 2000 / 2 / 10,
 `e2e-staff` and `e2e-staff-b` active Staff, `e2e-admin` suspended, `admin@ctyhp.vn` still an active Admin,
 only `ctyhp.vn` in the permitted domains, no permitted emails, 0 sheets.
+
+### Run of 2026-10-15
+
+Command: `npx playwright test -c playwright.prod.config.ts <specs>` in two parts of 49 and 57 tests (106 in all), each under
+the 40-minute global limit, on the production build, against the production project (the only Supabase project), with the
+three reserved accounts only.
+
+- Part A (admin, a11y, csp, feedback, guide, keyboard, list, ownership, session, storage, theme): 29 passed, 20 failed in
+  13.6 minutes. 14 failures were `ERR_CONNECTION_REFUSED`: the production server stopped answering at `e2e/guide.spec.ts`,
+  after `Error: The destination stream closed early` twice in its log, as on 2026-10-10. Two real causes behind the other 6:
+  - `e2e/admin.spec.ts` TC-62 / TC-63 had Staff B open and edit a sheet Staff A uploaded, which sheet ownership (BR-18) now
+    forbids; the test now uses Staff B's own sheet.
+  - `e2e/csp.spec.ts` (4 tests): every signed-in page reported `script-src eval`. Zod 4 probes for eval with `Function("")`
+    on its first parse; the policy blocks it and the browser reports it. `src/instrumentation-client.ts` sets Zod's
+    `jitless` option before the app starts, and a probe of `/sheets`, `/guide` and `/feedback` then reported nothing.
+- Part A again (admin, csp, guide, keyboard, list, ownership, session, theme): 35 passed in 9.6 minutes.
+- Part B (detect, editor, export, feedback, perf, pixels, tools, upload): 60 passed in 15.4 minutes. NFR-01 on this PC:
+  `[timing] reopen-1 2549 ms`, `reopen-2 1790 ms`, `reopen-3 1887 ms`, `read-on-click 2188 ms`, `export-pdf 1361 ms`.
+- `npm run guide:shots`: the English capture stopped once at `admin-users` (the search had not yet filtered the list, so its
+  footer counted rows the picture hid); the capture now waits for the one account, and both languages then passed. Every
+  picture was checked by eye: only the reserved accounts and the capture's own sheets.
