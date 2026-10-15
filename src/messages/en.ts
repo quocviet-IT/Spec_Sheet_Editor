@@ -150,7 +150,7 @@ export const en: Messages = {
     ocrLoad: "The value reader could not be loaded. Check your connection, then reload the page; Draw box still works.",
     drawBox: "Draw box",
     drawHint: "Drag a box around the value. Press Esc to cancel.",
-    drawOutside: "The middle of the box must be inside the four drawing panels.",
+    drawOutside: "Draw the box around a value on the four drawing panels, not over the table or the header.",
     drawEmpty: "There is no text in this box. Draw it tightly around the value.",
     angle: {
       title: "Direction of the value",

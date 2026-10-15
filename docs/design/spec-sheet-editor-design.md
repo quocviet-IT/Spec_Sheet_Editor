@@ -485,7 +485,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Notes:** Draw box needs a pointer: values the machine marked are reachable by keyboard, and a value it missed is marked with the mouse.
 
-**Exceptions:** 1a. The middle of the box lies outside the drawing area, or the box reaches beyond the small margin around it (2% of the page width, as the scan and a click; a box may run over the area's edge around a value written there): "The middle of the box must be inside the four drawing panels."<br>3a. No text inside the box: "There is no text in this box. Draw it tightly around the value."<br>3b. The value in the box, tightened to its digits, is centred outside the drawing area (the box holds only text of the table or the header beside it): the same message as 1a, and no value is added (BR-02).
+**Exceptions:** 1a. The middle of the box lies outside the drawing area, or the box reaches beyond the small margin around it (2% of the page width, as the scan and a click; a box may run over the area's edge around a value written there): "Draw the box around a value on the four drawing panels, not over the table or the header."<br>3a. No text inside the box: "There is no text in this box. Draw it tightly around the value."<br>3b. The value in the box, tightened to its digits, is centred outside the drawing area (the box holds only text of the table or the header beside it): the same message as 1a, and no value is added (BR-02).
 
 #### UC-08 · Save a sheet
 
@@ -1753,7 +1753,7 @@ Shown in English for this edition; final wording follows the interface language 
 | No values found | No values were found automatically. Click the value you want to edit, or use Draw box. |
 | Click could not read | No value could be read here. Use Draw box to mark it. |
 | Invalid value | Numbers only, for example 2.60. |
-| Box outside zone | The middle of the box must be inside the four drawing panels. |
+| Box outside zone | Draw the box around a value on the four drawing panels, not over the table or the header. |
 | Matching values | {old} also appears in {n} other places. Apply the change there too? |
 | Saved / offline | Saved at {HH:MM} / Not saved — check your connection. [Try again] |
 | Sheet in Trash | This sheet has been moved to the Trash. Restore it, then save again. |

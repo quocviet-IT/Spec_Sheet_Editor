@@ -148,7 +148,7 @@ export const vi = {
     ocrLoad: "Không tải được bộ đọc số. Kiểm tra kết nối rồi tải lại trang; vẫn có thể dùng Vẽ khung.",
     drawBox: "Vẽ khung",
     drawHint: "Kéo chuột quanh số cần sửa. Nhấn Esc để huỷ.",
-    drawOutside: "Tâm của khung phải nằm trong bốn ô hình vẽ.",
+    drawOutside: "Hãy vẽ khung quanh một số trên bốn ô hình vẽ, không trùm sang bảng hay phần đầu phiếu.",
     drawEmpty: "Trong khung không có chữ. Hãy vẽ sát quanh số.",
     angle: {
       title: "Chiều của số",
