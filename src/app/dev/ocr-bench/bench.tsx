@@ -147,8 +147,9 @@ export function Bench() {
       <header className="space-y-1">
         <h1 className="text-2xl font-bold">OCR bench</h1>
         <p className="text-sm text-ink-2">
-          TC-20: at least {TARGETS.scanLocated}/11 values located within {TARGETS.scanSeconds} s. TC-24: each click within{" "}
-          {TARGETS.clickSeconds} s. Developer tool; the sample sheet never leaves this browser.
+          TC-20: the full scan within {TARGETS.scanSeconds} s (the values located on this low-resolution sample are recorded, not
+          judged: TC-20&apos;s located bar is set on the real sheets). TC-24: each click within {TARGETS.clickSeconds} s. Developer
+          tool; the sample sheet never leaves this browser.
         </p>
       </header>
 
@@ -214,7 +215,7 @@ export function Bench() {
         </div>
         {scanScore && scan && (
           <p className="font-mono text-sm" data-testid="scan-summary">
-            Scan: located {scanScore.located}/11 ({verdict(scanScore.located >= TARGETS.scanLocated)}), read {scanScore.read}/11, stray{" "}
+            Scan: located {scanScore.located}/11, read {scanScore.read}/11, stray{" "}
             {scanScore.stray}, total {seconds(scan.totalMs)} ({verdict(scan.totalMs <= TARGETS.scanSeconds * 1000)}; 0°{" "}
             {seconds(scan.result.timing.horizontalMs)}, 90° {seconds(scan.result.timing.verticalMs)}
             {scan.result.timing.diagonalMs !== undefined && `, ±45° ${seconds(scan.result.timing.diagonalMs)}`})

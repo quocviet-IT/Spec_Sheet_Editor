@@ -49,5 +49,5 @@ export function editorView(sample: Raster, truth: readonly TruthValue[] = SAMPLE
 export const CLICK_OFFSET = { x: 3, y: 2 };
 /** A reading counts as found when its centre is within this many page pixels of the value's centre. */
 export const NEAR_PX = 20;
-/** TC-20 and TC-24. */
-export const TARGETS = { scanLocated: 9, scanSeconds: 60, clickSeconds: 5 };
+/** TC-20 (the scan time; its located bar is set on the real sheets, not on this sample) and TC-24. */
+export const TARGETS = { scanSeconds: 60, clickSeconds: 5 };

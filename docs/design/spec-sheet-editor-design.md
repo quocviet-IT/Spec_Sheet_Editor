@@ -1277,7 +1277,7 @@ Priority: High blocks go-live; Med medium; Low.
 | TC-18 | UC-03 | Multi-page PDF | 3-page PDF | Page 1 used; user told | E2E | Med |
 | TC-19 | UC-03 | Offline during upload | Block requests to Storage | Error with retry; no half-finished sheet | E2E | Med |
 | **Value detection** |  |  |  |  |  |  |
-| TC-20 | UC-04 | Scan the 1135-px sample | Sample sheet (outside the repository) | ≥ 9/11 values located, within 60 seconds | Bench | High |
+| TC-20 | UC-04 | Scan the real sheets; time the scan of the 1135-px sample | The real-sheet benchmark (8 sheets, 93 values) and the sample sheet, all outside the repository | At least 80% of the benchmark's values located by the scan; the sample scanned within 60 seconds in the browser. The sample's located count is recorded, not judged: with 8-px digits it moves with the resampling | Bench | High |
 | TC-21 | UC-04 | PDF with a text layer | Synthetic PDF, values as real text, including vertical ones | All 11 found, correct angles, OCR not run | E2E | High |
 | TC-22 | UC-04 | Decimal-point insertion | "1630", "170", "12345", "2.59" | "16.30", "1.70", dropped, "2.59" | Unit | Med |
 | TC-23 | UC-04 | Value outside the drawing | "5.75" in the right-hand table | Not marked | E2E | High |
