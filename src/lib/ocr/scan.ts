@@ -77,6 +77,18 @@ export function grownFrame(area: Rect, margin: number, pageW: number, pageH: num
   return { x, y, w: right - x, h: bottom - y };
 }
 
+/** `scanArea`'s optional settings; each one left out takes its default. */
+export type ScanOptions = {
+  /** The width the area is enlarged towards (SCAN_TARGET_WIDTH). */
+  targetWidth?: number;
+  /** The text reader (`readRegion`); tests pass their own. */
+  read?: RegionReader;
+  /** Also read at ±45° (SCAN_DIAGONALS). */
+  diagonals?: boolean;
+  /** Page pixels read around the area on each side, within the page (0). */
+  margin?: number;
+};
+
 /**
  * UC-04 steps 3–4: scan the drawing area at 0° and 90° clockwise (and ±45° with `diagonals`) and keep the
  * readings that are values. Every crop that is not a value with its point written is also read upside down,
@@ -89,15 +101,8 @@ export function grownFrame(area: Rect, margin: number, pageW: number, pageH: num
  * Only text lines whose centre lies inside the area (give or take a pixel) are then read: the margin holds
  * the text of the table and the boxes around the drawing, which no value of the drawing is (BR-02).
  */
-export async function scanArea(
-  models: OcrModels,
-  page: Raster,
-  area: Rect,
-  targetWidth: number = SCAN_TARGET_WIDTH,
-  read: RegionReader = readRegion,
-  diagonals: boolean = SCAN_DIAGONALS,
-  margin: number = 0,
-): Promise<ScanResult> {
+export async function scanArea(models: OcrModels, page: Raster, area: Rect, options: ScanOptions = {}): Promise<ScanResult> {
+  const { targetWidth = SCAN_TARGET_WIDTH, read = readRegion, diagonals = SCAN_DIAGONALS, margin = 0 } = options;
   const at = grownFrame(area, margin, page.width, page.height);
   const frame = crop(page, at);
   const factor = Math.max(1, Math.round(targetWidth / Math.max(1, Math.round(area.w))));

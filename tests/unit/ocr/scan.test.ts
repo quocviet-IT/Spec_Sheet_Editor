@@ -32,7 +32,7 @@ describe("scanArea", () => {
         { text: "SO", score: 0.99, turn: 0, quad: square(0, 0, 5) },
       ];
     };
-    const { detections } = await scanArea(models, page, area, 400, read);
+    const { detections } = await scanArea(models, page, area, { targetWidth: 400, read });
     expect(detections).toHaveLength(2);
     const flat = detections.find((d) => d.value === "16.30")!;
     expect(flat.angle).toBe(0);
@@ -50,7 +50,7 @@ describe("scanArea", () => {
   it("adds the turns made while reading to the pass's angle", async () => {
     const read: RegionReader = async (_models, image) =>
       image.width === 400 ? [{ text: "16.30", score: 0.9, turn: 270, quad: square(40, 20, 10) }] : [];
-    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
+    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read });
     expect(detections[0].angle).toBe(-90);
   });
 
@@ -60,7 +60,7 @@ describe("scanArea", () => {
       image.width === 400
         ? [{ text: "16.30", score: 0.9, turn: 0, quad: turnedBox(100, 60, 40, 12, 30) }]
         : [{ text: "2.50", score: 0.8, turn: 0, quad: turnedBox(100, 200, 40, 12, 20) }];
-    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
+    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read });
     expect(detections.find((d) => d.value === "16.30")!.angle).toBeCloseTo(30, 6);
     expect(detections.find((d) => d.value === "2.50")!.angle).toBeCloseTo(-70, 6);
   });
@@ -71,10 +71,10 @@ describe("scanArea", () => {
       widths.push(image.width);
       return [];
     };
-    await scanArea(models, createRaster(400, 300), { x: 10, y: 10, w: 100, h: 50 }, 290, read);
+    await scanArea(models, createRaster(400, 300), { x: 10, y: 10, w: 100, h: 50 }, { targetWidth: 290, read });
     expect(widths).toEqual([300, 150]); // × 3: upright 300 × 150, then turned 150 × 300
     widths.length = 0;
-    await scanArea(models, createRaster(400, 300), { x: 10, y: 10, w: 300, h: 50 }, 100, read);
+    await scanArea(models, createRaster(400, 300), { x: 10, y: 10, w: 300, h: 50 }, { targetWidth: 100, read });
     expect(widths).toEqual([300, 50]); // never shrinks: × 1
   });
 
@@ -85,14 +85,14 @@ describe("scanArea", () => {
       return image.width > image.height ? [{ text: "1.30", score: 0.9, turn: 0, quad: square(4, 6, 10) }] : [];
     };
     // 200 px wide at a target of 400: × 2. Grown by 10 px on each side: 220 × 120, read at 440 × 240.
-    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read, false, 10);
+    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read, diagonals: false, margin: 10 });
     expect(sizes).toEqual([[440, 240], [240, 440]]);
     // (4, 6) in the enlarged frame is (2, 3) in the frame, which starts at (90, 40): a value just beside the area.
     expect(detections[0].box).toEqual({ x: 92, y: 43, w: 5, h: 5 });
 
     // Grown only as far as the page goes: the area starts 5 px from the left and the top edge.
     sizes.length = 0;
-    await scanArea(models, createRaster(400, 300), { x: 5, y: 5, w: 200, h: 100 }, 400, read, false, 10);
+    await scanArea(models, createRaster(400, 300), { x: 5, y: 5, w: 200, h: 100 }, { targetWidth: 400, read, diagonals: false, margin: 10 });
     expect(sizes[0]).toEqual([2 * 215, 2 * 115]);
   });
 
@@ -107,12 +107,12 @@ describe("scanArea", () => {
       for (const q of lines) asked.push({ pass, keep: opts?.keep ? opts.keep(q) : null });
       return [];
     };
-    await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read, false, 10);
+    await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read, diagonals: false, margin: 10 });
     expect(asked.map((a) => a.keep)).toEqual([false, true, false, true]);
     // Without a margin every line the frame holds is read, as before.
     asked.length = 0;
     pass = 0;
-    await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
+    await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read });
     expect(asked.map((a) => a.keep)).toEqual([null, null, null, null]);
   });
 
@@ -124,7 +124,7 @@ describe("scanArea", () => {
             { text: "1.70", score: 0.9, turn: 0, quad: square(200, 20, 10) },
           ]
         : [];
-    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
+    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read });
     expect(detections.map((d) => [d.prefix, d.value])).toEqual([
       ["2X Ø", "1.10"],
       ["", "1.70"],
@@ -137,7 +137,7 @@ describe("scanArea", () => {
       seen.push({ both: opts?.bothDirections, accept: opts?.accept });
       return [];
     };
-    await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
+    await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read });
     expect(seen).toHaveLength(2);
     for (const { both, accept } of seen) {
       expect(both).toBe(true);
@@ -149,7 +149,7 @@ describe("scanArea", () => {
     // The reader kept the upside-down reading of a wide crop (turn 180): the text runs right to left on the page.
     const read: RegionReader = async (_models, image) =>
       image.width === 400 ? [{ text: "6.90", score: 0.8, turn: 180, quad: square(40, 20, 10) }] : [];
-    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
+    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read });
     expect(detections.map((d) => [d.value, d.angle])).toEqual([["6.90", 180]]);
   });
 
@@ -158,7 +158,7 @@ describe("scanArea", () => {
     const area = { x: 100, y: 50, w: 200, h: 100 }; // × 2: the upright pass is 400 × 200, the turned one 200 × 400
     /** The detector sees the value only in the upright pass; the recogniser reads it upright, then upside down. */
     const scan = async (reads: { text: string; score: number }[], block?: FakeBlock) =>
-      (await scanArea(fakeModels(reads, { block, sees: (w, h) => w > h }), page, area, 400)).detections.map((d) => [d.value, d.angle]);
+      (await scanArea(fakeModels(reads, { block, sees: (w, h) => w > h }), page, area, { targetWidth: 400 })).detections.map((d) => [d.value, d.angle]);
 
     it("keeps the upright reading when neither has its point written, however confident the other", async () => {
       expect(await scan([{ text: "690", score: 0.9 }, { text: "069", score: 0.95 }])).toEqual([["6.90", 0]]);
@@ -189,14 +189,14 @@ describe("scanArea", () => {
       image.width === 400
         ? [{ text: "069", score: 0.97, turn: 270, quad: [{ x: 60, y: 20 }, { x: 70, y: 20 }, { x: 70, y: 60 }, { x: 60, y: 60 }] }]
         : [{ text: "6.90", score: 0.8, turn: 0, quad: [{ x: 140, y: 60 }, { x: 180, y: 60 }, { x: 180, y: 70 }, { x: 140, y: 70 }] }];
-    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
+    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read });
     expect(detections.map((d) => d.value)).toEqual(["6.90"]);
   });
 
   it("still repairs a value whose point was lost when no reading with its point covers the place", async () => {
     const read: RegionReader = async (_models, image) =>
       image.width === 400 ? [{ text: "170", score: 0.9, turn: 0, quad: square(40, 20, 10) }] : [];
-    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
+    const { detections } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read });
     expect(detections.map((d) => d.value)).toEqual(["1.70"]);
   });
 
@@ -207,7 +207,7 @@ describe("scanArea", () => {
       sizes.push([image.width, image.height]);
       return [];
     };
-    const result = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read);
+    const result = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read });
     expect(sizes).toEqual([[400, 200], [200, 400]]);
     expect(result.timing.diagonalMs).toBeUndefined();
   });
@@ -223,7 +223,7 @@ describe("scanArea", () => {
       const centre = { x: (image.width - 1) / 2, y: (image.height - 1) / 2 };
       return sizes.length === 3 ? [{ text: "1.20", score: 0.9, turn: 0, quad: turnedBox(centre.x, centre.y, 40, 12, 0) }] : [];
     };
-    const { detections, timing } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, 400, read, true);
+    const { detections, timing } = await scanArea(models, createRaster(400, 300), { x: 100, y: 50, w: 200, h: 100 }, { targetWidth: 400, read, diagonals: true });
     expect(sizes).toEqual([[400, 200], [200, 400], [turned45.width, turned45.height], [turned45.width, turned45.height]]);
     expect(timing.diagonalMs).toBeGreaterThanOrEqual(0);
     expect(detections).toHaveLength(1);

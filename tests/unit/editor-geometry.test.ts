@@ -244,6 +244,19 @@ describe("drawn boxes (UC-07)", () => {
     expect(rectInDrawingArea({ x: 400, y: 320, w: 80, h: 30 }, 3300, 2550)).toBe(false); // centred in the header band
   });
 
+  it("refuses a rectangle centred inside that reaches beyond the margin around the drawing (UC-07 exception 1a)", () => {
+    // The margin is 66 px on this page: the rectangle may reach x 2277 and y 273.15 at most.
+    expect(rectInDrawingArea({ x: 2120, y: 600, w: 180, h: 30 }, 3300, 2550)).toBe(false); // centre 2210, reaches 2300
+    expect(rectInDrawingArea({ x: 1901, y: 600, w: 610, h: 30 }, 3300, 2550)).toBe(false); // centre 2206, 300 px into the table
+    expect(rectInDrawingArea({ x: 2140, y: 600, w: 136, h: 30 }, 3300, 2550)).toBe(true); // centre 2208, reaches 2276
+    expect(rectInDrawingArea({ x: 2140, y: 600, w: 138, h: 30 }, 3300, 2550)).toBe(false); // centre 2209, reaches 2278
+    expect(rectInDrawingArea({ x: 400, y: 274, w: 80, h: 140 }, 3300, 2550)).toBe(true); // centre 344
+    expect(rectInDrawingArea({ x: 400, y: 272, w: 80, h: 140 }, 3300, 2550)).toBe(false);
+    expect(rectInDrawingArea({ x: 86, y: 1800, w: 214, h: 168 }, 3300, 2550)).toBe(true); // into the bottom-left corner of the margin
+    expect(rectInDrawingArea({ x: 85, y: 1800, w: 215, h: 168 }, 3300, 2550)).toBe(false);
+    expect(rectInDrawingArea({ x: 86, y: 1800, w: 214, h: 169 }, 3300, 2550)).toBe(false);
+  });
+
   it("decides a rectangle on an edge of the drawing area by its centre", () => {
     const W = 3300;
     const H = 2550;
@@ -274,12 +287,13 @@ describe("drawn boxes (UC-07)", () => {
     expect(clickInReach({ x: 2700, y: 600 }, 3300, 2550)).toBe(false);
   });
 
-  it("keeps a value a click found only when its centre lies inside the drawing (BR-02)", () => {
+  it("keeps a value a click found only when its stored box is centred inside the drawing (BR-02)", () => {
     const inside = { x: 400, y: 600 };
     const beside = { x: 2240, y: 600 }; // 29 px into the right-hand table
-    const atEdge = { x: 2200, y: 600 }; // a value running over the edge, its centre inside
-    const inTable = { x: 2250, y: 600 };
-    expect(clickOutcome(inside, inside, 3300, 2550)).toBe("value");
+    const valueAt = (p: { x: number; y: number }) => toBox({ cx: p.x, cy: p.y, w: 60, h: 13, angle: 0 }, 3300, 2550);
+    const atEdge = valueAt({ x: 2200, y: 600 }); // a value running over the edge, its centre inside
+    const inTable = valueAt({ x: 2250, y: 600 });
+    expect(clickOutcome(inside, valueAt(inside), 3300, 2550)).toBe("value");
     expect(clickOutcome(beside, atEdge, 3300, 2550)).toBe("value");
     expect(clickOutcome(inside, inTable, 3300, 2550)).toBe("no-value");
     expect(clickOutcome(inside, null, 3300, 2550)).toBe("no-value");

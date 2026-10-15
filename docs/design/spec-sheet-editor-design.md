@@ -425,8 +425,10 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 2. If the PDF has a text layer in that area: take number-shaped strings with position and angle from the `transform` matrix (Mozilla, n.d.); skip steps 3–4. Strings are taken exactly as written (no decimal point is inserted). A dimension split over several text runs is not found from the text layer; the sheet falls back to OCR (step 3) only when no value at all is found there.
 3. Otherwise: scale the area to about 2100 px wide and run PaddleOCR in a Web Worker in two orientations, 0° and 90° clockwise. A margin of 2% of the page width is read around the area, so a value whose digits run over its edge is read whole; a value is kept only when its centre lies inside the area (BR-02).
 4. Keep number-shaped results; for strings of only 3–4 digits, insert a point before the last two; where two results overlap, keep the more confident one.
-5. Tighten each box to the digits: keep only pixels darker than halfway between background and text colour, so the box does not cut into the dimension line.
+5. Tighten each box to the digits: keep only pixels darker than halfway between background and text colour, so the box does not cut into the dimension line. A value whose tightened box is centred outside the area is dropped (BR-02): tightening can move a box onto text of the table or the header beside the drawing, or stretch it to a printed border.
 6. Store the list and mark the values on the sheet.
+
+**Notes:** The scan reads the drawing area plus a small margin (step 3). This changes the image the reader sees, because the larger frame is resampled differently. On the measured real sheets it improved the scan (values read 74 → 79, wrong readings 5 → 4), at the cost of a few borderline readings elsewhere; the margin is kept deliberately (2026-10-15).
 
 **Exceptions:** 3a. The reader cannot start: the message says whether it could not be downloaded (check the connection) or this browser cannot run it (use a current Chrome or Edge); Draw box works in both cases.<br>4a. No values found: the user is told to click a value or draw a box.
 
@@ -450,7 +452,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Extensions:** 1a. The value is not marked: UC-06 or UC-07.<br>3a. "Revert to original": the edit is removed and the area returns to the original.<br>5a. The confirmed old value appears elsewhere unedited: the system asks "Apply to the other places too?" and applies the same new value if accepted. Matching uses the machine reading of values not yet edited.
 
-**Exceptions:** 1b. Click outside the drawing area: no effect.<br>4a. Invalid format: message under the field; not applied.
+**Exceptions:** 1b. Click outside the drawing area and the small margin around it (2% of the page width, UC-06 step 1): no effect. A click in that margin that reads no value centred inside the area has no effect either.<br>4a. Invalid format: message under the field; not applied.
 
 #### UC-06 · Read on click
 
@@ -460,7 +462,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Main flow:**
 
-1. The user clicks a spot in the drawing area where no value is marked, or beside the area within 2% of the page width (the part of a value that runs over its edge). A reading counts only when the value's centre lies inside the area (BR-02); a click beside the area that reads none has no effect. The reader starts on first need and warms up shortly after the page is ready, so a click usually reads at once. On a sheet whose values all come from the PDF text layer the reader is not warmed up in advance (such a sheet loads no OCR files at all); the first click there starts it, and the 5-second budget applies to reading once the reader is ready.
+1. The user clicks a spot in the drawing area where no value is marked, or beside the area within 2% of the page width (the part of a value that runs over its edge). A reading counts only when the value, tightened to its digits (step 4), is centred inside the area (BR-02); a click beside the area that reads none has no effect. The reader starts on first need and warms up shortly after the page is ready, so a click usually reads at once. On a sheet whose values all come from the PDF text layer the reader is not warmed up in advance (such a sheet loads no OCR files at all); the first click there starts it, and the 5-second budget applies to reading once the reader is ready.
 2. The system crops a square around the click, 5.6% of the page width on each side, and scales it to 256 × 256 px.
 3. The system detects text boxes at 0°, then reads the box in both directions.
 4. The system tightens the box to the digits, samples text and background colours, then continues UC-05 from step 2.
@@ -483,7 +485,7 @@ Extension "4a" branches at step 4 of the main flow; "*a" can occur at any step (
 
 **Notes:** Draw box needs a pointer: values the machine marked are reachable by keyboard, and a value it missed is marked with the mouse.
 
-**Exceptions:** 1a. The middle of the box lies outside the drawing area (a box may run over the area's edge around a value written there): "The middle of the box must be inside the four drawing panels."<br>3a. No text inside the box: "There is no text in this box. Draw it tightly around the value."
+**Exceptions:** 1a. The middle of the box lies outside the drawing area, or the box reaches beyond the small margin around it (2% of the page width, as the scan and a click; a box may run over the area's edge around a value written there): "The middle of the box must be inside the four drawing panels."<br>3a. No text inside the box: "There is no text in this box. Draw it tightly around the value."<br>3b. The value in the box, tightened to its digits, is centred outside the drawing area (the box holds only text of the table or the header beside it): the same message as 1a, and no value is added (BR-02).
 
 #### UC-08 · Save a sheet
 
@@ -1751,7 +1753,7 @@ Shown in English for this edition; final wording follows the interface language 
 | No values found | No values were found automatically. Click the value you want to edit, or use Draw box. |
 | Click could not read | No value could be read here. Use Draw box to mark it. |
 | Invalid value | Numbers only, for example 2.60. |
-| Box outside zone | The box must be inside the four drawing panels. |
+| Box outside zone | The middle of the box must be inside the four drawing panels. |
 | Matching values | {old} also appears in {n} other places. Apply the change there too? |
 | Saved / offline | Saved at {HH:MM} / Not saved — check your connection. [Try again] |
 | Sheet in Trash | This sheet has been moved to the Trash. Restore it, then save again. |

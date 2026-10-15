@@ -70,7 +70,7 @@ describe("a value written at a free angle keeps that angle", () => {
       const quad = onPage.map((p) => ({ x: p.x - area.x, y: p.y - area.y })) as Quad;
       return [{ text: "1.20", score: 0.95, turn: cropTurnsQuarter(quad) ? 90 : 0, quad }];
     };
-    const scan = await scanArea(models, page, area, area.w, read);
+    const scan = await scanArea(models, page, area, { targetWidth: area.w, read });
     const [d] = await fromScan(scan, page, ids());
     within(d.angle, angle, 1);
     const e = makeEdit(page, d, "1.20", "1.25");
@@ -97,7 +97,7 @@ describe("a value written at a free angle keeps that angle", () => {
       expect(cropTurnsQuarter(quad)).toBe(turn === 270);
       return [{ text: "1.20", score: 0.95, turn, quad }];
     };
-    const scan = await scanArea(models, page, area, area.w, read);
+    const scan = await scanArea(models, page, area, { targetWidth: area.w, read });
     within(scan.detections[0].angle, angle, 1);
     const [d] = await fromScan(scan, page, ids());
     within(d.angle, angle, 1);

@@ -6,9 +6,8 @@ import { loadArimo, type FontMetrics } from "@/editor/canvas";
 import { encodePdf, encodePng, downloadBlob, releaseCanvas, renderResult } from "@/editor/export";
 import { exportFileName, exportSuggestions, type ExportSource, type Suggestion } from "@/editor/export-plan";
 import { matchingValues } from "@/editor/matching";
-import { detectValues, drawnBox, makeEdit, ocrFailureReason, readingBox, toDetection, type LoadedPage } from "@/editor/detections";
+import { detectValues, drawnDetection, keptDetection, makeEdit, ocrFailureReason, readingBox, type LoadedPage } from "@/editor/detections";
 import { clickInReach, clickOutcome, detectionAt, MIN_DRAWN_PX, panelOf, readingOrder, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
-import { analyseBox } from "@/editor/pixels";
 import type { Detection, Edit } from "@/editor/types";
 import { zoomIn, zoomOut, type Zoom } from "@/editor/zoom";
 import type { OcrClient } from "@/lib/ocr/client";
@@ -501,14 +500,14 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   function onAngle(angle: number) {
     if (!loaded || !drawn) return;
     closeMatch(true);
-    const px = drawnBox(loaded.page.raster, drawn, angle);
+    const added = drawnDetection(loaded.page.raster, drawn, angle, () => crypto.randomUUID());
     setDrawn(null);
-    if (!analyseBox(loaded.page.raster, px)) {
-      notify({ kind: "alert", text: (m) => m.editor.drawEmpty, draw: true });
+    if (added === "empty" || added === "outside") {
+      // A rectangle centred inside the drawing may hold only text of the table or the header beside it (BR-02).
+      notify({ kind: "alert", text: added === "empty" ? (m) => m.editor.drawEmpty : (m) => m.editor.drawOutside, draw: true });
       focusDrawButton();
       return;
     }
-    const added = toDetection(loaded.page.raster, px, { readValue: null, confidence: null, source: "manual" }, () => crypto.randomUUID());
     latest.current = { ...latest.current, detections: [...latest.current.detections, added] };
     setDetections((list) => [...list, added]);
     endDraw();
@@ -543,8 +542,11 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       if (crashed) reader.reset(); // the Worker is gone; the next click starts a new one
       const r = result?.reading ?? null;
       const px = r ? readingBox(loaded.page.raster, r) : null;
-      const outcome = clickOutcome(p, px && { x: px.cx, y: px.cy }, W, H);
-      if (!r || !px || outcome !== "value") {
+      // BR-02 on the value as stored: tightened to its digits, it must still be centred inside the drawing.
+      const confidence = r ? Math.min(100, Math.max(0, Math.round(r.score * 100))) : null;
+      const value = r && px ? keptDetection(loaded.page.raster, px, { readValue: r.value, confidence, source: "click", prefix: r.prefix }, () => crypto.randomUUID()) : null;
+      const outcome = clickOutcome(p, value?.box ?? null, W, H);
+      if (!px || !value || outcome !== "value") {
         // A click in the margin beside the drawing that found none of its values has no effect.
         if (outcome === "no-value") notify({ kind: "alert", text: (m) => m.editor.clickNoRead });
         else setNotice(null);
@@ -557,11 +559,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         open(hit.id);
         return;
       }
-      const confidence = Math.min(100, Math.max(0, Math.round(r.score * 100)));
-      const added = toDetection(loaded.page.raster, px, { readValue: r.value, confidence, source: "click", prefix: r.prefix }, () => crypto.randomUUID());
-      latest.current = { ...latest.current, detections: [...latest.current.detections, added] };
-      setDetections((list) => [...list, added]);
-      open(added.id);
+      latest.current = { ...latest.current, detections: [...latest.current.detections, value] };
+      setDetections((list) => [...list, value]);
+      open(value.id);
     } finally {
       readingNow.current = false;
     }

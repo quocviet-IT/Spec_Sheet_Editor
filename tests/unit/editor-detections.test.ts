@@ -6,9 +6,10 @@ import type { ScanResult } from "@/lib/ocr/scan";
 import type { PageTextItem } from "@/lib/page/text";
 import { planEdit } from "@/editor/compose";
 import {
-  detectValues, drawnBox, fromPdfText, fromScan, makeEdit, ocrFailureReason, readingBox, signChoice, toDetection, type LoadedPage, type OcrLike,
+  detectValues, drawnBox, drawnDetection, fromPdfText, fromScan, keptDetection, makeEdit, ocrFailureReason, readingBox, signChoice, toDetection,
+  type LoadedPage, type OcrLike,
 } from "@/editor/detections";
-import { axes, boxCorners, boxForDrawnRect } from "@/editor/geometry";
+import { axes, boxCorners, boxForDrawnRect, rectInDrawingArea } from "@/editor/geometry";
 import { editSchema } from "@/editor/schema";
 
 const W = 1100; // a small page with the template's ratio keeps the tests fast
@@ -64,6 +65,19 @@ describe("fromScan", () => {
     );
     expect(found.map((d) => d.readValue)).toEqual(["1.10"]);
     near(found[0].box.cx * W, 55);
+  });
+
+  it("drops a reading centred inside whose box, tightened to its ink, is centred outside the drawing area (BR-02)", async () => {
+    // The area ends at x 737 on this page; the quad is centred at 736 but holds only table text, centred at 749.
+    const r = page();
+    ink(r, 742, 400, 756, 412);
+    const reading = (value: string, q: Quad) => ({ value, prefix: "", text: value, score: 0.9, angle: 0, quad: q, box: { x: 0, y: 0, w: 0, h: 0 } });
+    const found = await fromScan(
+      { detections: [reading("5.75", quad(710, 394, 762, 418)), reading("2.50", quad(190, 194, 250, 218))], timing: { horizontalMs: 1, verticalMs: 1 } },
+      r,
+      ids(),
+    );
+    expect(found.map((d) => [d.id, d.readValue])).toEqual([["id-1", "2.50"]]); // the dropped reading takes no id
   });
 
   it("keeps readings inside the drawing area, tightened to the digits", async () => {
@@ -240,6 +254,55 @@ describe("drawnBox (UC-07)", () => {
   });
 });
 
+describe("drawnDetection (UC-07)", () => {
+  // On this page the drawing area runs from x 50.6 to 737 and from y 113.05 to 634.1; the margin is 22 px.
+
+  it("refuses a box centred just inside that holds only table text: the value it finds is centred outside (BR-02)", () => {
+    const r = createRaster(W, H);
+    ink(r, 742, 400, 756, 412); // table text, centred at x 749
+    const rect = { x: 714, y: 394, w: 44, h: 24 }; // centred at x 736, within the margin
+    expect(rectInDrawingArea(rect, W, H)).toBe(true);
+    expect(drawnDetection(r, rect, 0, ids())).toBe("outside");
+  });
+
+  it("refuses a box centred just inside that holds only header text", () => {
+    const r = createRaster(W, H);
+    ink(r, 300, 96, 340, 106); // header text, centred at y 101
+    const rect = { x: 290, y: 92, w: 60, h: 44 }; // centred at y 114, within the margin
+    expect(rectInDrawingArea(rect, W, H)).toBe(true);
+    expect(drawnDetection(r, rect, 0, ids())).toBe("outside");
+  });
+
+  it("accepts a box running a little over the edge around a value centred inside", () => {
+    const r = createRaster(W, H);
+    ink(r, 712, 400, 752, 412); // a value crossing the edge, centred at x 732
+    const rect = { x: 706, y: 394, w: 52, h: 24 };
+    expect(rectInDrawingArea(rect, W, H)).toBe(true);
+    const d = drawnDetection(r, rect, 0, ids());
+    if (typeof d === "string") throw new Error(`refused: ${d}`);
+    expect(d).toMatchObject({ id: "id-1", readValue: null, confidence: null, source: "manual", angle: 0 });
+    near(d.box.cx * W, 732);
+    near(d.box.cy * H, 406);
+  });
+
+  it("says a box over blank paper holds no text", () => {
+    expect(drawnDetection(createRaster(W, H), { x: 300, y: 300, w: 60, h: 24 }, 0, ids())).toBe("empty");
+  });
+});
+
+describe("keptDetection (BR-02 on the stored box)", () => {
+  it("keeps a value only when its tightened box is centred inside the drawing area, and takes an id only then", () => {
+    const r = page();
+    ink(r, 742, 400, 756, 412);
+    const next = ids();
+    const fields = { readValue: "1.00", confidence: 90, source: "click" as const };
+    expect(keptDetection(r, { cx: 736, cy: 406, w: 52, h: 24, angle: 0 }, fields, next)).toBeNull();
+    const kept = keptDetection(r, { cx: 220, cy: 206, w: 60, h: 24, angle: 0 }, fields, next);
+    expect(kept).toMatchObject({ id: "id-1", readValue: "1.00", source: "click" });
+    near(kept!.box.cx * W, 220);
+  });
+});
+
 describe("fromPdfText", () => {
   it("turns text-layer values into stored detections", () => {
     // 6.90 at 9 pt and 300 DPI: font size 37.5 px, baseline start (300, 400), advance 70 px.
@@ -248,6 +311,14 @@ describe("fromPdfText", () => {
     expect(d).toMatchObject({ id: "id-1", readValue: "6.90", confidence: null, source: "pdf-text", angle: 0 });
     near(d.box.cx * W, 335); // blank page: nothing to tighten to, the text-layer box is kept
     near(d.box.cy * H, 386.5);
+  });
+
+  it("drops a text-layer value whose box, tightened to the ink, is centred outside the drawing area (BR-02)", () => {
+    // A box 66 px wide from x 702, centred at 735 inside the area (which ends at 737); the ink in it is centred at 755.
+    const r = createRaster(W, H);
+    ink(r, 745, 196, 765, 208);
+    const text: PageTextItem[] = [{ str: "6.90", transform: [37.5, 0, 0, -37.5, 702, 216], width: 66 }];
+    expect(fromPdfText({ raster: r, text, offsetX: 0, offsetY: 0, source: { kind: "image" } }, ids())).toEqual([]);
   });
 });
 
