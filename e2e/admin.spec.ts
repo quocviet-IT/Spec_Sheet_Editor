@@ -251,6 +251,52 @@ test.describe("settings seen by Staff", () => {
   });
 });
 
+/** Renames an account from its row menu on /admin/users and waits for "Saved.". */
+async function renameAccount(page: Page, email: string, name: string): Promise<void> {
+  await page.goto("/admin/users?show=test");
+  await page.getByRole("searchbox", { name: /Tìm theo tên hoặc email|Search by name or email/ }).fill(email);
+  await ROW_OF(page, email).getByRole("button", { name: /^(Thao tác cho|Actions for) / }).click();
+  await page.getByRole("menuitem", { name: /^(Đổi tên|Rename)$/ }).click();
+  const dialog = page.getByRole("dialog", { name: /Đổi tên tài khoản|Rename account/ });
+  await dialog.getByRole("textbox", { name: /Họ tên|Full name/ }).fill(name);
+  await dialog.getByRole("button", { name: /^(Lưu tên|Save name)$/ }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("status").filter({ hasText: SAVED })).toBeVisible();
+}
+
+test("the Admin renames Staff B; the list and Staff B's header show the new name, and the change is audited", async ({ page, browser }) => {
+  const id = await staffBId();
+  const { data: profile, error: readError } = await admin().from("profiles").select("full_name").eq("id", id).single<{ full_name: string }>();
+  if (readError || !profile) throw new Error(`Staff B's name not read: ${readError?.message}`);
+  const original = profile.full_name;
+  const renamed = `E2E renamed ${randomUUID().slice(0, 8)}`;
+  const actor = await adminId();
+  const { data: before } = await admin().from("audit_log").select("id").eq("action", "user.rename").order("id", { ascending: false }).limit(1);
+  const lastId = before?.[0]?.id ?? 0;
+  const staffB = await contextAs(browser, STAFF_B_STATE);
+  try {
+    await renameAccount(page, STAFF_B_EMAIL, `  ${renamed}  `);
+    await expect(ROW_OF(page, STAFF_B_EMAIL)).toContainText(renamed);
+
+    const other = await staffB.newPage();
+    await other.goto("/sheets");
+    await expect(other.getByRole("button", { name: new RegExp(`^(Tài khoản|Account): ${escape(renamed)}$`) }).first()).toBeVisible();
+
+    const { data, error } = await admin().from("audit_log").select("actor_id, actor_email, target_id, detail").eq("action", "user.rename").gt("id", lastId);
+    if (error) throw new Error(`audit log not read: ${error.message}`);
+    expect(data).toHaveLength(1);
+    expect(data![0]).toMatchObject({ actor_id: actor, actor_email: ADMIN_EMAIL, target_id: id });
+    expect(data![0].detail).toEqual({ email: STAFF_B_EMAIL, from: original, to: renamed });
+
+    await renameAccount(page, STAFF_B_EMAIL, original);
+    await expect(ROW_OF(page, STAFF_B_EMAIL)).toContainText(original);
+  } finally {
+    await staffB.close();
+    // the reserved account keeps its own name whatever happened above
+    await admin().from("profiles").update({ full_name: original }).eq("id", id);
+  }
+});
+
 // ---------- access lists ----------
 
 test("Access lists: add a domain and an email, refuse a duplicate and a bad value, then remove both", async ({ page }) => {

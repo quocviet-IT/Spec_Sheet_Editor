@@ -259,6 +259,7 @@ Priority: **Must** is required in the first release; **Should** is built if time
 | F-30 | Password accounts | Create an account (name, email, role) with a one-time password shown once; issue a new one-time password, which signs the person out everywhere. | UC-13 | Must |
 | F-31 | Report a problem or a suggestion | A header button opens a short form (kind, impact, description) from any page; the page address and, unless unticked, a picture of the screen go with it. Staff follow their own reports, with the Admin's note, and a red count marks the ones that moved. | UC-19 | Should |
 | F-32 | Triage feedback | An Admin sees every report on the Feedback page, filters by status, moves a report between New, Looking at it, Fixed and Not doing, and writes a note for the reporter; Not doing needs a note (BR-19). | UC-19 | Should |
+| F-33 | Rename an account | An Admin renames a password account from its row menu; the sign-in email stays the same. A Google account takes its name from Google at every sign-in, so it is not renamed. | UC-13 | Should |
 
 ### 3.2 Non-functional requirements
 
@@ -572,11 +573,11 @@ All use cases below share these preconditions: signed in, role Admin, account ac
 
 #### UC-13 · Manage users
 
-*Traces to: F-20 · F-21 · F-22 · BR-13 · BR-14*
+*Traces to: F-20 · F-21 · F-22 · F-33 · BR-13 · BR-14*
 
 **Actors:** Admin
 
-**Postconditions:** The account's role or status has changed; the audit log has `user.role_change`, `user.suspend` or `user.unsuspend`.
+**Postconditions:** The account's role, status or name has changed; the audit log has `user.role_change`, `user.suspend`, `user.unsuspend` or `user.rename`.
 
 **Main flow:**
 
@@ -586,10 +587,11 @@ All use cases below share these preconditions: signed in, role Admin, account ac
 4. The Admin clicks "Suspend"; a confirmation dialog follows, and only then does the system call `set_user_status`. The suspended user loses access on their next request.
 5. The Admin clicks "Add user" (name, email, role); the system creates the account and the one-time password is shown once.
 6. The Admin opens the "⋯" menu on the person's row and chooses "Issue new password" (password accounts only, not one's own); the person is signed out on every device.
+7. The Admin opens the "⋯" menu and chooses "Rename" (password accounts only, one's own included), edits the name and saves; the system calls `rename_user`. The new name shows in the lists, in the header and in the audit log (`user.rename` with the old and the new name); the sign-in email stays the same. Saving the same name changes and records nothing.
 
 **Extensions:** 4a. "Reinstate": the account works again from its next sign-in.
 
-**Exceptions:** 3a/4b. The change would leave no active Admin: "At least one active admin must remain."<br>4c. Self-suspension: "You cannot suspend your own account."
+**Exceptions:** 3a/4b. The change would leave no active Admin: "At least one active admin must remain."<br>4c. Self-suspension: "You cannot suspend your own account."<br>7a. An empty name or one over 120 characters: "Enter a full name (up to 120 characters)."<br>7b. A Google account has no Rename item; the database refuses it too (`not_password_account`), because the next Google sign-in would replace the name.
 
 **Note:** People who have never signed in are not listed yet. To grant rights in advance, add their email in UC-14; after their first sign-in, change their role.
 
@@ -1352,6 +1354,8 @@ Priority: High blocks go-live; Med medium; Low.
 | TC-82 | UC-19 | An Admin triages; declining needs a reason; the reporter sees the note and the count | A report with a picture exists; the Admin chooses Not doing with no note, then with a note; the reporter opens the app | The Admin's count is at least 1 and the row has a Screenshot link; with no note the reason prompt shows and the status stays New; with a note it saves; the reporter's link shows 1, the page shows the note and "Updated", and the count is gone after a reload | E2E | High |
 | TC-83 | UC-19 | Another staff member cannot see the report | A second Staff user opens Feedback and reads the row through the REST interface with their own session | The report is not listed and the direct read returns no rows | E2E | High |
 | TC-84 | UC-19 | Feedback in the database | `tests/sql/feedback.test.ts`: filing, reading, evidence, triage, picture, counts, applying the migration twice | Staff file only their own New reports and read only those; an Admin reads all; content never changes; only an Admin moves a report and declining needs a reason; a picture is attached once; counts follow | SQL | High |
+| TC-85 | UC-13 | Rename an account | The Admin renames Staff B from the row menu, then back | The list and B's header show the new name; one `user.rename` row names the Admin, B's email, the old and the new name | E2E | Med |
+| TC-86 | UC-13 | Rename in the database | `tests/sql/rename.test.ts` | Admins only; the name is trimmed, 1–120 characters; password accounts only; the same name records nothing; the name survives the next sign-in | SQL | Med |
 
 ### 9.3 Test data
 

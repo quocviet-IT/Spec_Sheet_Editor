@@ -114,8 +114,11 @@ export async function resetPassword(_prev: ResetPasswordState, form: FormData): 
 
 type ChangeError = "last_admin" | "self_suspend" | "forbidden" | "not_found" | "unknown";
 
+/** Whether a database error message names this code as a whole word ("user_not_found" does not contain "not_found"). */
+const names = (message: string, code: string) => new RegExp(`(?<![a-z_])${code}(?![a-z_])`).test(message);
+
 function mapChangeError(message: string): ChangeError {
-  const found = (word: string) => new RegExp(`(?<![a-z_])${word}(?![a-z_])`).test(message);
+  const found = (word: string) => names(message, word);
   if (found("last_admin")) return "last_admin";
   if (found("self_suspend")) return "self_suspend";
   if (found("forbidden")) return "forbidden";
@@ -143,6 +146,39 @@ export async function setRole(input: {
     }
     const code = mapChangeError(error.message);
     return { error: code === "self_suspend" ? "unknown" : code };
+  } catch {
+    return { error: "unknown" };
+  }
+}
+
+export type RenameError = "name_required" | "not_password_account" | "forbidden" | "not_found" | "unknown";
+
+const renameInput = z.object({ userId: z.uuid(), fullName: z.string().trim().min(1).max(120) });
+
+/**
+ * Renames a password account in the Admin's own session, so the audit row names the Admin. A Google account is
+ * refused: it takes its name from Google at every sign-in.
+ */
+export async function renameUser(input: {
+  userId: string;
+  fullName: string;
+}): Promise<{ ok: true; fullName: string } | { error: RenameError }> {
+  await requireAdmin("/admin/users");
+  const parsed = renameInput.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues.some((i) => i.path[0] === "fullName") ? "name_required" : "unknown" };
+  const { userId, fullName } = parsed.data;
+  try {
+    const supabase = await createSupabaseServer();
+    const { error } = await supabase.rpc("rename_user", { p_user: userId, p_full_name: fullName });
+    if (!error) {
+      revalidatePath("/admin/users");
+      return { ok: true, fullName };
+    }
+    if (names(error.message, "bad_name")) return { error: "name_required" };
+    if (names(error.message, "not_password_account")) return { error: "not_password_account" };
+    if (names(error.message, "forbidden")) return { error: "forbidden" };
+    if (names(error.message, "user_not_found")) return { error: "not_found" };
+    return { error: "unknown" };
   } catch {
     return { error: "unknown" };
   }
