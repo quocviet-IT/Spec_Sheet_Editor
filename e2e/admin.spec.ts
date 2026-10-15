@@ -100,14 +100,11 @@ test("TC-58 the Admin makes Staff B an Admin; the Admin link appears and the cha
 
 test("TC-62 / TC-63 a suspended person is stopped at the next save, cannot sign in, and can after reinstating", async ({ page, browser }) => {
   test.setTimeout(240_000);
-  const staff = await contextAs(browser, STAFF_STATE);
   const staffB = await contextAs(browser, STAFF_B_STATE);
   try {
-    const owner = await staff.newPage();
-    const { id } = await openValuesSheet(owner, "tc62");
+    // Staff B's own sheet: a sheet is read and changed only by its uploader and by Admins (BR-18).
     const other = await staffB.newPage();
-    await other.goto(`/sheets/${id}`);
-    await expect(markers(other)).toHaveCount(11, { timeout: 30_000 });
+    const { id } = await openValuesSheet(other, "tc62");
     await editValue(other, "6.90", TOP_LEFT, "7.1");
 
     await changeUser(page, STAFF_B_EMAIL, "status"); // suspend
@@ -140,7 +137,6 @@ test("TC-62 / TC-63 a suspended person is stopped at the next save, cannot sign 
   } finally {
     // Independent: a failing step must not skip the others (the saved session and the sheets matter most).
     await restoreAll([
-      () => staff.close(),
       () => staffB.close(),
       // One step, in order: a suspended account cannot sign in again, so restore it first. Always runs, so the
       // saved session is valid for the other specs.
@@ -148,7 +144,7 @@ test("TC-62 / TC-63 a suspended person is stopped at the next save, cannot sign 
         await restoreStaff(STAFF_B_EMAIL);
         await resignStaffB(browser);
       },
-      async () => deleteSheetsOf(await staffId()),
+      async () => deleteSheetsOf(await staffBId()),
     ]);
   }
 });

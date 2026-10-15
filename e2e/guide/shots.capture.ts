@@ -356,6 +356,9 @@ for (const locale of LOCALES) {
         await page.getByRole("searchbox", { name: /Tìm theo tên hoặc email|Search by name or email/ }).fill(email);
         const row = page.getByRole("row").filter({ hasText: email });
         await expect(row).toHaveCount(1);
+        // The search applies 300 ms after typing: wait until the list holds that one account, or the picture
+        // (and its pagination footer) would still show the whole list.
+        await expect(page.locator("main tbody tr")).toHaveCount(1);
         await page.mouse.click(1000, 700); // takes focus off the search box
         await shots.take(page, "admin-users", [
           new Above(button(page, /^(Thêm người dùng|Add user)$/)),
