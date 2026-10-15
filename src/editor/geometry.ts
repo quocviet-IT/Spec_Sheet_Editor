@@ -31,6 +31,33 @@ export function roundAngle(angle: number): number {
   return r === -180 ? 180 : r; // the schema accepts (-180, 180]
 }
 
+/** A reading's angle from its quad (defined beside the detector's corner order, which it relies on). */
+export { angleFromQuad } from "@/lib/ocr/geometry";
+
+/**
+ * A reading's angle within this many degrees of 0, 90, -90 or 180 is that axis: the detector's quad is
+ * turned with the text only to within a few degrees, and a value along the page's axes must stay exact.
+ */
+export const SNAP_TOLERANCE = 4;
+
+/** The axis nearest the angle: exactly 0, 90, -90 or 180. */
+export function nearestAxis(angle: number): number {
+  return normalizeAngle(Math.round(normalizeAngle(angle) / 90) * 90);
+}
+
+/** 0, 90, -90 or 180 when the angle lies within `tolerance` degrees of it; otherwise the angle, normalised. */
+export function snapAngle(angle: number, tolerance = SNAP_TOLERANCE): number {
+  const a = normalizeAngle(angle);
+  const axis = nearestAxis(a);
+  if (Math.abs(normalizeAngle(a - axis)) <= tolerance) return axis;
+  return angle > -180 && angle <= 180 ? angle : a; // normalising an angle already in range only adds rounding noise
+}
+
+/** Whether the angle is exactly 0, 90, -90 or 180: a value along the page's axes. */
+export function isAxisAngle(angle: number): boolean {
+  return normalizeAngle(angle) % 90 === 0;
+}
+
 /** Unit vectors: `u` along the reading direction, `v` across it (from the top of the digits to their foot). */
 export function axes(angle: number): { u: Point; v: Point } {
   const rad = (angle * Math.PI) / 180;
@@ -119,19 +146,62 @@ export function rectFromDrag(a: Point, b: Point): Rect {
 /** A drag shorter than this on either side (page pixels) is a click, not a box. */
 export const MIN_DRAWN_PX = 4;
 
-/** UC-07 exception 1a: every corner of the drawn rectangle lies inside the four panels. */
+/**
+ * UC-07 exception 1a: a drawn rectangle counts when its centre lies inside the four panels, as a value does
+ * (BR-02), and it stays within their margin (`edgeMarginPx`): it may run over their edge around a value
+ * written at the edge, no farther than the scan reads and a click reaches. The value found in it is checked
+ * again once tightened (`keptDetection`).
+ */
 export function rectInDrawingArea(rect: Rect, pageW: number, pageH: number): boolean {
   return (
-    rect.x >= DRAWING_AREA.x0 * pageW &&
-    rect.y >= DRAWING_AREA.y0 * pageH &&
-    rect.x + rect.w <= DRAWING_AREA.x1 * pageW &&
-    rect.y + rect.h <= DRAWING_AREA.y1 * pageH
+    pointInDrawingArea({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, pageW, pageH) &&
+    inReach({ x: rect.x, y: rect.y }, pageW, pageH) &&
+    inReach({ x: rect.x + rect.w, y: rect.y + rect.h }, pageW, pageH)
   );
 }
 
-/** UC-05 exception 1b / UC-06 step 1: a click counts only inside the drawing. */
+/** Whether the point lies inside the four panels: the test of BR-02 for a value's centre, in page pixels. */
 export function pointInDrawingArea(p: Point, pageW: number, pageH: number): boolean {
   return centreInDrawingArea({ cx: p.x / pageW, cy: p.y / pageH, w: 0, h: 0 });
+}
+
+/**
+ * The margin around the drawing area, as a share of the page width on each side, that the scan reads, a
+ * click may fall in and a drawn box may reach: a value whose centre lies inside the area (BR-02) can run
+ * over its edge.
+ */
+export const EDGE_MARGIN = 0.02;
+
+/** EDGE_MARGIN in whole pixels of a page this wide. */
+export function edgeMarginPx(pageW: number): number {
+  return Math.round(EDGE_MARGIN * pageW);
+}
+
+/** Whether the point lies inside the drawing area grown by its margin (`edgeMarginPx`) on each side. */
+function inReach(p: Point, pageW: number, pageH: number): boolean {
+  const m = edgeMarginPx(pageW);
+  return (
+    p.x >= DRAWING_AREA.x0 * pageW - m &&
+    p.x <= DRAWING_AREA.x1 * pageW + m &&
+    p.y >= DRAWING_AREA.y0 * pageH - m &&
+    p.y <= DRAWING_AREA.y1 * pageH + m
+  );
+}
+
+/** UC-06 step 1: a click counts inside the drawing area or within its margin (`edgeMarginPx`). */
+export function clickInReach(p: Point, pageW: number, pageH: number): boolean {
+  return inReach(p, pageW, pageH);
+}
+
+/**
+ * UC-06: what a click in reach gives, from the stored box of the value read there, tightened to its digits
+ * (null when nothing was read). The value counts when that box's centre lies inside the drawing (BR-02),
+ * wherever the click fell. Otherwise a click inside the drawing says no value could be read, and a click in
+ * the margin beside it has no effect, as a click outside the drawing (UC-05 exception 1b).
+ */
+export function clickOutcome(click: Point, found: Box | null, pageW: number, pageH: number): "value" | "no-value" | "ignored" {
+  if (found && centreInDrawingArea(found)) return "value";
+  return pointInDrawingArea(click, pageW, pageH) ? "no-value" : "ignored";
 }
 
 /**

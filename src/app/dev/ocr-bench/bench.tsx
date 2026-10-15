@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CLICK_OFFSET, SAMPLE_FRAME, SAMPLE_SIZE, SAMPLE_TRUTH, TARGETS } from "@/lib/ocr/bench/sample";
+import { pointInDrawingArea } from "@/editor/geometry";
+import { CLICK_OFFSET, editorView, SAMPLE_SIZE, SAMPLE_TRUTH, TARGETS, type BenchView } from "@/lib/ocr/bench/sample";
 import { scoreClicks, scoreScan, type ClickRow } from "@/lib/ocr/bench/score";
 import { DEFAULT_MODELS, OcrClient } from "@/lib/ocr/client";
 import type { InitResult, ScanResult } from "@/lib/ocr/protocol";
@@ -26,7 +27,9 @@ type ModelFiles = { det?: File; rec?: File; keys?: File };
 export function Bench() {
   const client = useRef<OcrClient | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [page, setPage] = useState<Raster | null>(null);
+  /** The sample's own size, and the sample as the editor holds it (trimmed, with the frame it scans). */
+  const [sampleSize, setSampleSize] = useState<{ width: number; height: number } | null>(null);
+  const [view, setView] = useState<BenchView | null>(null);
   const [files, setFiles] = useState<ModelFiles>({});
   const [init, setInit] = useState<InitResult | null>(null);
   const [scan, setScan] = useState<{ result: ScanResult; totalMs: number } | null>(null);
@@ -46,7 +49,8 @@ export function Bench() {
 
   useEffect(() => {
     const el = canvas.current;
-    if (!el || !page) return;
+    if (!el || !view) return;
+    const { page, frame } = view;
     el.width = page.width;
     el.height = page.height;
     const ctx = el.getContext("2d");
@@ -54,12 +58,12 @@ export function Bench() {
     ctx.putImageData(new ImageData(new Uint8ClampedArray(page.data), page.width, page.height), 0, 0);
     ctx.lineWidth = 2;
     ctx.strokeStyle = "#2563eb";
-    ctx.strokeRect(SAMPLE_FRAME.x, SAMPLE_FRAME.y, SAMPLE_FRAME.w, SAMPLE_FRAME.h);
+    ctx.strokeRect(frame.x, frame.y, frame.w, frame.h);
     ctx.strokeStyle = "#16a34a";
     for (const d of scan?.result.detections ?? []) ctx.strokeRect(d.box.x, d.box.y, d.box.w, d.box.h);
     ctx.strokeStyle = "#dc2626";
     for (const r of clicks ?? []) if (r.reading) ctx.strokeRect(r.reading.box.x, r.reading.box.y, r.reading.box.w, r.reading.box.h);
-  }, [page, scan, clicks]);
+  }, [view, scan, clicks]);
 
   async function run(label: string, task: () => Promise<void>) {
     setBusy(label);
@@ -73,10 +77,10 @@ export function Bench() {
     }
   }
 
-  function ready(): OcrClient {
+  function ready(): { ocr: OcrClient; view: BenchView } {
     if (!client.current || !init) throw new Error("Load the models first.");
-    if (!page) throw new Error("Load the sample sheet first.");
-    return client.current;
+    if (!view) throw new Error("Load the sample sheet first.");
+    return { ocr: client.current, view };
   }
 
   const loadModels = () =>
@@ -88,13 +92,16 @@ export function Bench() {
       setClicks(null);
       const [det, rec, keys] = await Promise.all([files.det?.arrayBuffer(), files.rec?.arrayBuffer(), files.keys?.arrayBuffer()]);
       setInit(await ocr.init({ det: det ?? DEFAULT_MODELS.det, rec: rec ?? DEFAULT_MODELS.rec, keys: keys ?? DEFAULT_MODELS.keys }));
-      if (page) await ocr.setPage(page);
+      if (view) await ocr.setPage(view.page);
     });
 
   async function showSample(blob: Blob) {
     const raster = await blobToRaster(blob);
-    await client.current?.setPage(raster);
-    setPage(raster);
+    // The editor reads the trimmed page and scans its drawing area; the bench measures exactly that.
+    const next = editorView(raster);
+    await client.current?.setPage(next.page);
+    setSampleSize({ width: raster.width, height: raster.height });
+    setView(next);
     setScan(null);
     setClicks(null);
   }
@@ -110,26 +117,29 @@ export function Bench() {
 
   const runScan = () =>
     run("Scanning the drawing area", async () => {
-      const ocr = ready();
+      const { ocr, view } = ready();
       const started = performance.now();
-      const result = await ocr.scan(SAMPLE_FRAME);
-      setScan({ result, totalMs: performance.now() - started });
+      const result = await ocr.scan(view.frame, { margin: view.margin });
+      const totalMs = performance.now() - started;
+      // As the editor keeps them (BR-02): values whose centre lies inside the drawing area, not in the margin.
+      const inside = result.detections.filter((d) => pointInDrawingArea({ x: d.box.x + d.box.w / 2, y: d.box.y + d.box.h / 2 }, view.page.width, view.page.height));
+      setScan({ result: { ...result, detections: inside }, totalMs });
     });
 
   const runClicks = () =>
     run("Clicking the 11 values", async () => {
-      const ocr = ready();
+      const { ocr, view } = ready();
       const rows: ClickRow[] = [];
-      for (const t of SAMPLE_TRUTH) {
+      for (const t of view.truth) {
         const res = await ocr.read({ x: t.x + CLICK_OFFSET.x, y: t.y + CLICK_OFFSET.y });
         rows.push({ key: t.key, reading: res.reading, ms: res.ms });
         setClicks([...rows]);
       }
     });
 
-  const scanScore = scan ? scoreScan(scan.result.detections) : null;
-  const clickScore = clicks && clicks.length === SAMPLE_TRUTH.length ? scoreClicks(clicks) : null;
-  const wrongSize = page && (page.width !== SAMPLE_SIZE.width || page.height !== SAMPLE_SIZE.height);
+  const scanScore = scan && view ? scoreScan(scan.result.detections, view.truth) : null;
+  const clickScore = clicks && view && clicks.length === SAMPLE_TRUTH.length ? scoreClicks(clicks, view.truth) : null;
+  const wrongSize = sampleSize && (sampleSize.width !== SAMPLE_SIZE.width || sampleSize.height !== SAMPLE_SIZE.height);
   const button = "rounded-md bg-accent px-4 py-2 font-semibold text-accent-ink disabled:opacity-50";
 
   return (
@@ -183,9 +193,10 @@ export function Bench() {
             />
           </label>
         </div>
-        {page && (
+        {sampleSize && view && (
           <p className="text-sm">
-            {page.width} × {page.height} px
+            {sampleSize.width} × {sampleSize.height} px; trimmed as in the editor to {view.page.width} × {view.page.height} px at ({view.offset.x},{" "}
+            {view.offset.y}); scan frame {view.frame.w} × {view.frame.h} px at ({view.frame.x}, {view.frame.y})
             {wrongSize && ` — the truth coordinates belong to the ${SAMPLE_SIZE.width} × ${SAMPLE_SIZE.height} sample; scores will be wrong.`}
           </p>
         )}
@@ -205,7 +216,8 @@ export function Bench() {
           <p className="font-mono text-sm" data-testid="scan-summary">
             Scan: located {scanScore.located}/11 ({verdict(scanScore.located >= TARGETS.scanLocated)}), read {scanScore.read}/11, stray{" "}
             {scanScore.stray}, total {seconds(scan.totalMs)} ({verdict(scan.totalMs <= TARGETS.scanSeconds * 1000)}; 0°{" "}
-            {seconds(scan.result.timing.horizontalMs)}, 90° {seconds(scan.result.timing.verticalMs)})
+            {seconds(scan.result.timing.horizontalMs)}, 90° {seconds(scan.result.timing.verticalMs)}
+            {scan.result.timing.diagonalMs !== undefined && `, ±45° ${seconds(scan.result.timing.diagonalMs)}`})
           </p>
         )}
         {clickScore && (
@@ -252,7 +264,7 @@ export function Bench() {
         </table>
       )}
 
-      {page && <canvas ref={canvas} className="h-auto max-w-full border border-line" aria-label="Sample sheet with the boxes found" />}
+      {view && <canvas ref={canvas} className="h-auto max-w-full border border-line" aria-label="Sample sheet with the boxes found" />}
     </main>
   );
 }

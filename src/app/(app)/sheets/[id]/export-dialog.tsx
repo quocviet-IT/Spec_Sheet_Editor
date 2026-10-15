@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useId, useRef, type KeyboardEvent } from "react";
+import { withPrefix } from "@/editor/compose";
 import type { Suggestion } from "@/editor/export-plan";
 import { useMessages } from "@/messages/client";
 import { fill } from "@/messages/format";
 
-type Item = { id: string; oldValue: string; newValue: string; panel: string };
+/** `oldPrefix` is the sign written in front of the old value, `newPrefix` the one drawn in front of the new value. */
+type Item = { id: string; oldValue: string; newValue: string; oldPrefix?: string; newPrefix?: string; panel: string };
 
 type Props = {
   format: "png" | "pdf";
@@ -97,7 +99,9 @@ export function ExportDialog({ format, items, suggestions, dirty, busy, failed, 
         ) : (
           <ul className="space-y-1 text-sm">
             {items.map((item) => (
-              <li key={item.id}>{fill(e.edited, { old: item.oldValue, new: item.newValue, panel: item.panel })}</li>
+              <li key={item.id}>
+                {fill(e.edited, { old: withPrefix(item.oldPrefix, item.oldValue), new: withPrefix(item.newPrefix, item.newValue), panel: item.panel })}
+              </li>
             ))}
           </ul>
         )}

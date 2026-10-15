@@ -1,9 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { staffId } from "./support/account";
 import { deleteSheetsOf } from "./support/db";
-import { PDF_VALUES } from "./support/files";
+import { PDF_VALUES, valuesPdf } from "./support/files";
 import {
-  TOP_LEFT, auditCount, canvasPoint, dragBox, drawValuesPng, editValue, marker, openSheetWithImageValue, openValuesSheet, storedSheet,
+  TOP_LEFT, auditCount, canvasPoint, dragBox, drawValuesPng, editValue, marker, markers, openSheetWithImageValue, openValuesSheet, storedSheet,
   uploadSheet, waitForVersion, watchOcrRequests,
 } from "./support/sheets";
 
@@ -86,13 +86,30 @@ test("the matching prompt closes when another value is edited", async ({ page })
   expect(edits.map((e) => [e.oldValue, e.newValue]).sort()).toEqual([["2.50", "2.60"], ["6.90", "7.10"]]);
 });
 
-test("TC-34 a box running into the right-hand table is refused", async ({ page }) => {
+test("TC-34 a box centred in the right-hand table is refused", async ({ page }) => {
   await openValuesSheet(page, "tc34");
   await drawButton(page).click();
-  await dragBox(page, 0.6, 0.3, 0.75, 0.33);
+  await dragBox(page, 0.7, 0.3, 0.8, 0.33);
   await expect(page.getByRole("alert").filter({ hasText: /bốn ô hình vẽ|four drawing panels/ })).toBeVisible();
   await expect(page.getByRole("dialog", { name: /Chiều của số|Direction of the value/ })).toHaveCount(0);
   await expect(popover(page)).toHaveCount(0);
+});
+
+test("a box centred just inside, holding only table text, is refused", async ({ page }) => {
+  // 8.80 is written in the right-hand table, just beyond the drawing's edge at x 0.67 (from about 0.673 to 0.695).
+  const pdf = await valuesPdf({ extra: [{ value: "8.80", cx: 0.684, cy: 0.42, angle: 0 }] });
+  const { id } = await uploadSheet(page, `tableedge-${Date.now()}.pdf`, "application/pdf", pdf);
+  await expect(markers(page)).toHaveCount(11, { timeout: 30_000 });
+  await waitForVersion(id, 2);
+  await drawButton(page).click();
+  await dragBox(page, 0.65, 0.41, 0.688, 0.43); // centred at x 0.669, within the margin around the drawing
+  const direction = page.getByRole("dialog", { name: /Chiều của số|Direction of the value/ });
+  await direction.getByRole("button", { name: /Tiếp tục|Continue/ }).click(); // Horizontal is chosen by default
+  await expect(direction).toBeHidden();
+  // Tightened to its ink, the value in the box is centred in the table (BR-02).
+  await expect(page.getByRole("alert").filter({ hasText: /bốn ô hình vẽ|four drawing panels/ })).toBeVisible();
+  await expect(popover(page)).toHaveCount(0);
+  await expect(markers(page)).toHaveCount(11);
 });
 
 test("TC-35 a box over blank paper says there is no text in it", async ({ page }) => {
@@ -154,11 +171,11 @@ test("the same refusal twice is a new alert each time", async ({ page }) => {
   await openValuesSheet(page, "twice");
   await drawButton(page).click();
   const refusal = page.getByRole("alert").filter({ hasText: /bốn ô hình vẽ|four drawing panels/ });
-  await dragBox(page, 0.6, 0.3, 0.75, 0.33);
+  await dragBox(page, 0.7, 0.3, 0.8, 0.33);
   await expect(refusal).toBeVisible();
   const first = await refusal.elementHandle();
   const firstId = await refusal.getAttribute("data-notice-id");
-  await dragBox(page, 0.6, 0.3, 0.75, 0.33);
+  await dragBox(page, 0.7, 0.3, 0.8, 0.33);
   await expect.poll(() => refusal.getAttribute("data-notice-id")).not.toBe(firstId);
   expect(await first!.evaluate((el) => el.isConnected)).toBe(false); // the old alert element was replaced
   await expect(refusal).toHaveCount(1);

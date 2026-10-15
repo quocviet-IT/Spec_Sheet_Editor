@@ -1,5 +1,6 @@
+import { normalizeAngle } from "@/lib/ocr/geometry";
 import type { Raster } from "@/lib/ocr/raster";
-import { axes } from "./geometry";
+import { axes, isAxisAngle } from "./geometry";
 import type { PxBox } from "./types";
 
 /** How far beyond the box to look, as a share of its height (at least 2 px). */
@@ -199,4 +200,74 @@ export function analyseBox(raster: Raster, box: PxBox): BoxAnalysis | null {
     textColor: hex(textInk),
     bgColor: hex(paper),
   };
+}
+
+/** The search around a free angle: this many degrees either side of it, in steps of this size. */
+export const REFINE_SPAN = 12;
+export const REFINE_STEP = 0.5;
+/** Another angle is taken only when the digits measure at least this many pixels less tall there. */
+export const REFINE_MIN_GAIN = 1;
+/**
+ * The walls of the value's own valley: the digits measure this many pixels taller than the least height.
+ * The search stops going one way once it has climbed a wall (two steps running), since a farther valley
+ * is a neighbouring line; that also keeps a measurement (each one tightens the whole box) from running
+ * 49 times.
+ */
+export const REFINE_RISE = 2;
+/**
+ * The least height is taken only when a wall stands within this many steps beyond each end of its run.
+ * Heights are whole pixels: on a flat profile (a short value, or one a line touches) a 1-px dip far from
+ * the given angle is noise, and following it turns a good angle into a worse one.
+ */
+export const REFINE_VALLEY = 10;
+
+/**
+ * The angle at which a value's digits measure least tall, near the box's own free angle: measured across
+ * slanted ink, digits come out too tall. `analyseBox` is measured at `angle + k·step` for |k·step| ≤ span,
+ * walking out from the given angle both ways until it climbs a wall (REFINE_RISE). Heights are whole pixels,
+ * so the least height holds over a run of steps; the middle of the run nearest the given angle is taken.
+ * The given angle is kept when:
+ * - it is 0, 90, -90 or 180: the box comes back unchanged;
+ * - no angle measures at least REFINE_MIN_GAIN px less tall;
+ * - the run is not a clear valley: no wall within REFINE_VALLEY steps beyond one of its ends. Nothing is
+ *   measured beyond the range, so a run at its end is never taken: the search would be drifting along a
+ *   crowded line, not finding the text.
+ * Returns the box tightened to the digits at the chosen angle, or the box itself when it holds no text.
+ */
+export function refineAngle(raster: Raster, box: PxBox, span = REFINE_SPAN, step = REFINE_STEP): PxBox {
+  if (isAxisAngle(box.angle)) return box;
+  const start = analyseBox(raster, box)?.tight;
+  if (!start) return box;
+  const n = Math.floor(span / step + 1e-9);
+  const tight = new Map<number, PxBox>([[0, start]]);
+  let least = start.h;
+  for (const way of [1, -1]) {
+    let rising = 0;
+    for (let k = way; Math.abs(k) <= n && rising < 2; k += way) {
+      const found = analyseBox(raster, { ...box, angle: normalizeAngle(box.angle + k * step) })?.tight;
+      if (!found) continue;
+      tight.set(k, found);
+      least = Math.min(least, found.h);
+      rising = found.h >= least + REFINE_RISE ? rising + 1 : 0;
+    }
+  }
+  if (start.h - least < REFINE_MIN_GAIN) return start;
+
+  const runs: { from: number; to: number }[] = [];
+  for (let k = -n; k <= n; k++) {
+    if (tight.get(k)?.h !== least) continue;
+    const last = runs[runs.length - 1];
+    if (last && last.to === k - 1) last.to = k;
+    else runs.push({ from: k, to: k });
+  }
+  // No run holds k = 0 (the given angle measures taller), so its nearer end is its distance.
+  const distance = (r: { from: number; to: number }) => Math.min(Math.abs(r.from), Math.abs(r.to));
+  const run = runs.reduce((a, b) => (distance(b) < distance(a) ? b : a));
+  const wall = (end: number, way: 1 | -1) => {
+    for (let i = 1; i <= REFINE_VALLEY; i++) if ((tight.get(end + way * i)?.h ?? -Infinity) >= least + REFINE_RISE) return true;
+    return false;
+  };
+  if (!wall(run.from, -1) || !wall(run.to, 1)) return start;
+  const middle = (run.from + run.to) / 2;
+  return tight.get(middle > 0 ? Math.floor(middle) : Math.ceil(middle))!;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MASK_PAD, planEdit } from "@/editor/compose";
+import { MASK_PAD, planEdit, withPrefix } from "@/editor/compose";
 import type { Edit } from "@/editor/types";
 
 const ARIMO = 0.716;
@@ -31,6 +31,23 @@ describe("planEdit", () => {
   it("turns with the value", () => {
     close(planEdit(edit({ angle: -90 }), 1000, 800, ARIMO).rad, -Math.PI / 2);
     close(planEdit(edit({ angle: 58 }), 1000, 800, ARIMO).rad, (58 * Math.PI) / 180);
+  });
+
+  it("draws what is written in front of the value before the new one, in the same font and height", () => {
+    const p = planEdit(edit({ prefix: "Ø", oldValue: "1.30", newValue: "1.40" }), 1000, 800, ARIMO);
+    expect(p.text).toBe("Ø1.40");
+    close(p.fontSize, 10 / ARIMO);
+    close(p.baseline, 5);
+    expect(planEdit(edit({ prefix: "2X Ø", newValue: "1.10" }), 1000, 800, ARIMO).text).toBe("2X Ø1.10");
+    expect(planEdit(edit({ prefix: "4X " }), 1000, 800, ARIMO).text).toBe("4X 2.60");
+    expect(planEdit(edit(), 1000, 800, ARIMO).text).toBe("2.60");
+  });
+
+  it("draws a stored ⌀ as Ø, which the shipped Arimo has", () => {
+    expect(planEdit(edit({ prefix: "⌀" }), 1000, 800, ARIMO).text).toBe("Ø2.60");
+    expect(withPrefix("⌀", "1.30")).toBe("Ø1.30");
+    expect(withPrefix(undefined, "1.30")).toBe("1.30");
+    expect(withPrefix("R", "0.50")).toBe("R0.50");
   });
 
   it("keeps at least one pixel of margin for tiny digits", () => {

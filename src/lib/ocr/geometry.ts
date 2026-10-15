@@ -122,6 +122,66 @@ export function polygonArea(points: readonly Point[]): number {
   return Math.abs(sum) / 2;
 }
 
+function signedArea(points: readonly Point[]): number {
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return sum / 2;
+}
+
+/**
+ * The area two convex polygons have in common (Sutherland–Hodgman: `a` clipped by each edge of `b`).
+ * Either may run either way round; a polygon without area shares none.
+ */
+export function convexIntersectionArea(a: readonly Point[], b: readonly Point[]): number {
+  const turn = Math.sign(signedArea(b));
+  if (turn === 0 || signedArea(a) === 0) return 0;
+  let poly: Point[] = [...a];
+  for (let i = 0; i < b.length && poly.length > 0; i++) {
+    const p = b[i];
+    const q = b[(i + 1) % b.length];
+    // Positive inside the edge p → q, for b's own direction.
+    const side = (r: Point) => turn * ((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+    const cut = (r: Point, s: Point, sr: number, ss: number): Point => {
+      const t = sr / (sr - ss);
+      return { x: r.x + t * (s.x - r.x), y: r.y + t * (s.y - r.y) };
+    };
+    const next: Point[] = [];
+    for (let j = 0; j < poly.length; j++) {
+      const prev = poly[(j + poly.length - 1) % poly.length];
+      const cur = poly[j];
+      const sp = side(prev);
+      const sc = side(cur);
+      if (sc >= 0) {
+        if (sp < 0) next.push(cut(prev, cur, sp, sc));
+        next.push(cur);
+      } else if (sp >= 0) {
+        next.push(cut(prev, cur, sp, sc));
+      }
+    }
+    poly = next;
+  }
+  return poly.length < 3 ? 0 : polygonArea(poly);
+}
+
+/** How much of the smaller of two convex quads the other covers: 0 (apart) to 1 (one lies inside the other). */
+export function overlapShare(a: readonly Point[], b: readonly Point[]): number {
+  const smaller = Math.min(polygonArea(a), polygonArea(b));
+  return smaller > 0 ? convexIntersectionArea(a, b) / smaller : 0;
+}
+
+/** How much of the convex quad `inner` lies inside `outer`: 0 (apart) to 1 (inside it). */
+export function coveredShare(inner: readonly Point[], outer: readonly Point[]): number {
+  const area = polygonArea(inner);
+  return area > 0 ? convexIntersectionArea(inner, outer) / area : 0;
+}
+
+/** Two readings whose quads share at least this much of the smaller one sit at the same place (UC-04 step 4). */
+export const SAME_PLACE_OVERLAP = 0.5;
+
 export function polygonPerimeter(points: readonly Point[]): number {
   let sum = 0;
   for (let i = 0; i < points.length; i++) sum += distance(points[i], points[(i + 1) % points.length]);
@@ -144,4 +204,22 @@ export function rectCentre(r: Rect): Point {
 export function normalizeAngle(degrees: number): number {
   const a = ((degrees % 360) + 360) % 360;
   return a > 180 ? a - 360 : a;
+}
+
+/**
+ * The reading direction of a text line, in degrees on the page (y down, 0 = left to right, the editor's
+ * convention), from its quad. `quad` is in the pixels of the image that was read, in the detector's order
+ * (`orderClockwise`: tl, tr, br, bl); `turn` is the reader's own turn of the crop (`Reading.turn`); and
+ * `imageTurn` is the page angle of that image's left-to-right direction (0 upright, -90 for the scan's
+ * clockwise pass, `a` for a click image turned `a` degrees counter-clockwise).
+ *
+ * `cropQuad` samples tl → tr along the crop's width and tl → bl along its height. A crop read as it is
+ * runs tl → tr; a tall crop is first turned a quarter counter-clockwise, after which its text runs tl → bl.
+ * An upside-down reading (turn 180 or 270) runs the other way.
+ */
+export function angleFromQuad(quad: Quad, turn: 0 | 90 | 180 | 270, imageTurn: number): number {
+  const [tl, tr, , bl] = quad;
+  const end = turn === 0 || turn === 180 ? tr : bl;
+  const along = (Math.atan2(end.y - tl.y, end.x - tl.x) * 180) / Math.PI;
+  return normalizeAngle(along + (turn >= 180 ? 180 : 0) + imageTurn);
 }

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildAlphabet } from "@/lib/ocr/alphabet";
-import { fitWithinBounds, padVertically, readRegion, type OcrModels, type Tensor } from "@/lib/ocr/pipeline";
+import { isPointedDimension } from "@/lib/ocr/dimension-text";
+import { fitWithinBounds, padVertically, readRegion, upsideDownWins, type OcrModels, type Tensor } from "@/lib/ocr/pipeline";
 import { createRaster } from "@/lib/ocr/raster";
 
-const chars = buildAlphabet("1\n6\n.\n3\n0\n");
+const chars = buildAlphabet("1\n6\n.\n3\n0\n9\n");
 
 /** A detector that sees one block in the middle of whatever it is given, and a recogniser that reads "16.30". */
 function fakeModels(
@@ -74,6 +75,22 @@ describe("readRegion", () => {
     }
   });
 
+  it("reads only the text lines the caller keeps, by their quad in input pixels", async () => {
+    const models = fakeModels();
+    const quads: number[][] = [];
+    const none = await readRegion(models, createRaster(64, 32), {
+      keep: (quad) => {
+        quads.push(quad.flatMap((p) => [p.x, p.y]));
+        return false;
+      },
+    });
+    expect(none).toEqual([]);
+    expect(models.recCalls).toBe(0);
+    // The block the fake detector sees lies in the middle of the 64 × 32 input.
+    for (const [i, v] of quads[0].entries()) expect(v).toBeLessThanOrEqual(i % 2 === 0 ? 64 : 32);
+    expect(await readRegion(models, createRaster(64, 32), { keep: () => true })).toHaveLength(1);
+  });
+
   it("reads each crop twice when asked to try both directions", async () => {
     const models = fakeModels();
     await readRegion(models, createRaster(64, 32), { bothDirections: true });
@@ -118,5 +135,46 @@ describe("readRegion", () => {
     const readings = await readRegion(rejected, createRaster(64, 32), { bothDirections: true, accept: (t) => t === "16.30" });
     expect(rejected.recCalls).toBe(2);
     expect(readings[0].text).toBe("16.30");
+  });
+
+  it("with accept, keeps the upside-down reading only when it is accepted and the upright one is not", async () => {
+    const opts = { bothDirections: true, accept: isPointedDimension };
+    // Upright only digits ("069"), upside down the value with its point: the latter wins although less confident.
+    const turned = await readRegion(fakeModels([{ text: "069", score: 0.95 }, { text: "6.90", score: 0.7 }]), createRaster(64, 32), opts);
+    expect(turned[0]).toMatchObject({ text: "6.90", turn: 180 });
+    // Neither has its point written: the upright reading stays, also when the other is more confident.
+    const kept = await readRegion(fakeModels([{ text: "1630", score: 0.9 }, { text: "0391", score: 0.6 }]), createRaster(64, 32), opts);
+    expect(kept[0]).toMatchObject({ text: "1630", turn: 0 });
+    const upright = await readRegion(fakeModels([{ text: "690", score: 0.9 }, { text: "069", score: 0.95 }]), createRaster(64, 32), opts);
+    expect(upright[0]).toMatchObject({ text: "690", turn: 0 });
+    expect(upright[0].score).toBeCloseTo(0.9, 2);
+    // A value with its point written upright is not read again.
+    const sure = fakeModels([{ text: "16.30", score: 0.6 }]);
+    expect((await readRegion(sure, createRaster(64, 32), opts))[0]).toMatchObject({ text: "16.30", turn: 0 });
+    expect(sure.recCalls).toBe(1);
+  });
+});
+
+describe("upsideDownWins", () => {
+  const r = (text: string, score: number) => ({ text, score });
+
+  it("with accept, lets only an accepted upside-down reading replace one that is not accepted", () => {
+    const accept = isPointedDimension;
+    expect(upsideDownWins(r("069", 0.95), r("6.90", 0.7), accept)).toBe(true);
+    expect(upsideDownWins(r("690", 0.9), r("069", 0.95), accept)).toBe(false);
+    expect(upsideDownWins(r("180", 0.88), r("081", 0.9), accept)).toBe(false);
+    expect(upsideDownWins(r("080", 0.8), r("080", 0.8), accept)).toBe(false);
+    expect(upsideDownWins(r("170", 0.8), r("0L1", 0.85), accept)).toBe(false);
+    expect(upsideDownWins(r("1.30", 0.6), r("SO", 0.99), accept)).toBe(false);
+  });
+
+  it("between two accepted readings, keeps the more confident", () => {
+    expect(upsideDownWins(r("6.90", 0.7), r("0.69", 0.9), isPointedDimension)).toBe(true);
+    expect(upsideDownWins(r("6.90", 0.9), r("0.69", 0.7), isPointedDimension)).toBe(false);
+  });
+
+  it("without accept, keeps the more confident", () => {
+    expect(upsideDownWins(r("690", 0.9), r("069", 0.95))).toBe(true);
+    expect(upsideDownWins(r("690", 0.9), r("069", 0.85))).toBe(false);
   });
 });

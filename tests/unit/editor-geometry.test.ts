@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DRAWING_AREA } from "@/lib/form/template";
-import type { Quad } from "@/lib/ocr/geometry";
+import { normalizeAngle, orderClockwise, type Quad } from "@/lib/ocr/geometry";
+import { createRaster, cropQuad, cropTurnsQuarter } from "@/lib/ocr/raster";
 import {
-  axes, boxCorners, boxForDrawnRect, boxFromQuad, centreInDrawingArea, detectionAt, drawingAreaPx, panelOf,
-  pointInDrawingArea, readingOrder, rectFromDrag, rectInDrawingArea, roundAngle, roundBox, sameSize, toBox, toPx,
+  angleFromQuad, axes, boxCorners, boxForDrawnRect, boxFromQuad, centreInDrawingArea, clickInReach, clickOutcome, detectionAt, drawingAreaPx, edgeMarginPx,
+  isAxisAngle, nearestAxis, panelOf, pointInDrawingArea, readingOrder, rectFromDrag, rectInDrawingArea, roundAngle, roundBox,
+  sameSize, snapAngle, toBox, toPx,
 } from "@/editor/geometry";
 
 const close = (a: number, b: number, eps = 1e-9) => expect(Math.abs(a - b)).toBeLessThanOrEqual(eps);
@@ -50,6 +52,126 @@ describe("boxFromQuad", () => {
   it("normalises the angle to (-180, 180]", () => {
     const quad: Quad = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }, { x: 0, y: 5 }];
     expect(boxFromQuad(quad, 270).angle).toBe(-90);
+  });
+});
+
+describe("angleFromQuad", () => {
+  const sameAngle = (a: number, b: number) => close(normalizeAngle(a - b), 0, 1e-6);
+
+  /**
+   * A value written at `angle` as the detector and the reader see it: a 74 × 27 box (the text grown by the
+   * detector's margin) whose only ink is a mark at the start of the text, at the top of the digits. The
+   * detector orders the corners (orderClockwise); cropQuad straightens the box; the reader reads the crop as
+   * it is when the mark lands top left, and upside down when it lands bottom right.
+   */
+  function seen(angle: number): { quad: Quad; turn: 0 | 90 | 180 | 270 } {
+    const raster = createRaster(300, 300);
+    const { u, v } = axes(angle);
+    for (let y = 0; y < 300; y++) {
+      for (let x = 0; x < 300; x++) {
+        const s = (x - 150) * u.x + (y - 150) * u.y;
+        const t = (x - 150) * v.x + (y - 150) * v.y;
+        if (s < -37 || s >= -22 || t < -13.5 || t >= -5.5) continue;
+        raster.data.fill(0, (y * 300 + x) * 4, (y * 300 + x) * 4 + 3);
+      }
+    }
+    const quad = orderClockwise(boxCorners({ cx: 150, cy: 150, w: 74, h: 27, angle }));
+    const crop = cropQuad(raster, quad);
+    let n = 0;
+    let mx = 0;
+    let my = 0;
+    for (let y = 0; y < crop.height; y++) {
+      for (let x = 0; x < crop.width; x++) {
+        if (crop.data[(y * crop.width + x) * 4] > 128) continue;
+        n++;
+        mx += x;
+        my += y;
+      }
+    }
+    expect(n).toBeGreaterThan(0);
+    const left = mx / n < crop.width / 2;
+    const top = my / n < crop.height / 2;
+    expect(left).toBe(top); // never sideways: the crop's long side runs along the text
+    return { quad, turn: ((cropTurnsQuarter(quad) ? 90 : 0) + (top ? 0 : 180)) as 0 | 90 | 180 | 270 };
+  }
+
+  it.each([0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90, 180])(
+    "gives back a value written at %i° from the detector's corners and the reader's turn",
+    (angle) => {
+      const { quad, turn } = seen(angle);
+      sameAngle(angleFromQuad(quad, turn, 0), angle);
+    },
+  );
+
+  it("reads along tl → tr for a crop read as it is, along tl → bl for a tall one, and adds 180° upside down", () => {
+    expect(seen(30).turn).toBe(0);
+    expect(seen(75).turn).toBe(90); // the crop is tall: turned a quarter, its text runs tl → bl
+    expect(seen(180).turn).toBe(180); // the same quad as at 0°, read upside down
+    expect(seen(-90).turn).toBe(270); // the same quad as at 90°, read upside down: bottom-up
+    const flat: Quad = [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 10 }, { x: 0, y: 10 }];
+    const tall: Quad = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 40 }, { x: 0, y: 40 }];
+    expect(angleFromQuad(flat, 0, 0)).toBe(0);
+    expect(angleFromQuad(flat, 180, 0)).toBe(180);
+    expect(angleFromQuad(tall, 90, 0)).toBe(90);
+    expect(angleFromQuad(tall, 270, 0)).toBe(-90);
+  });
+
+  it("adds the turn of the image that was read, exactly for a quad along its axes", () => {
+    const flat: Quad = [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 10 }, { x: 0, y: 10 }];
+    const tall: Quad = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 40 }, { x: 0, y: 40 }];
+    expect(angleFromQuad(flat, 0, -90)).toBe(-90); // the scan's clockwise pass
+    expect(angleFromQuad(flat, 180, -90)).toBe(90);
+    expect(angleFromQuad(tall, 270, -90)).toBe(180);
+    expect(angleFromQuad(flat, 0, 60)).toBe(60); // a click image turned 60° counter-clockwise
+    expect(angleFromQuad(flat, 180, 90)).toBe(-90);
+  });
+
+  it("gives the same angle from the quad in a turned image as from that quad mapped back to the page", () => {
+    // The scan's second pass reads the page turned a quarter clockwise: its pixel (x, y) is the page's (y, 299 - x).
+    const { quad, turn } = seen(20);
+    const onPage = quad.map((p) => ({ x: p.y, y: 299 - p.x })) as Quad;
+    sameAngle(angleFromQuad(quad, turn, -90), -70);
+    sameAngle(angleFromQuad(onPage, turn, 0), -70);
+  });
+});
+
+describe("snapAngle", () => {
+  it("gives exactly 0, 90, -90 or 180 within 4°, and the angle itself otherwise", () => {
+    expect(snapAngle(3.9)).toBe(0);
+    expect(snapAngle(4.1)).toBe(4.1);
+    expect(snapAngle(86)).toBe(90);
+    expect(snapAngle(-177)).toBe(180);
+    expect(snapAngle(-86.5)).toBe(-90);
+    expect(snapAngle(183)).toBe(180);
+    expect(snapAngle(30)).toBe(30);
+    expect(snapAngle(-45)).toBe(-45);
+    expect(Object.is(snapAngle(-0.5), 0)).toBe(true); // never -0
+  });
+
+  it("normalises an angle it does not snap, and takes another tolerance", () => {
+    expect(snapAngle(200)).toBe(-160);
+    expect(snapAngle(5, 6)).toBe(0);
+    expect(snapAngle(5, 4)).toBe(5);
+  });
+});
+
+describe("nearestAxis", () => {
+  it("gives exactly 0, 90, -90 or 180, never -0 or -180", () => {
+    expect(nearestAxis(6)).toBe(0);
+    expect(Object.is(nearestAxis(-6), 0)).toBe(true);
+    expect(nearestAxis(-98)).toBe(-90);
+    expect(nearestAxis(-77.3)).toBe(-90);
+    expect(nearestAxis(98)).toBe(90);
+    expect(nearestAxis(174)).toBe(180);
+    expect(nearestAxis(-174)).toBe(180);
+    expect(nearestAxis(366)).toBe(0);
+  });
+});
+
+describe("isAxisAngle", () => {
+  it("is true only for exactly 0, 90, -90 and 180", () => {
+    for (const a of [0, 90, -90, 180, -180, 270]) expect(isAxisAngle(a)).toBe(true);
+    for (const a of [0.01, 30, -45, 89.99, 179.5]) expect(isAxisAngle(a)).toBe(false);
   });
 });
 
@@ -113,25 +235,71 @@ describe("drawn boxes (UC-07)", () => {
     expect(rectFromDrag({ x: 300, y: 200 }, { x: 260, y: 230 })).toEqual({ x: 260, y: 200, w: 40, h: 30 });
   });
 
-  it("accepts a rectangle only when every corner is inside the four panels", () => {
+  it("accepts a rectangle whose centre lies inside the four panels, even when it runs over their edge (UC-07 exception 1a)", () => {
+    // On a 3300 × 2550 page the area runs from x 151.8 to 2211 and from y 339.15 to 1902.3.
     expect(rectInDrawingArea({ x: 400, y: 600, w: 80, h: 30 }, 3300, 2550)).toBe(true);
-    expect(rectInDrawingArea({ x: 2180, y: 600, w: 80, h: 30 }, 3300, 2550)).toBe(false); // runs into the right-hand table
-    expect(rectInDrawingArea({ x: 400, y: 320, w: 80, h: 30 }, 3300, 2550)).toBe(false); // starts in the header band
+    expect(rectInDrawingArea({ x: 2160, y: 600, w: 80, h: 30 }, 3300, 2550)).toBe(true); // runs into the right-hand table, centre at 2200
+    expect(rectInDrawingArea({ x: 400, y: 330, w: 80, h: 30 }, 3300, 2550)).toBe(true); // starts in the header band, centre at 345
+    expect(rectInDrawingArea({ x: 2180, y: 600, w: 80, h: 30 }, 3300, 2550)).toBe(false); // centred in the right-hand table
+    expect(rectInDrawingArea({ x: 400, y: 320, w: 80, h: 30 }, 3300, 2550)).toBe(false); // centred in the header band
   });
 
-  it("accepts a rectangle exactly on the four edges of the drawing area", () => {
+  it("refuses a rectangle centred inside that reaches beyond the margin around the drawing (UC-07 exception 1a)", () => {
+    // The margin is 66 px on this page: the rectangle may reach x 2277 and y 273.15 at most.
+    expect(rectInDrawingArea({ x: 2120, y: 600, w: 180, h: 30 }, 3300, 2550)).toBe(false); // centre 2210, reaches 2300
+    expect(rectInDrawingArea({ x: 1901, y: 600, w: 610, h: 30 }, 3300, 2550)).toBe(false); // centre 2206, 300 px into the table
+    expect(rectInDrawingArea({ x: 2140, y: 600, w: 136, h: 30 }, 3300, 2550)).toBe(true); // centre 2208, reaches 2276
+    expect(rectInDrawingArea({ x: 2140, y: 600, w: 138, h: 30 }, 3300, 2550)).toBe(false); // centre 2209, reaches 2278
+    expect(rectInDrawingArea({ x: 400, y: 274, w: 80, h: 140 }, 3300, 2550)).toBe(true); // centre 344
+    expect(rectInDrawingArea({ x: 400, y: 272, w: 80, h: 140 }, 3300, 2550)).toBe(false);
+    expect(rectInDrawingArea({ x: 86, y: 1800, w: 214, h: 168 }, 3300, 2550)).toBe(true); // into the bottom-left corner of the margin
+    expect(rectInDrawingArea({ x: 85, y: 1800, w: 215, h: 168 }, 3300, 2550)).toBe(false);
+    expect(rectInDrawingArea({ x: 86, y: 1800, w: 214, h: 169 }, 3300, 2550)).toBe(false);
+  });
+
+  it("decides a rectangle on an edge of the drawing area by its centre", () => {
     const W = 3300;
     const H = 2550;
     const { x0, x1, y0, y1 } = DRAWING_AREA;
-    // starts picked so that the sum x + w lands exactly on the right and bottom edges
-    expect(rectInDrawingArea({ x: x0 * W, y: 600, w: 80, h: 30 }, W, H)).toBe(true);
-    expect(rectInDrawingArea({ x: x0 * W - 0.01, y: 600, w: 80, h: 30 }, W, H)).toBe(false);
-    expect(rectInDrawingArea({ x: 400, y: y0 * H, w: 80, h: 30 }, W, H)).toBe(true);
-    expect(rectInDrawingArea({ x: 400, y: y0 * H - 0.01, w: 80, h: 30 }, W, H)).toBe(false);
-    expect(rectInDrawingArea({ x: 1500, y: 600, w: x1 * W - 1500, h: 30 }, W, H)).toBe(true);
-    expect(rectInDrawingArea({ x: 1500, y: 600, w: x1 * W - 1500 + 0.01, h: 30 }, W, H)).toBe(false);
-    expect(rectInDrawingArea({ x: 400, y: 1200, w: 80, h: y1 * H - 1200 }, W, H)).toBe(true);
-    expect(rectInDrawingArea({ x: 400, y: 1200, w: 80, h: y1 * H - 1200 + 0.01 }, W, H)).toBe(false);
+    const centredAt = (cx: number, cy: number) => rectInDrawingArea({ x: cx - 40, y: cy - 15, w: 80, h: 30 }, W, H);
+    expect(centredAt(x0 * W + 0.01, 600)).toBe(true);
+    expect(centredAt(x0 * W - 0.01, 600)).toBe(false);
+    expect(centredAt(400, y0 * H + 0.01)).toBe(true);
+    expect(centredAt(400, y0 * H - 0.01)).toBe(false);
+    expect(centredAt(x1 * W - 0.01, 600)).toBe(true);
+    expect(centredAt(x1 * W + 0.01, 600)).toBe(false);
+    expect(centredAt(400, y1 * H - 0.01)).toBe(true);
+    expect(centredAt(400, y1 * H + 0.01)).toBe(false);
+  });
+
+  it("has a margin around the drawing area of 2 % of the page width, in whole pixels", () => {
+    expect(edgeMarginPx(1135)).toBe(23);
+    expect(edgeMarginPx(3300)).toBe(66);
+    expect(edgeMarginPx(6184)).toBe(124);
+  });
+
+  it("takes a click inside the drawing or within the margin beside it (UC-06 step 1)", () => {
+    expect(clickInReach({ x: 400, y: 600 }, 3300, 2550)).toBe(true);
+    expect(clickInReach({ x: 2211 + 65, y: 600 }, 3300, 2550)).toBe(true);
+    expect(clickInReach({ x: 2211 + 67, y: 600 }, 3300, 2550)).toBe(false);
+    expect(clickInReach({ x: 151.8 - 65, y: 1902.3 + 65 }, 3300, 2550)).toBe(true);
+    expect(clickInReach({ x: 400, y: 339.15 - 67 }, 3300, 2550)).toBe(false);
+    expect(clickInReach({ x: 2700, y: 600 }, 3300, 2550)).toBe(false);
+  });
+
+  it("keeps a value a click found only when its stored box is centred inside the drawing (BR-02)", () => {
+    const inside = { x: 400, y: 600 };
+    const beside = { x: 2240, y: 600 }; // 29 px into the right-hand table
+    const valueAt = (p: { x: number; y: number }) => toBox({ cx: p.x, cy: p.y, w: 60, h: 13, angle: 0 }, 3300, 2550);
+    const atEdge = valueAt({ x: 2200, y: 600 }); // a value running over the edge, its centre inside
+    const inTable = valueAt({ x: 2250, y: 600 });
+    expect(clickOutcome(inside, valueAt(inside), 3300, 2550)).toBe("value");
+    expect(clickOutcome(beside, atEdge, 3300, 2550)).toBe("value");
+    expect(clickOutcome(inside, inTable, 3300, 2550)).toBe("no-value");
+    expect(clickOutcome(inside, null, 3300, 2550)).toBe("no-value");
+    // A click beside the drawing that finds none of its values has no effect (UC-05 exception 1b).
+    expect(clickOutcome(beside, inTable, 3300, 2550)).toBe("ignored");
+    expect(clickOutcome(beside, null, 3300, 2550)).toBe("ignored");
   });
 
   it("counts a value centred exactly on an edge of the drawing area as inside (BR-02)", () => {

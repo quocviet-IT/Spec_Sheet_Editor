@@ -68,8 +68,9 @@ export class OcrClient {
     return this.call<void>({ type: "setPage", page: { width: page.width, height: page.height, data } }, [data.buffer]);
   }
 
-  scan(area: Rect, targetWidth?: number): Promise<ScanResult> {
-    return this.call<ScanResult>({ type: "scan", area, targetWidth });
+  /** `margin` (page pixels) is read around the area on each side, within the page (`scanArea`). */
+  scan(area: Rect, options: { targetWidth?: number; margin?: number } = {}): Promise<ScanResult> {
+    return this.call<ScanResult>({ type: "scan", area, ...options });
   }
 
   read(point: Point): Promise<ReadResult> {

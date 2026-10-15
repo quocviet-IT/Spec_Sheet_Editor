@@ -1,5 +1,5 @@
-import { toDimension } from "./dimension-text";
-import { bounds, normalizeAngle, rectCentre, type Point, type Quad, type Rect } from "./geometry";
+import { isPointedDimension, valueReadings } from "./dimension-text";
+import { angleFromQuad, bounds, rectCentre, type Point, type Quad, type Rect } from "./geometry";
 import { readRegion, type OcrModels, type RegionReader } from "./pipeline";
 import { crop, resizeBicubic, rotateExpand, unrotatePoint, type Raster } from "./raster";
 
@@ -12,15 +12,19 @@ export const CLICK_ANGLES = [0, -90, 90, 60, -60] as const;
 export const CLICK_DEADLINE_MS = 5000;
 
 /**
- * `box` (page pixels, axis-aligned) is for hit-testing; `quad` is the text's own box in page pixels;
- * `angle` is the text's angle in the design's convention (§6.3).
+ * `prefix` is what is written in front of the value ("Ø", "R", "2X Ø"; "" when none). `box` (page pixels,
+ * axis-aligned) is for hit-testing; `quad` is the text's own box in page pixels; `angle` is the text's angle
+ * in the design's convention (§6.3), taken from its quad.
  */
-export type ClickReading = { value: string; text: string; score: number; angle: number; box: Rect; quad: Quad };
+export type ClickReading = { value: string; prefix: string; text: string; score: number; angle: number; box: Rect; quad: Quad };
 export type ReadResult = { reading: ClickReading | null; ms: number; anglesTried: number };
 
 /**
  * UC-06: read the value around a click; stop at the first angle that yields a dimension, or at the
- * deadline. When several values are read, the one nearest the click wins; confidence breaks ties.
+ * deadline. When several values are read, the one nearest the click wins; confidence breaks ties. Only a
+ * value with its decimal separator written skips the upside-down reading, and that reading replaces the
+ * upright one only when it is a value with its point written (`upsideDownWins`). A value only repaired from
+ * 3–4 digits is dropped where a value with its point written covers the same place (`valueReadings`).
  */
 export async function readAtPoint(
   models: OcrModels,
@@ -43,14 +47,12 @@ export async function readAtPoint(
     anglesTried++;
     const angleStarted = performance.now();
     const image = angle === 0 ? square : rotateExpand(square, angle);
-    const readings = await read(models, image, { bothDirections: true, accept: (text) => toDimension(text) !== null });
+    const readings = await read(models, image, { bothDirections: true, accept: isPointedDimension });
     longestAngleMs = Math.max(longestAngleMs, performance.now() - angleStarted);
 
     let best: ClickReading | null = null;
     let bestDistance = Infinity;
-    for (const reading of readings) {
-      const value = toDimension(reading.text);
-      if (value === null) continue;
+    for (const { reading, dimension } of valueReadings(readings)) {
       // Back from the turned image to the 256-px square (pixel centres sit at +0.5 in unrotatePoint's
       // coordinates), then to the page.
       const corners = reading.quad.map((p) => {
@@ -65,7 +67,9 @@ export async function readAtPoint(
       const nearer = d < bestDistance - 0.5;
       const asNear = Math.abs(d - bestDistance) <= 0.5;
       if (best === null || nearer || (asNear && reading.score > best.score)) {
-        best = { value, text: reading.text, score: reading.score, angle: normalizeAngle(angle + reading.turn), box, quad };
+        // From the quad as read in the turned image, so a quad along its axes gives exactly the image's turn.
+        const angleRead = angleFromQuad(reading.quad, reading.turn, angle);
+        best = { value: dimension.value, prefix: dimension.prefix, text: reading.text, score: reading.score, angle: angleRead, box, quad };
         bestDistance = d;
       }
     }

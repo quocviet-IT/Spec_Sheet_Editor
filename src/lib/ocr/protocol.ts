@@ -29,7 +29,7 @@ export type InitResult = {
 export type OcrRequest =
   | { id: number; type: "init"; options: InitOptions }
   | { id: number; type: "setPage"; page: Raster }
-  | { id: number; type: "scan"; area: Rect; targetWidth?: number }
+  | { id: number; type: "scan"; area: Rect; targetWidth?: number; margin?: number }
   | { id: number; type: "read"; point: Point }
   | { id: number; type: "release" };
 

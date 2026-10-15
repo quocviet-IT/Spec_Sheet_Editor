@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAX_VALUES, saveInputSchema, sheetDataSchema } from "@/editor/schema";
+import { readDimension } from "@/lib/ocr/dimension-text";
 
 const box = { cx: 0.2, cy: 0.3, w: 0.02, h: 0.01 };
 const det = (id: string, over: Record<string, unknown> = {}) => ({ id, box, angle: -90, readValue: "2.50", confidence: 87, source: "ocr", ...over });
@@ -76,6 +77,41 @@ describe("sheetDataSchema", () => {
   it("refuses fields it does not know", () => {
     expect(ok({ detections: [det("a", { note: "x" })], edits: [] })).toBe(false);
     expect(ok({ detections: [det("a")], edits: [edit("a", { extra: 1 })] })).toBe(false);
+  });
+
+  it("reads a sheet stored before prefixes existed exactly as stored, and gives it back the same", () => {
+    const stored = JSON.parse(JSON.stringify({ detections: [det("a"), det("b", { source: "pdf-text", confidence: null })], edits: [edit("a")] }));
+    const parsed = sheetDataSchema.parse(stored);
+    expect(parsed).toStrictEqual(stored);
+    expect(JSON.parse(JSON.stringify(parsed))).toStrictEqual(stored);
+    expect("prefix" in parsed.detections[0]).toBe(false);
+    expect("prefix" in parsed.edits[0]).toBe(false);
+  });
+
+  it("keeps what is written in front of a value, on the value and on its edit", () => {
+    const stored = JSON.parse(JSON.stringify({
+      detections: [det("a", { prefix: "Ø" }), det("b", { prefix: "2X Ø" }), det("c")],
+      edits: [edit("a", { prefix: "Ø" }), edit("c")],
+    }));
+    expect(sheetDataSchema.parse(stored)).toStrictEqual(stored);
+  });
+
+  it("holds a prefix to at most 8 characters from a small set", () => {
+    for (const prefix of ["Ø", "R", "2X Ø", "2x Ø", "(4X) Ø", "4X ", "4× ", "(4×) Ø", "±", "⌀", "12X R", "(10X) Ø"]) {
+      expect(ok({ detections: [det("a", { prefix })], edits: [edit("a", { prefix })] }), prefix).toBe(true);
+    }
+    for (const prefix of ["", "(10X) ØØ±", "SO", "mm", "r", "<b>", "Ø\n", "ø", "Φ", 2, null]) {
+      expect(ok({ detections: [det("a", { prefix })], edits: [] }), String(prefix)).toBe(false);
+      expect(ok({ detections: [det("a")], edits: [edit("a", { prefix })] }), String(prefix)).toBe(false);
+    }
+  });
+
+  it("accepts every prefix the reader gives", () => {
+    for (const text of ["01.30", "Ø1.30", "O1.30", "00.80", "O0.80", "2X Ø1.10", "2x01.10", "(4X) Ø1.10", "(99X) Ø1.10", "4XR0.50", "2×1.10", "(4×) Ø1.10", "4X 2.50", "R0.50"]) {
+      const prefix = readDimension(text)?.prefix;
+      expect(prefix, text).toBeTruthy();
+      expect(ok({ detections: [det("a", { prefix })], edits: [edit("a", { prefix })] }), text).toBe(true);
+    }
   });
 
   it("caps the number of values", () => {

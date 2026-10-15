@@ -6,9 +6,8 @@ import { loadArimo, type FontMetrics } from "@/editor/canvas";
 import { encodePdf, encodePng, downloadBlob, releaseCanvas, renderResult } from "@/editor/export";
 import { exportFileName, exportSuggestions, type ExportSource, type Suggestion } from "@/editor/export-plan";
 import { matchingValues } from "@/editor/matching";
-import { detectValues, makeEdit, ocrFailureReason, toDetection, type LoadedPage } from "@/editor/detections";
-import { boxForDrawnRect, boxFromQuad, detectionAt, MIN_DRAWN_PX, panelOf, pointInDrawingArea, readingOrder, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
-import { analyseBox } from "@/editor/pixels";
+import { detectValues, drawnDetection, keptDetection, makeEdit, ocrFailureReason, readingBox, type LoadedPage } from "@/editor/detections";
+import { clickInReach, clickOutcome, detectionAt, MIN_DRAWN_PX, panelOf, readingOrder, rectInDrawingArea, sameSize, toPx } from "@/editor/geometry";
 import type { Detection, Edit } from "@/editor/types";
 import { zoomIn, zoomOut, type Zoom } from "@/editor/zoom";
 import type { OcrClient } from "@/lib/ocr/client";
@@ -397,10 +396,10 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
     focusOpener(id);
   }
 
-  function apply(detection: Detection, oldValue: string, newValue: string) {
+  function apply(detection: Detection, oldValue: string, newValue: string, keepSign: boolean) {
     if (!loaded) return;
     setMatch(null);
-    const edit = makeEdit(loaded.page.raster, detection, oldValue, newValue);
+    const edit = makeEdit(loaded.page.raster, detection, oldValue, newValue, keepSign);
     const next = [...latest.current.edits.filter((e) => e.detectionId !== detection.id), edit];
     const others = matchingValues(latest.current.detections, next, oldValue, detection.id);
     setEdits(next);
@@ -501,14 +500,14 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   function onAngle(angle: number) {
     if (!loaded || !drawn) return;
     closeMatch(true);
-    const px = boxForDrawnRect(drawn, angle);
+    const added = drawnDetection(loaded.page.raster, drawn, angle, () => crypto.randomUUID());
     setDrawn(null);
-    if (!analyseBox(loaded.page.raster, px)) {
-      notify({ kind: "alert", text: (m) => m.editor.drawEmpty, draw: true });
+    if (added === "empty" || added === "outside") {
+      // A rectangle centred inside the drawing may hold only text of the table or the header beside it (BR-02).
+      notify({ kind: "alert", text: added === "empty" ? (m) => m.editor.drawEmpty : (m) => m.editor.drawOutside, draw: true });
       focusDrawButton();
       return;
     }
-    const added = toDetection(loaded.page.raster, px, { readValue: null, confidence: null, source: "manual" }, () => crypto.randomUUID());
     latest.current = { ...latest.current, detections: [...latest.current.detections, added] };
     setDetections((list) => [...list, added]);
     endDraw();
@@ -516,7 +515,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   }
 
   async function readAt(p: Point) {
-    if (drawing || !loaded || readingNow.current || !pointInDrawingArea(p, W, H)) return;
+    if (drawing || !loaded || readingNow.current || !clickInReach(p, W, H)) return;
     if (detect === "running") {
       notify({ kind: "status", text: (m) => m.editor.waitDetect, wait: true });
       return;
@@ -542,9 +541,15 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       if (!alive.current) return;
       if (crashed) reader.reset(); // the Worker is gone; the next click starts a new one
       const r = result?.reading ?? null;
-      const px = r ? boxFromQuad(r.quad, r.angle) : null;
-      if (!r || !px || !pointInDrawingArea({ x: px.cx, y: px.cy }, W, H)) {
-        notify({ kind: "alert", text: (m) => m.editor.clickNoRead });
+      const px = r ? readingBox(loaded.page.raster, r) : null;
+      // BR-02 on the value as stored: tightened to its digits, it must still be centred inside the drawing.
+      const confidence = r ? Math.min(100, Math.max(0, Math.round(r.score * 100))) : null;
+      const value = r && px ? keptDetection(loaded.page.raster, px, { readValue: r.value, confidence, source: "click", prefix: r.prefix }, () => crypto.randomUUID()) : null;
+      const outcome = clickOutcome(p, value?.box ?? null, W, H);
+      if (!px || !value || outcome !== "value") {
+        // A click in the margin beside the drawing that found none of its values has no effect.
+        if (outcome === "no-value") notify({ kind: "alert", text: (m) => m.editor.clickNoRead });
+        else setNotice(null);
         return;
       }
       setNotice(null);
@@ -554,10 +559,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
         open(hit.id);
         return;
       }
-      const added = toDetection(loaded.page.raster, px, { readValue: r.value, confidence: Math.min(100, Math.max(0, Math.round(r.score * 100))), source: "click" }, () => crypto.randomUUID());
-      latest.current = { ...latest.current, detections: [...latest.current.detections, added] };
-      setDetections((list) => [...list, added]);
-      open(added.id);
+      latest.current = { ...latest.current, detections: [...latest.current.detections, value] };
+      setDetections((list) => [...list, value]);
+      open(value.id);
     } finally {
       readingNow.current = false;
     }
@@ -566,7 +570,9 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
   const exportItems = exporting
     ? readingOrder(detections).flatMap((d) => {
         const edit = edits.find((e) => e.detectionId === d.id);
-        return edit ? [{ id: d.id, oldValue: edit.oldValue, newValue: edit.newValue, panel: t.editor.panels[panelOf(d.box)] }] : [];
+        return edit
+          ? [{ id: d.id, oldValue: edit.oldValue, newValue: edit.newValue, oldPrefix: d.prefix, newPrefix: edit.prefix, panel: t.editor.panels[panelOf(d.box)] }]
+          : [];
       })
     : [];
   const exportSuggestionList = exporting ? exportSuggestions(detections, edits) : [];
@@ -579,7 +585,7 @@ function EditorBody({ sheet }: { sheet: EditorSheet }) {
       detection={active}
       edit={edits.find((e) => e.detectionId === active.id) ?? null}
       style={besideStyle(popoverPx.cx, popoverPx.cy, (Math.hypot(popoverPx.w, popoverPx.h) / 2) * scale + 12, W, H, scale, 320, 340)}
-      onApply={(oldValue, newValue) => apply(active, oldValue, newValue)}
+      onApply={(oldValue, newValue, keepSign) => apply(active, oldValue, newValue, keepSign)}
       onRevert={() => revert(active.id)}
       onClose={(refocus) => (refocus ? closePopover(active.id) : setActiveId(null))}
     />

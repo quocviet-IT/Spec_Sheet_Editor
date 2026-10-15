@@ -19,12 +19,15 @@ export type OcrModels = {
 export type Reading = { text: string; score: number; quad: Quad; turn: 0 | 90 | 180 | 270 };
 /**
  * bothDirections: also read each crop upside down. With accept, only crops whose upright reading is not
- * accepted are re-read, and the upside-down reading wins when it is accepted or more confident.
+ * accepted are re-read, and the upside-down reading replaces the upright one only when it is accepted
+ * (`upsideDownWins`). The scan and the click accept only a value with its point written
+ * (`isPointedDimension`): a more confident "069" read upside down never replaces an upright "690".
+ * keep: the detected text lines to read, by their quad in input pixels; the others are not read at all.
  */
 export type RegionReader = (
   models: OcrModels,
   image: Raster,
-  opts?: { bothDirections?: boolean; accept?: (text: string) => boolean },
+  opts?: { bothDirections?: boolean; accept?: (text: string) => boolean; keep?: (quad: Quad) => boolean },
 ) => Promise<Reading[]>;
 
 /** RapidOCR Global.text_score. */
@@ -73,9 +76,22 @@ export async function recognizeCrops(models: OcrModels, crops: readonly Raster[]
 }
 
 /**
+ * Whether the upside-down reading replaces the upright one. With `accept`, only an accepted reading can: it
+ * replaces an upright reading that is not accepted, and between two accepted readings the more confident
+ * wins. In every other case the upright reading stays, however confident the other is. Without `accept`,
+ * the more confident reading wins.
+ */
+export function upsideDownWins(upright: RecResult, upsideDown: RecResult, accept?: (text: string) => boolean): boolean {
+  if (!accept) return upsideDown.score > upright.score;
+  if (!accept(upsideDown.text)) return false;
+  return !accept(upright.text) || upsideDown.score > upright.score;
+}
+
+/**
  * Detects and reads every text line in the image: RapidOCR's pipeline without the 180° classifier
  * (callers turn the image themselves). Quads are in input pixels; readings under MIN_TEXT_SCORE are
- * dropped. With bothDirections each crop is also read upside down (only those not accepted, when accept is given) and the better reading kept.
+ * dropped. With bothDirections each crop is also read upside down (only those not accepted, when accept is
+ * given) and the upside-down reading kept only as `upsideDownWins` says.
  */
 export const readRegion: RegionReader = async (models, image, opts = {}) => {
   const fitted = fitWithinBounds(image);
@@ -83,19 +99,22 @@ export const readRegion: RegionReader = async (models, image, opts = {}) => {
   const size = detInputSize(padded.raster.width, padded.raster.height);
   const detImage = resizeBilinear(padded.raster, size.width, size.height);
   const prob = await models.detect({ data: toBgrCHW(detImage), dims: [1, 3, size.height, size.width] });
-  const boxes = dbPostprocess(prob.data, prob.dims[3], prob.dims[2], padded.raster.width, padded.raster.height);
+  const toInput = (quad: Quad) => quad.map((p) => ({ x: p.x * fitted.scaleX, y: (p.y - padded.top) * fitted.scaleY })) as Quad;
+  const { keep } = opts;
+  const found = dbPostprocess(prob.data, prob.dims[3], prob.dims[2], padded.raster.width, padded.raster.height);
+  const boxes = keep ? found.filter((box) => keep(toInput(box.quad))) : found;
   if (boxes.length === 0) return [];
 
   const crops = boxes.map((box) => cropQuad(padded.raster, box.quad));
   const texts = await recognizeCrops(models, crops);
   const upsideDown = texts.map(() => false);
   if (opts.bothDirections) {
-    const accept = opts.accept ?? (() => false);
-    const retry = texts.flatMap((t, i) => (accept(t.text) ? [] : [i]));
+    const { accept } = opts;
+    const retry = texts.flatMap((t, i) => (accept?.(t.text) ? [] : [i]));
     if (retry.length > 0) {
       const flipped = await recognizeCrops(models, retry.map((i) => rotate180(crops[i])));
       retry.forEach((i, k) => {
-        if (accept(flipped[k].text) || flipped[k].score > texts[i].score) {
+        if (upsideDownWins(texts[i], flipped[k], accept)) {
           texts[i] = flipped[k];
           upsideDown[i] = true;
         }
@@ -107,7 +126,7 @@ export const readRegion: RegionReader = async (models, image, opts = {}) => {
     .map((box, i) => ({
       ...texts[i],
       turn: ((cropTurnsQuarter(box.quad) ? 90 : 0) + (upsideDown[i] ? 180 : 0)) as Reading["turn"],
-      quad: box.quad.map((p) => ({ x: p.x * fitted.scaleX, y: (p.y - padded.top) * fitted.scaleY })) as Quad,
+      quad: toInput(box.quad),
     }))
     .filter((reading) => reading.score >= MIN_TEXT_SCORE);
 };

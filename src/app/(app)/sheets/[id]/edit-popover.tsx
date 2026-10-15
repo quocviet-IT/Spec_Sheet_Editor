@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { withPrefix } from "@/editor/compose";
+import { signChoice } from "@/editor/detections";
 import { decimalsOf, normalizeNewValue, normalizeOldValue } from "@/editor/numbers";
 import type { Detection, Edit } from "@/editor/types";
 import { useMessages } from "@/messages/client";
@@ -10,7 +12,8 @@ type Props = {
   detection: Detection;
   edit: Edit | null;
   style: CSSProperties;
-  onApply: (oldValue: string, newValue: string) => void;
+  /** `keepSign` is false when the person unchecked the sign the machine read: only the value is drawn. */
+  onApply: (oldValue: string, newValue: string, keepSign: boolean) => void;
   onRevert: () => void;
   /** `refocus` is false when the person pressed somewhere else: focus then stays where they pressed. */
   onClose: (refocus: boolean) => void;
@@ -50,6 +53,8 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
   const [newRaw, setNewRaw] = useState(edit?.newValue ?? "");
   const [oldError, setOldError] = useState<string | null>(null);
   const [newError, setNewError] = useState<string | null>(null);
+  const choice = signChoice(detection, edit);
+  const [keepSign, setKeepSign] = useState(choice?.kept ?? true);
 
   useEffect(() => {
     close.current = onClose;
@@ -108,10 +113,20 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
       newInput.current?.focus();
       return;
     }
-    onApply(confirmed.value, next.value);
+    onApply(confirmed.value, next.value, keepSign);
   }
 
-  const field = "w-full rounded-md border border-line bg-surface px-3 py-2 font-mono text-ink";
+  const field = "w-full min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-2 font-mono text-ink";
+  // What is written in front of the value ("Ø") is shown before the old value, and before the new one while
+  // it is kept: it is then drawn again. A wrong sign (a stray 0 read as Ø) can be dropped.
+  const prefix = choice ? withPrefix(choice.sign, "").trim() : "";
+  const newPrefix = keepSign ? prefix : "";
+  const prefixMark = prefix ? (
+    <span id={`${id}-prefix`} className="font-mono text-ink">
+      {prefix}
+    </span>
+  ) : null;
+  const describedBy = (...ids: (string | false)[]) => ids.filter(Boolean).join(" ") || undefined;
   return (
     <form
       ref={root}
@@ -127,40 +142,56 @@ export function EditPopover({ detection, edit, style, onApply, onRevert, onClose
       </div>
       <div className="space-y-1">
         <label htmlFor={`${id}-old`} className="block text-sm font-medium">{p.old}</label>
-        <input
-          ref={oldInput}
-          id={`${id}-old`}
-          value={oldRaw}
-          onChange={(e) => {
-            setOldRaw(e.target.value);
-            setOldError(null);
-          }}
-          inputMode="decimal"
-          autoComplete="off"
-          aria-invalid={oldError !== null}
-          aria-describedby={oldError ? `${id}-old-hint ${id}-old-error` : `${id}-old-hint`}
-          className={field}
-        />
+        <div className="flex items-center gap-1.5">
+          {prefixMark}
+          <input
+            ref={oldInput}
+            id={`${id}-old`}
+            value={oldRaw}
+            onChange={(e) => {
+              setOldRaw(e.target.value);
+              setOldError(null);
+            }}
+            inputMode="decimal"
+            autoComplete="off"
+            aria-invalid={oldError !== null}
+            aria-describedby={describedBy(Boolean(prefix) && `${id}-prefix`, `${id}-old-hint`, oldError !== null && `${id}-old-error`)}
+            className={field}
+          />
+        </div>
         <p id={`${id}-old-hint`} className="text-xs text-ink-2">{p.oldHint}</p>
         {oldError ? <p id={`${id}-old-error`} role="alert" className="text-sm text-danger">{oldError}</p> : null}
       </div>
       <div className="space-y-1">
         <label htmlFor={`${id}-new`} className="block text-sm font-medium">{p.new}</label>
-        <input
-          ref={newInput}
-          id={`${id}-new`}
-          value={newRaw}
-          onChange={(e) => {
-            setNewRaw(e.target.value);
-            setNewError(null);
-          }}
-          inputMode="decimal"
-          autoComplete="off"
-          aria-invalid={newError !== null}
-          aria-describedby={newError ? `${id}-new-error` : undefined}
-          className={field}
-        />
+        <div className="flex items-center gap-1.5">
+          {newPrefix ? (
+            <span aria-hidden className="font-mono text-ink">
+              {newPrefix}
+            </span>
+          ) : null}
+          <input
+            ref={newInput}
+            id={`${id}-new`}
+            value={newRaw}
+            onChange={(e) => {
+              setNewRaw(e.target.value);
+              setNewError(null);
+            }}
+            inputMode="decimal"
+            autoComplete="off"
+            aria-invalid={newError !== null}
+            aria-describedby={describedBy(Boolean(newPrefix) && `${id}-prefix`, newError !== null && `${id}-new-error`)}
+            className={field}
+          />
+        </div>
         {newError ? <p id={`${id}-new-error`} role="alert" className="text-sm text-danger">{newError}</p> : null}
+        {prefix ? (
+          <label className="flex min-h-6 items-center gap-2 text-sm">
+            <input type="checkbox" checked={keepSign} onChange={(e) => setKeepSign(e.target.checked)} />
+            {fill(p.keepSign, { prefix })}
+          </label>
+        ) : null}
       </div>
       <div className="flex justify-end gap-2">
         {edit ? (

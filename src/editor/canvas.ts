@@ -37,7 +37,10 @@ export function loadArimo(): Promise<FontMetrics> {
   return loading;
 }
 
-/** The original page, then every edit over it (BR-03: the original pixels themselves never change). */
+/**
+ * The original page, then every edit over it: the mask, then the value's prefix and new value in one run of
+ * Arimo (`planEdit`'s text). BR-03: the original pixels themselves never change.
+ */
 export function paintSheet(
   ctx: CanvasRenderingContext2D,
   base: CanvasImageSource,
