@@ -69,7 +69,7 @@ test("an image sheet is read with OCR: values inside the drawing only, sheet.det
   expect(detections.every((d) => d.source === "ocr" && typeof d.confidence === "number")).toBe(true);
   expect(detections.map((d) => d.readValue)).not.toContain("5.75");
   expect(detections.map((d) => d.readValue)).not.toContain("3.39");
-  expect(PDF_VALUES.length - missed.length).toBeGreaterThanOrEqual(9); // the TC-20 bar
+  expect(PDF_VALUES.length - missed.length).toBeGreaterThanOrEqual(9); // 9 of 11: the bar for this clean synthetic sheet
   expect(await auditCount(id, "sheet.detect")).toBe(1);
   await page.reload();
   await expect(markers(page)).toHaveCount(detections.length, { timeout: 15_000 });

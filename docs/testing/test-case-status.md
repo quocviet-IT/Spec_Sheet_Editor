@@ -36,7 +36,7 @@ Sources:
 | TC-17 | Password-protected PDF | E2E | `tests/unit/pdf-errors.test.ts` (error mapping; the generator cannot encrypt a PDF, so no full upload path) | Pass (unit) |
 | TC-18 | Multi-page PDF | E2E | `e2e/upload.spec.ts` TC-18 | Pass (2026-10-10, e2e:prod) |
 | TC-19 | Offline during upload | E2E | `e2e/upload.spec.ts` TC-19 | Pass (2026-10-10, e2e:prod) |
-| TC-20 | Scan the 1135-px sample | Bench | M2 benchmark, `research/ocr-bakeoff/`; the editor's OCR path runs in `e2e/detect.spec.ts` (an image sheet is read with OCR) | Bench (M2 result) |
+| TC-20 | Scan the real sheets; time the scan of the 1135-px sample | Bench | Real sheets: the reader measurement run, kept with the sheets outside the repository; sample: `/dev/ocr-bench`; the editor's OCR path runs in `e2e/detect.spec.ts` (an image sheet is read with OCR) | Pass (2026-10-15: 83/93 located on the real sheets; sample scanned in 19.9 s in Chromium on the development PC, 8/11 located) |
 | TC-21 | PDF with a text layer | E2E | `e2e/detect.spec.ts` TC-21 / TC-23 | Pass (2026-10-10, e2e:prod) |
 | TC-22 | Decimal-point insertion | Unit | `tests/unit/ocr/dimension-text.test.ts` | Pass (unit) |
 | TC-23 | Value outside the drawing | E2E | `e2e/detect.spec.ts` TC-21 / TC-23 | Pass (2026-10-10, e2e:prod) |
