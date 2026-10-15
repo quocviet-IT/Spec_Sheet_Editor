@@ -68,6 +68,13 @@ own reports under **Feedback**, where a red number marks the ones an Admin has m
 design is in `docs/design/2026-10-13-feedback.md`; migration `0005_feedback.sql` creates the table and the screenshot bucket.
 Apply migrations 0004 and 0005 before this code deploys; until then the Report button says the report was not sent and Feedback says it could not be loaded; no other page is affected.
 
+## Renaming an account
+
+An Admin renames a password account under **Admin → Users**, from the "⋯" menu of its row (**Rename**); the sign-in
+email stays the same, and `user.rename` in the audit log keeps the old and the new name. A Google account takes its name
+from Google at every sign-in, so it has no Rename item. Migration `0006_rename_user.sql` adds the database function and
+takes no table lock; apply it before this code deploys, or Rename answers "That did not work." (nothing else is affected).
+
 ## Sheet list and logo
 
 The sheet list (`/sheets`) shows numbered pages: 10, 25 (default) or 50 rows, with "Previous page" / "Next page"

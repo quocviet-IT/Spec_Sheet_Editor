@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, Clock, Globe, KeyRound, RotateCcw, Search, SearchX, ShieldCheck, ShieldMinus, ShieldPlus, User, Users } from "lucide-react";
+import { Ban, Clock, Globe, KeyRound, PenLine, RotateCcw, Search, SearchX, ShieldCheck, ShieldMinus, ShieldPlus, User, Users } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { DEFAULT_PAGE_SIZE, pageInfo } from "@/admin/paging";
 import { setRole, setStatus } from "@/admin/user-actions";
@@ -14,6 +14,7 @@ import { EmptyState } from "../ui/empty-state";
 import { Pagination } from "@/ui/pagination";
 import { RelativeTime } from "../ui/relative-time";
 import { RowMenu, type RowMenuItem } from "../ui/row-menu";
+import { RenameUserDialog } from "./rename-user";
 import { ResetPasswordDialog } from "./reset-password";
 
 type Pending = { row: UserRow; kind: "role" | "status"; opener: HTMLElement | null };
@@ -97,6 +98,7 @@ export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId:
   const [paging, setPaging] = useState({ page: 1, size: DEFAULT_PAGE_SIZE });
   const [pending, setPending] = useState<Pending | null>(null);
   const [resetting, setResetting] = useState<UserRow | null>(null);
+  const [renaming, setRenaming] = useState<UserRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -176,14 +178,28 @@ export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId:
   }
 
   function menuItems(row: UserRow, mine: boolean): RowMenuItem[] {
-    const items: RowMenuItem[] = [
+    const items: RowMenuItem[] = [];
+    // Only a password account keeps the name its Admin gives it; a Google account takes its name from Google.
+    if (row.passwordAccount) {
+      items.push({
+        key: "rename",
+        label: u.rename,
+        icon: PenLine,
+        onSelect: () => {
+          setSaved(false);
+          setError(null);
+          setRenaming(row);
+        },
+      });
+    }
+    items.push(
       {
         key: "role",
         label: row.role === "admin" ? u.makeStaff : u.makeAdmin,
         icon: row.role === "admin" ? ShieldMinus : ShieldPlus,
         onSelect: (opener) => ask(row, "role", opener),
       },
-    ];
+    );
     if (row.passwordAccount && !mine) {
       items.push({ key: "reset", label: u.reset, icon: KeyRound, onSelect: () => setResetting(row) });
     }
@@ -330,6 +346,20 @@ export function UsersTable({ rows: initialRows, meId }: { rows: UserRow[]; meId:
       </div>
       <p role="status" className="text-sm text-ink-2">{saved ? u.changed : ""}</p>
       {error && <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm">{error}</p>}
+      {renaming && (
+        <RenameUserDialog
+          userId={renaming.id}
+          current={renaming.fullName}
+          email={renaming.email}
+          onClose={() => setRenaming(null)}
+          onRenamed={(fullName) => {
+            const id = renaming.id;
+            setRows((all) => all.map((r) => (r.id === id ? { ...r, fullName } : r)));
+            setRenaming(null);
+            setSaved(true);
+          }}
+        />
+      )}
       {resetting && (
         <ResetPasswordDialog
           userId={resetting.id}
